@@ -1,0 +1,50 @@
+# === Secrets & credentials — NEVER commit ===
+.env
+.env.*
+!.env.example
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# === Alembic ===
+# versions/ is committed, but not local state files
+
+# === Receipts (nota images) — contains user data ===
+backend/receipts/
+receipts/
+
+# === Android ===
+android/.gradle/
+android/build/
+android/local.properties
+android/*.keystore
+android/*.jks
+
+# === IDE ===
+.idea/
+.vscode/
+*.iml
+
+*.log
+
+# === OS ===
+.DS_Store
+Thumbs.db
+ARCHITECTURE.md
+CODING_RULES.md
+DATABASE.md
+DESIGN.md
+REQUIREMENTS.md
+ROADMAP.md
+SKILL.md
