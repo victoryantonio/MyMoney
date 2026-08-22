@@ -12,7 +12,6 @@ Aplikasi pencatatan keuangan pribadi — input via Telegram bot & Android app, p
 | LLM Teks | GLM 5.2 |
 | LLM Vision | Gemini 3.5 Flash-Lite |
 | Bot | python-telegram-bot |
-| Android | Kotlin, Jetpack Compose, Material 3, Hilt, Retrofit, Coil |
 | Infra | Docker Compose, Cloudflare Tunnel |
 
 ## Cara Setup Lokal
@@ -45,14 +44,6 @@ backend/app/
 ├── models/        # SQLAlchemy models
 ├── schemas/       # Pydantic schemas
 └── db/            # DB session + config
-
-android/
-└── app/src/main/
-    ├── kotlin/com/mymoney/app/
-    │   ├── data/       # API, repository, local token store
-    │   ├── di/         # Hilt dependency injection
-    │   └── ui/         # Jetpack Compose screens & theme
-    └── res/            # Android resources
 ```
 
 ## Keamanan
@@ -62,3 +53,6 @@ android/
 - JWT: access token 30 menit, refresh token 30 hari.
 - Audit trail: setiap create/update/delete/login dicatat di `audit_logs`.
 
+## Roadmap
+
+Lihat [ROADMAP.md](ROADMAP.md).

@@ -41,10 +41,10 @@ android/*.jks
 # === OS ===
 .DS_Store
 Thumbs.db
-ARCHITECTURE.md
-CODING_RULES.md
-DATABASE.md
-DESIGN.md
-REQUIREMENTS.md
-ROADMAP.md
-SKILL.md
+# ARCHITECTURE.md
+# CODING_RULES.md
+# DATABASE.md
+# DESIGN.md
+# REQUIREMENTS.md
+# ROADMAP.md
+# SKILL.md
