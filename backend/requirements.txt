@@ -5,11 +5,12 @@ uvicorn[standard]==0.32.0
 # ── Database ──────────────────────────────────────────────────────────────────
 sqlalchemy==2.0.36
 alembic==1.14.0
-psycopg[binary]==3.2.3
+psycopg[binary]==3.2.13
 
 # ── Settings & Validation ────────────────────────────────────────────────────
-pydantic==2.10.0
-pydantic-settings==2.6.1
+pydantic>=2.11.0
+pydantic-settings>=2.8.0
+email-validator==2.2.0
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 python-jose[cryptography]==3.3.0

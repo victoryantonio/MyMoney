@@ -43,6 +43,16 @@ services:
     networks:
       - mymoney_net
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --url http://backend:8000
+    # command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - mymoney_net
+    depends_on:
+      - backend
+
 volumes:
   pgdata:
 
