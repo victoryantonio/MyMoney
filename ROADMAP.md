@@ -32,10 +32,10 @@
 - [ ] Setup Telegram bot, webhook endpoint
 - [ ] `/start` — linking `telegram_id` ke `user_id`
 - [ ] `nlu_parser`: integrasi GLM 5.2, structured output (JSON schema)
-- [ ] Alur konfirmasi sebelum commit (state pending → user konfirmasi → simpan)
-- [ ] Command `/batal`, `/edit`
+- [ ] Implementasi Direct Save (LLM parsing langsung commit ke database tanpa state pending)
+- [ ] Command `/undo`, `/edit`
 
-**Checkpoint**: Bisa chat "beli kangkung 5k" ke bot Telegram, dapat balasan konfirmasi, transaksi tersimpan setelah konfirmasi.
+**Checkpoint**: Bisa chat "beli kangkung 5k Cash" ke bot Telegram, dapat balasan konfirmasi, transaksi tersimpan setelah konfirmasi.
 
 ### Fase 3 — Report Dasar (Target: 3-5 hari)
 - [ ] `report_service`: agregasi per kategori/periode (query database, bukan hitung di Python — sesuai `DATABASE.md` §3.4)

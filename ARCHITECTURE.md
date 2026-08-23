@@ -73,35 +73,45 @@ Satu backend tunggal menangani seluruh logic. Struktur monorepo (lihat §7).
 - Terhubung via webhook ke endpoint `/webhook/telegram`.
 - Menerima teks (`"beli kangkung 5k"`) dan foto nota.
 - `telegram_user_id` di-mapping ke `user_id` internal saat `/start` pertama kali (auto-register/link akun).
-- Command pendukung: `/report`, `/batal <id>`, `/edit <id>`.
+- Command pendukung: `/report`, `/undo <id>`, `/edit <id>`.
 
 ### 3.3 Android App
 - Kotlin + Jetpack Compose, konsumsi REST API yang sama dengan yang dipakai internal untuk Telegram.
 - Autentikasi JWT (access token + refresh token).
 - Fitur: input manual, foto nota (CameraX), lihat & edit transaksi, dashboard report (Vico/MPAndroidChart).
 
-### 3.4 LLM Services (Model Routing)
+### 3.4 LLM Services — OpenRouter sebagai Single Gateway
 
-| Task | Model | Alasan |
+Semua model LLM diakses via **OpenRouter** (satu API key, satu client),
+bukan direct API call terpisah per provider.
+
+| Task | Model Primary | Fallback |
 |---|---|---|
-| Parsing teks chat → transaksi terstruktur | **GLM 5.2** | Kuat untuk reasoning teks, murah, sesuai preferensi |
-| Parsing foto nota (OCR + structuring, multi-item) | **Gemini 3.5 Flash-Lite** | Multimodal native, murah, kuat di task ekstraksi data dari dokumen/gambar |
+| Text parsing ("beli kangkung 5k") | `z-ai/glm-5.2:free` | `meta-llama/llama-3.3-70b-instruct:free` |
+| Vision/OCR (foto nota) | `google/gemma-4-31b-it:free` | `thinkingmachines/inkling:free` |
+| Last resort (semua gagal) | `openrouter/free` (OpenRouter pilih otomatis) | — |
 
-Kedua model dipanggil dengan **structured output (JSON schema)** dan hasilnya **wajib divalidasi** sebelum masuk database — tidak ada output LLM yang langsung dipercaya mentah.
+**Catatan model free OpenRouter**: daftar model gratis berubah konstan
+(beberapa model sudah dihapus dalam minggu-minggu terakhir).
+Pantau `openrouter.ai/collections/free-models` secara berkala —
+kalau model primary dihapus, ganti ke model berikutnya di fallback list.
+Kalau volume request melebihi rate limit gratis (biasanya ~20 req/menit),
+pertimbangkan upgrade ke model berbayar murah via OpenRouter yang sama
+tanpa perubahan arsitektur.
 
 ## 4. Alur Data Utama
 
 ### 4.1 Input Teks (Telegram/App)
 User kirim teks → API layer → transaction_service.create_transaction(raw_text)
 → nlu_parser.parse(raw_text) via GLM 5.2 → JSON {type, amount, category, note}
-→ validate() → simpan draft → kirim balasan konfirmasi
-→ user konfirmasi → commit ke PostgreSQL
+→ validate() → langsung commit ke PostgreSQL (Direct Save)
+→ kirim balasan sukses ke Telegram
 
 ### 4.2 Input Foto Nota (Telegram/App)
 User kirim foto → API layer → receipt_service.parse_receipt_image(image)
 → Gemini 3.5 Flash-Lite (vision) → JSON {merchant, date, total, items[], confidence}
 → validate() → jika confidence low, tandai perlu review manual
-→ tampilkan hasil parsing (editable per-item) → user konfirmasi
+→ [Telegram] langsung commit ke DB | [App] pre-fill form editable → user simpan
 → commit transaction + transaction_items ke PostgreSQL
 → simpan file gambar nota (local storage, path disimpan di receipt_image_url)
 
@@ -194,6 +204,7 @@ erDiagram
 | Transport | HTTPS via Cloudflare Tunnel — tidak ada trafik plaintext ke server |
 | Validasi input | Semua output LLM divalidasi (tipe data, range nilai) sebelum masuk service layer/database |
 | `.gitignore` | Wajib exclude `.env`, credential file, dan folder `receipts/` (gambar nota) dari repo publik |
+| `OPENROUTER_API_KEY` | disimpan di `.env`, tidak pernah di-commit. Ganti `Z_AI_API_KEY` dan `GEMINI_API_KEY` yang sebelumnya terpisah menjadi satu key ini |
 
 **Penting karena repo public**: dokumentasi (README, .md files) tidak boleh mencantumkan API key, domain Cloudflare Tunnel asli, atau kredensial apa pun — semua contoh di dokumentasi harus pakai placeholder.
 
@@ -250,3 +261,50 @@ mymoney/
 - Tidak ada enkripsi at-rest untuk data transaksi (hanya password yang di-hash) — keputusan sadar berdasarkan trade-off kompleksitas vs kebutuhan compliance yang belum ada.
 - Tidak menggunakan agent framework/orchestration tool pihak ketiga (n8n, Hermes Agent) — seluruh logic ditulis eksplisit di backend untuk kontrol penuh dan nilai portfolio.
 - **Tidak ada aplikasi iOS di v1.** Backend didesain client-agnostic (REST API murni) sehingga penambahan client iOS di masa depan tidak memerlukan perubahan arsitektur, database, atau service layer — hanya penambahan client native baru (Swift/SwiftUI) yang mengonsumsi API yang sama. Dicatat sebagai kandidat fase v2 di `ROADMAP.md`, bukan bagian dari scope v1.
+
+## 10. Security Architecture
+
+### Threat Model (Relevan untuk MyMoney)
+
+| Ancaman | Permukaan Serangan | Mitigasi |
+|---|---|---|
+| SQL Injection | Semua query database | ORM SQLAlchemy + parameterized query wajib |
+| Prompt Injection | Input teks/foto ke LLM | System prompt hardcoded + validasi output Pydantic + panjang input dibatasi |
+| CSRF | Endpoint state-changing | JWT di header (bukan cookie) + validasi webhook secret Telegram |
+| XSS | Response API + WebView Android | Escape output + sanitasi input + WebView JS disabled |
+| Credential Theft | JWT token + API key | Short-lived access token (15 menit) + refresh token hashed di DB |
+| Brute Force | Login endpoint | Rate limiting 5 req/menit per IP |
+| File Upload Attack | Endpoint foto nota | Validasi magic bytes + ukuran max 10MB + simpan di luar webroot |
+| Container Escape | Docker | Non-root user + read-only filesystem + drop all capabilities |
+| Dependency CVE | Python packages | pip-audit di CI/CD pipeline |
+| Secrets Exposure | .env, API keys | chmod 600 + tidak pernah di-log + rotasi berkala |
+
+### Security Layer 
+
+```mermaid
+Internet
+│
+▼
+Cloudflare (DDoS protection) ← opsional, direkomendasikan
+│
+▼
+Nginx (rate limiting awal, SSL termination, max body size)
+│
+▼
+FastAPI Middleware Layer
+├── JWT validation (semua endpoint kecuali /auth/login, /auth/register)
+├── Telegram webhook secret validation (/webhook/telegram)
+├── Rate limiter (slowapi)
+└── Request size validation
+│
+▼
+API Layer (validasi Pydantic schema)
+│
+▼
+Service Layer (business rule validation)
+│
+▼
+Database Layer (constraint: CHECK, NOT NULL, FK)
+```
+Defense in depth: setiap lapisan memvalidasi ulang secara independen —
+kegagalan di satu lapisan tidak langsung membuka akses ke sistem.

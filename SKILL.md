@@ -1,56 +1,51 @@
----
-name: peakoss-skills
-description: A comprehensive skill suite combining Caveman (concise outputs), RTK (token-efficient inputs), and Anti-Slop (high-quality code constraints) principles.
----
+# SKILL.md — MyMoney (Antigravity Skills)
 
-# Peakoss Skills Suite: Caveman, RTK, and Anti-Slop
+## 1. Ringkasan
 
-This `SKILL.md` defines a strict set of operational behaviors for the Antigravity AI assistant. It merges three core philosophies to maximize efficiency, reduce token usage, and ensure the highest possible code quality.
+Dokumen ini mendaftar Antigravity Skills yang dipasang untuk proyek MyMoney, format instruksi yang dibaca agent (Antigravity) saat membantu development — bukan bagian dari aplikasi itu sendiri.
 
-## 1. Caveman Philosophy (Output Optimization)
+**Peringatan penting sebelum dipakai**: kedua skill di bawah ini adalah "token saver" yang **sudah diuji independen oleh JetBrains** dengan hasil jauh berbeda dari klaim marketing masing-masing repo. Dicantumkan di sini atas permintaan eksplisit untuk tujuan eksperimen pribadi, **bukan karena efikasinya terbukti**.
 
-The "Caveman" approach is designed to eliminate conversational fluff and maximize the density of useful information in AI outputs.
+## 2. Skill: `caveman`
 
-### Directives:
-- **No Yapping:** Do not use filler phrases like "Certainly!", "I can help with that," "Here is the code," or "Let me know if you need anything else."
-- **Extreme Conciseness:** Communicate using the absolute minimum number of words necessary to convey the technical information or action taken.
-- **Code First:** Prioritize showing the solution or code over explaining it, unless an explanation is explicitly requested.
-- **Action-Oriented:** State what was done, what needs to be done, or ask a direct question if blocked.
-- **Skip the Pleasantries:** Treat every interaction as a purely transactional technical exchange. 
+**Repo**: `JuliusBrussee/caveman`
+**Fungsi klaim**: membuat agent merespons singkat gaya "manusia gua" (buang kata pengisi, pertahankan kode/command byte-exact) untuk hemat token output.
 
-### Examples:
-- **Bad:** "I have successfully updated the `utils.ts` file to include the new helper function as you requested. Please review it and let me know if it works!"
-- **Good:** "Added helper function to `utils.ts`."
+**Install (Antigravity):**
+```bash
+npx skills add https://github.com/JuliusBrussee/caveman --skill caveman
+```
+Lokasi setelah install: `.agent/skills/caveman/SKILL.md` (atau `~/.gemini/antigravity/skills/caveman/`).
 
----
+**Klaim vs realita (hasil benchmark independen JetBrains, 80 paired task A/B):**
+| | Diklaim | Diukur nyata |
+|---|---|---|
+| Penghematan token | −65% | **−8.5%** |
 
-## 2. RTK / Rust Token Killer Philosophy (Input Optimization)
+Skill ini **user-activated** (baru aktif kalau dipicu frasa seperti "caveman mode" atau "be brief"). Perlu diingat: angka −8.5% di atas didapat dari kondisi **dipaksa aktif di setiap respons** (best-case untuk skill ini) — dalam pemakaian normal di mana agent harus memutuskan sendiri kapan mengaktifkan, penghematan riil kemungkinan **lebih rendah lagi** dari 8.5%.
 
-The RTK approach focuses on minimizing context window pollution. When interacting with the terminal, logs, or file system, strictly limit the amount of text processed.
+**Catatan pemakaian**: karena penghematannya kecil dan gaya responsnya sengaja dibuat sangat ringkas/terputus, pertimbangkan trade-off keterbacaan — terutama untuk task yang butuh penjelasan (misal debugging kompleks), gaya "caveman" bisa membuat agent memotong konteks penting demi keringkasan.
 
-### Directives:
-- **Targeted Grepping:** Never dump entire files or large logs into the context if only a specific section is needed. Use precise `grep` or `sed` commands.
-- **Head/Tail Usage:** When running commands that produce massive output (e.g., `npm install`, full test suites), always pipe to `head`, `tail`, or redirect to a temporary file, then read only the relevant parts.
-- **Deduplication:** Ignore duplicate error logs. If a build fails with 100 identical type errors, read only the first one or two.
-- **Efficient Discovery:** Do not blindly `ls -R` or `cat` large directories. Use `find` or `fd` with specific file extensions to locate what you need quickly.
+## 3. Skill: `rtk`
 
----
+**Fungsi klaim**: token saver, mengklaim penghematan 60-90% token.
 
-## 3. Anti-Slop (by peakoss)
+**Klaim vs realita (hasil benchmark independen JetBrains, sama metodologi):**
+| | Diklaim | Diukur nyata |
+|---|---|---|
+| Penghematan token | −60% hingga −90% | **+7.6% (justru bertambah)** |
 
-Inspired by the `peakoss/anti-slop` GitHub project, this philosophy strictly prohibits the generation of low-quality, generic, or "hallucinated" AI code.
+**Peringatan lebih keras untuk skill ini dibanding `caveman`**: hasil pengujian menunjukkan skill ini **kontraproduktif** — bukan sekadar "kurang efektif dari klaim", tapi **menambah** pemakaian token dibanding tanpa skill sama sekali. Kemungkinan penyebab: overhead instruksi tambahan yang harus diproses agent di setiap turn melebihi penghematan yang didapat dari gaya respons yang dihasilkan.
 
-### Directives:
-- **Zero Hallucination:** Only use APIs, libraries, and functions that you are certain exist and are appropriate for the project's specific tech stack. If unsure, read the project's `package.json` or equivalent before writing code.
-- **No Boilerplate Bloat:** Do not generate overly complex architectures, unnecessary abstractions (e.g., interfaces with only one implementation when not needed), or enterprise-fizz-buzz level bloat. Keep it simple and direct.
-- **Meaningful Commits & PRs:** Any commit messages or PR descriptions generated must be highly descriptive, following conventional commits, and directly related to the actual changes.
-- **Reject "Lazy" Solutions:** Do not leave `// TODO: implement this` or `console.log('here')` in final code. Write complete, functional solutions.
-- **Strict Quality Checks:** Ensure all code adheres strictly to best practices, has proper error handling, avoids silent failures, and respects existing project conventions.
-- **Clean File Paths:** Do not place files in random directories. Respect the existing architectural structure (e.g., components in `/components`, utilities in `/utils`).
+## 4. Rekomendasi Pemakaian untuk MyMoney
 
-## Enforcement
+Karena dua skill ini dipasang sebagai **eksperimen sadar**, bukan solusi terbukti, berikut cara memakainya secara bertanggung jawab:
 
-When operating under this skill:
-1. Re-read these rules before writing any code or executing any long-running terminal commands.
-2. Self-correct if you catch yourself generating "slop" or yapping.
-3. Your primary metrics for success are: speed, token efficiency, and exact adherence to user requirements without side effects.
+1. **Pantau token usage Anda sendiri** sebelum dan sesudah skill aktif (Antigravity/API dashboard) — jangan asumsikan skill ini bekerja hanya karena sudah terpasang.
+2. **Jangan paksa aktif permanen** (`force caveman every reply`) — biarkan mekanisme user-activated bekerja sesuai desainnya, atau ukur dulu di task kecil sebelum diaktifkan luas ke seluruh sesi development MyMoney.
+3. **Prioritaskan kejelasan output di atas penghematan token** untuk task berisiko tinggi — terutama saat generate skema database, logic validasi transaksi, atau security-related code (auth, hashing). Kesalahan kecil akibat output yang terlalu dipotong jauh lebih mahal (waktu debug, potensi bug finansial) dibanding penghematan token yang bahkan belum terbukti signifikan.
+4. **Evaluasi ulang setelah 1-2 minggu pemakaian.** Kalau data token usage Anda sendiri menunjukkan skill ini tidak membantu (atau memperburuk seperti temuan `rtk`), lepas dari `.agent/skills/` — tidak ada kerugian meninggalkan skill yang tidak terbukti berguna.
+
+## 5. Terkait: Filter Kualitas Kontribusi (Bukan Bagian SKILL.md)
+
+`peakoss/anti-slop` — yang sempat dipertimbangkan masuk sini — **bukan Antigravity Skill**, melainkan GitHub Action untuk menyaring Pull Request berkualitas rendah dari kontributor luar. Karena repo MyMoney bersifat publik, ini tetap relevan tapi ditempatkan di lokasi yang benar: `CODING_RULES.md` §6 (CI/CD), bukan di sini.

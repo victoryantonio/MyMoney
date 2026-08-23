@@ -1,50 +1,75 @@
-# === Secrets & credentials — NEVER commit ===
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.installed.cfg
+MANIFEST
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables
 .env
 .env.*
 !.env.example
 
-# === Python ===
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.venv/
-venv/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-htmlcov/
+# Coverage
 .coverage
+htmlcov/
+.pytest_cache/
 
-# === Alembic ===
-# versions/ is committed, but not local state files
+# Ruff / Black
+.ruff_cache/
 
-# === Receipts (nota images) — contains user data ===
-backend/receipts/
-receipts/
-
-# === Android ===
-android/.gradle/
-android/build/
-android/local.properties
-android/*.keystore
-android/*.jks
-
-# === IDE ===
+# IDE
 .idea/
 .vscode/
-*.iml
+*.swp
+*.swo
 
-*.log
+# Alembic
+# (keep alembic directory, but not local db files)
 
-# === OS ===
+# Android
+android/.gradle/
+android/build/
+android/.idea/
+android/local.properties
+android/captures/
+*.apk
+*.aab
+*.keystore
+*.jks
+
+# Docker
+docker-compose.override.yml
+
+# Receipt images (stored on server, never in repo)
+receipts/
+
+# macOS
 .DS_Store
-Thumbs.db
-# ARCHITECTURE.md
-# CODING_RULES.md
-# DATABASE.md
-# DESIGN.md
-# REQUIREMENTS.md
-# ROADMAP.md
-# SKILL.md
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+logs/

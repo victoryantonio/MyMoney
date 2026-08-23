@@ -2,32 +2,36 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str
-    DB_NAME: str = "mymoney"
+    """
+    Application settings loaded from environment variables / .env file.
+    All secrets are sourced here; never read os.environ directly in other modules.
+    """
 
-    # JWT
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str = "HS256"
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # LLM — GLM 5.2
-    GLM_API_KEY: str
-    GLM_API_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4"
+    # ── App ──────────────────────────────────────────────────────────────────
+    app_env: str = "development"
+    app_base_url: str = "http://localhost:8000"
 
-    # LLM — Gemini
-    GEMINI_API_KEY: str
+    # ── Database ─────────────────────────────────────────────────────────────
+    database_url: str
 
-    # Telegram
-    TELEGRAM_BOT_TOKEN: str
-    TELEGRAM_WEBHOOK_SECRET: str
+    # ── JWT ───────────────────────────────────────────────────────────────────
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 15
+    jwt_refresh_token_expire_days: int = 30
 
-    # App
-    APP_ENV: str = "development"
-    RECEIPTS_DIR: str = "/app/receipts"
+    # ── OpenRouter ────────────────────────────────────────────────────────────
+    openrouter_api_key: str
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # ── Telegram ─────────────────────────────────────────────────────────────
+    telegram_bot_token: str
+    telegram_webhook_secret: str
+
+    # ── Storage ───────────────────────────────────────────────────────────────
+    receipts_dir: str = "/app/receipts"
 
 
 settings = Settings()

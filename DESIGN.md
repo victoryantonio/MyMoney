@@ -2,11 +2,11 @@
 
 ## 1. Prinsip Desain
 
-MyMoney adalah *personal tool* — bukan produk SaaS yang harus "menjual diri" ke pengguna baru setiap saat. Desainnya harus terasa seperti **buku catatan pribadi yang rapi**, bukan dashboard korporat atau aplikasi yang berusaha terlihat "canggih". Tiga prinsip:
+MyMoney bergeser dari arah "hangat-personal" ke **tenang-profesional** — mendekati bahasa visual institusi finansial tepercaya (bank, aplikasi investasi), tapi tetap menghindari pola generic yang membuat aplikasi finance terasa seperti template (lihat §2, checklist tidak berubah, tetap wajib).
 
-1. **Tenang, bukan mencolok.** Data finansial itu personal dan kadang bikin cemas — desain harus menenangkan, bukan menambah noise visual.
-2. **Angka adalah bintang utama.** Semua elemen desain lain (warna, tipografi, layout) melayani keterbacaan angka, bukan bersaing dengan angka.
-3. **Personality lewat detail kecil, bukan dekorasi besar.** Kehangatan datang dari pilihan warna, tipografi, dan micro-copy — bukan dari ilustrasi generik atau gradient dekoratif.
+1. **Tenang, bukan mencolok.** (tidak berubah)
+2. **Angka adalah bintang utama.** (tidak berubah)
+3. **Kepercayaan lewat kejelasan, bukan dekorasi.** Kesan profesional dibangun dari konsistensi visual dan kejelasan informasi — bukan ornamen atau ilustrasi yang berusaha terlihat "canggih".
 
 ## 2. Anti-Pattern Checklist — "AI Slop" yang WAJIB Dihindari
 
@@ -22,37 +22,62 @@ Checklist ini dipakai setiap kali review desain baru, sebelum di-approve:
 
 ## 3. Palet Warna
 
-Menjauh dari default MD3 (ungu/biru generic). Basis: **warm neutral** dengan aksen **terracotta/clay** (hangat, personal, asosiasi "tanah/nyata" — kontras dari biru korporat/fintech generic) dan **sage green** untuk indikator positif (bukan hijau terang generic "growth app").
+Berdasarkan keputusan final: **dusty blue / slate blue** sebagai primary.
+Dipilih karena asosiasi psikologis paling kuat untuk "tenang dan tepercaya"
+(diverifikasi dari penelitian warna di konteks finansial), tapi dalam nuansa
+desaturated/muted — bukan biru cerah saturated generic (#2563EB khas fintech app).
 
 ### Light Mode
 
 | Token | Hex | Penggunaan |
 |---|---|---|
-| `surface` | `#FBF7F2` | Background utama — krem hangat, bukan putih steril |
-| `surface-variant` | `#F0E9E0` | Card, container sekunder |
-| `on-surface` | `#2B2622` | Teks utama — coklat gelap hangat, bukan hitam pekat |
-| `on-surface-variant` | `#6B6259` | Teks sekunder, caption |
-| `primary` | `#B4552F` | Terracotta/clay — CTA utama, elemen brand |
-| `primary-container` | `#F4DCC9` | Background untuk elemen primary yang lembut |
-| `income` | `#5B7A5E` | Sage green — indikator pemasukan |
-| `expense` | `#A8503C` | Rust/brick — indikator pengeluaran (lebih hangat dari merah alarm khas) |
-| `outline` | `#DCD2C4` | Border, divider |
+| `surface` | `#F5F7FA` | Background utama — putih dengan hint biru sangat halus |
+| `surface-variant` | `#E8EDF5` | Card, container sekunder |
+| `on-surface` | `#1A2233` | Teks utama — biru-hitam gelap |
+| `on-surface-variant` | `#556070` | Teks sekunder, caption |
+| `primary` | `#3B5B8C` | Dusty slate blue — CTA, brand, navigasi aktif |
+| `primary-container` | `#D0DCF0` | Background lembut elemen primary |
+| `income` | `#3D7A5F` | Sage green — sengaja beda keluarga warna dari primary |
+| `expense` | `#A8503C` | Clay/rust — tetap dipertahankan, hangat, tidak alarm |
+| `outline` | `#D0D8E8` | Border, divider |
 
 ### Dark Mode
 
 | Token | Hex | Penggunaan |
 |---|---|---|
-| `surface` | `#1E1B18` | Background utama — coklat gelap hangat, bukan hitam pekat/abu netral |
-| `surface-variant` | `#2A2521` | Card, container sekunder |
-| `on-surface` | `#EDE6DD` | Teks utama |
-| `on-surface-variant` | `#B5AA9C` | Teks sekunder |
-| `primary` | `#E08A5C` | Terracotta lebih terang untuk kontras di dark mode |
-| `primary-container` | `#5C3620` | Background elemen primary |
-| `income` | `#8FAF8E` | Sage green versi terang |
+| `surface` | `#131B27` | Background utama — biru gelap pekat |
+| `surface-variant` | `#1C2738` | Card, container sekunder |
+| `on-surface` | `#E2E8F5` | Teks utama |
+| `on-surface-variant` | `#A0ABBE` | Teks sekunder |
+| `primary` | `#7B9ED4` | Slate blue terang untuk kontras dark mode |
+| `primary-container` | `#243554` | Background elemen primary |
+| `income` | `#6AAF8E` | Sage green versi terang |
 | `expense` | `#D18871` | Rust versi terang |
-| `outline` | `#443E37` | Border, divider |
+| `outline` | `#2C3D57` | Border, divider |
 
-**Kenapa bukan biru/hijau terang generic**: hampir semua aplikasi finance (Mint, YNAB, GoPay, dsb) memakai biru korporat atau hijau terang "growth". Terracotta + sage adalah pilihan sadar untuk terasa **personal/human**, sesuai arah "hangat-personal" yang Anda pilih — bukan meniru identitas visual fintech korporat.
+### Jetpack Compose — color scheme update
+
+\`\`\`kotlin
+val MyMoneyLightColorScheme = lightColorScheme(
+    primary = Color(0xFF3B5B8C),
+    primaryContainer = Color(0xFFD0DCF0),
+    surface = Color(0xFFF5F7FA),
+    surfaceVariant = Color(0xFFE8EDF5),
+    onSurface = Color(0xFF1A2233),
+    onSurfaceVariant = Color(0xFF556070),
+    outline = Color(0xFFD0D8E8)
+)
+
+val MyMoneyDarkColorScheme = darkColorScheme(
+    primary = Color(0xFF7B9ED4),
+    primaryContainer = Color(0xFF243554),
+    surface = Color(0xFF131B27),
+    surfaceVariant = Color(0xFF1C2738),
+    onSurface = Color(0xFFE2E8F5),
+    onSurfaceVariant = Color(0xFFA0ABBE),
+    outline = Color(0xFF2C3D57)
+)
+\`\`\`
 
 ## 4. Tipografi
 
@@ -88,10 +113,9 @@ Karena ini personal tool, bukan produk SaaS:
 
 | Konteks | Hindari (AI slop) | Pakai |
 |---|---|---|
-| Konfirmasi transaksi | "Awesome! Your transaction has been recorded! 🎉" | "Tercatat: Rp5.000 — Makanan" |
-| Error parsing | "Oops! Something went wrong! Please try again 😅" | "Tidak bisa baca nota ini. Coba foto ulang atau input manual." |
-| Empty state | "Start your financial journey today!" | "Belum ada transaksi bulan ini." |
-| Konfirmasi hapus | "Are you sure you want to delete this?" | "Hapus transaksi ini? Tidak bisa dibatalkan." |
+| Konfirmasi transaksi | "Awesome! Recorded! 🎉" | "Tercatat: Rp5.000 — Makanan" (tidak berubah, tetap ringkas) |
+| Error parsing | "Oops! 😅" | "Tidak bisa membaca nota ini. Coba foto ulang atau input manual." |
+| Saldo rendah/anomali | (hindari nada alarmis "WARNING! Low balance!!") | "Saldo BCA: Rp150.000 — lebih rendah dari rata-rata bulan ini." (informatif, tidak menghakimi) |
 
 Prinsip: **langsung, informatif, tanpa basa-basi motivasional.** Anda mencatat uang Anda sendiri — tidak perlu aplikasi menyemangati Anda seperti gym app.
 

@@ -12,8 +12,9 @@ PostgreSQL sebagai satu-satunya sumber data, dijalankan via Docker di VPS (Ubunt
 |---|---|---|---|
 | id | UUID | PK, default `gen_random_uuid()` | |
 | email | VARCHAR(255) | UNIQUE, NOT NULL | |
-| password_hash | VARCHAR(255) | NOT NULL | Bcrypt/Argon2, tidak pernah plaintext |
+| password_hash | VARCHAR(255) | NOT NULL | argon2, tidak pernah plaintext |
 | display_name | VARCHAR(100) | NOT NULL | |
+| timezone | VARCHAR(50) | NOT NULL, default `'Asia/Jakarta'` | Untuk akurasi tanggal report harian/bulanan per zona waktu user |
 | is_active | BOOLEAN | NOT NULL, default TRUE | Untuk soft-disable akun tanpa hapus data |
 | created_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
 | updated_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
@@ -42,6 +43,7 @@ PostgreSQL sebagai satu-satunya sumber data, dijalankan via Docker di VPS (Ubunt
 | name | VARCHAR(50) | NOT NULL | |
 | type | VARCHAR(10) | NOT NULL, CHECK (`type IN ('income','expense')`) | |
 | is_default | BOOLEAN | NOT NULL, default FALSE | |
+| is_active | BOOLEAN | NOT NULL, default TRUE | Mekanisme soft-delete agar history transaksi tidak bentrok FK |
 | created_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
 
 **Index:**

@@ -1,0 +1,19 @@
+name: PR Quality
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+
+jobs:
+  pr-quality:
+    runs-on: ubuntu-latest
+    steps:
+      # Pin to a specific commit SHA for stability (as recommended by the action's docs)
+      - uses: peakoss/anti-slop@v0
+        with:
+          max-failures: 4

@@ -96,7 +96,7 @@ graph TD
 
 **US-12** — Sebagai user, saya ingin mengedit transaksi yang sudah tersimpan, kalau ternyata ada kesalahan yang baru saya sadari belakangan.
 
-**US-13** — Sebagai user, saya ingin menghapus transaksi yang salah/duplikat lewat command `/batal <id>` di Telegram atau swipe-delete di app.
+**US-13** — Sebagai user, saya ingin menghapus transaksi yang salah/duplikat lewat command `/undo <id>` di Telegram atau swipe-delete di app.
 
 ### 4.5 Kategori
 
@@ -134,6 +134,7 @@ graph TD
 | **Cost control** | Model routing dipilih berdasarkan biaya (GLM 5.2 & Gemini 3.5 Flash-Lite dipilih karena murah untuk volume personal, bukan model flagship mahal) |
 | **Auditability** | Setiap aksi create/edit/delete transaksi dan login tercatat permanen di `audit_logs` (siapa, apa, kapan, dari kanal mana), terpisah dari log aplikasi operasional |
 | **Data integrity** | Transaksi tidak boleh menjadi orphan (`account_id` tanpa akun valid) — penghapusan akun dengan riwayat transaksi wajib melalui alur reassignment atomik |
+| **LLM Reliability** | Sistem wajib punya fallback model di OpenRouter — kegagalan model primary (rate limit, model dihapus) tidak boleh menghentikan fungsi inti pencatatan transaksi |
 
 ## 6. Out of Scope (v1)
 
