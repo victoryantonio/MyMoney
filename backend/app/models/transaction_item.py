@@ -15,9 +15,7 @@ class TransactionItem(Base):
         CheckConstraint("price >= 0", name="transaction_items_price_non_negative"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     transaction_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("transactions.id", ondelete="CASCADE"),

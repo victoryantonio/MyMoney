@@ -5,11 +5,11 @@ All token creation/verification passes through this module.
 Never import jwt or argon2 directly elsewhere.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from jose import JWTError, jwt
 
 from app.core.config import settings
@@ -54,7 +54,7 @@ def _create_token(subject: str, token_type: TokenType, expires_delta: timedelta)
       exp  — UTC expiry timestamp
       iat  — UTC issued-at timestamp
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": subject,
         "type": token_type,
@@ -102,9 +102,7 @@ def decode_token(token: str, expected_type: TokenType) -> str:
         JWTError — if the token is invalid, expired, or the type doesn't match.
     """
     try:
-        payload = jwt.decode(
-            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
-        )
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
     except JWTError:
         raise
 

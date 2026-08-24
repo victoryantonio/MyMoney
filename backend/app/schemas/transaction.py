@@ -13,8 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ── Item sub-schemas ─────────────────────────────────────────────────────────
+
 
 class TransactionItemCreate(BaseModel):
     name: str = Field(min_length=1, max_length=150)
@@ -33,6 +33,7 @@ class TransactionItemResponse(BaseModel):
 
 # ── Transaction request schemas ───────────────────────────────────────────────
 
+
 class TransactionCreateRequest(BaseModel):
     type: Literal["income", "expense"]
     total_amount: Decimal = Field(gt=0)
@@ -46,6 +47,7 @@ class TransactionCreateRequest(BaseModel):
 
 class TransactionUpdateRequest(BaseModel):
     """All fields optional — PATCH semantics."""
+
     type: Literal["income", "expense"] | None = None
     total_amount: Decimal | None = Field(default=None, gt=0)
     category_id: uuid.UUID | None = None
@@ -57,6 +59,7 @@ class TransactionUpdateRequest(BaseModel):
 
 
 # ── Transaction response schemas ──────────────────────────────────────────────
+
 
 class TransactionResponse(BaseModel):
     id: uuid.UUID
@@ -79,6 +82,7 @@ class TransactionResponse(BaseModel):
 
 # ── Pagination wrapper ────────────────────────────────────────────────────────
 
+
 class TransactionListResponse(BaseModel):
     """
     Cursor-based pagination response.
@@ -87,6 +91,7 @@ class TransactionListResponse(BaseModel):
     Pass it as `?cursor=<value>` on the next request to get the next page.
     None means this is the last page.
     """
+
     items: list[TransactionResponse]
     next_cursor: str | None
     total_count: int

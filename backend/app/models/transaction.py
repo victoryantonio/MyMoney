@@ -20,22 +20,16 @@ from app.db.base import Base
 class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
-        CheckConstraint(
-            "type IN ('income', 'expense')", name="transactions_type_check"
-        ),
+        CheckConstraint("type IN ('income', 'expense')", name="transactions_type_check"),
         CheckConstraint("total_amount > 0", name="transactions_amount_positive"),
-        CheckConstraint(
-            "source IN ('telegram', 'app')", name="transactions_source_check"
-        ),
+        CheckConstraint("source IN ('telegram', 'app')", name="transactions_source_check"),
         CheckConstraint(
             "confidence IN ('high', 'medium', 'low') OR confidence IS NULL",
             name="transactions_confidence_check",
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -57,9 +51,7 @@ class Transaction(Base):
     # Only populated when the transaction originates from LLM parsing
     confidence: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Actual transaction date (may differ from created_at if user back-dates)
-    transaction_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    transaction_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

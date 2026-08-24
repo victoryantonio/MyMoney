@@ -19,7 +19,7 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_active_user
@@ -43,7 +43,7 @@ def _compute_balance(account: Account, db: Session) -> Decimal:
                 func.sum(
                     Transaction.total_amount
                     * func.cast(
-                        func.case(
+                        case(
                             (Transaction.type == "income", 1),
                             else_=-1,
                         ),

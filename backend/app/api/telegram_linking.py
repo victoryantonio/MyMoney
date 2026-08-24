@@ -15,7 +15,7 @@ Flow:
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
@@ -150,12 +150,14 @@ _EXPIRED_HTML = """<!DOCTYPE html>
 
 # ── Helper ─────────────────────────────────────────────────────────────────────
 
+
 def _render_form(token: str, error: str | None = None) -> str:
     error_block = f'<div class="error">{error}</div>' if error else ""
     return _LINK_FORM_HTML.format(token=token, error_block=error_block)
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/generate-link",
@@ -242,9 +244,7 @@ def post_link_form(
         )
 
     # If this user already has their Telegram linked (idempotent)
-    existing_user_link = db.scalar(
-        select(TelegramLink).where(TelegramLink.user_id == user.id)
-    )
+    existing_user_link = db.scalar(select(TelegramLink).where(TelegramLink.user_id == user.id))
     if existing_user_link is not None:
         # Update the telegram_id in case the user changed their Telegram account
         existing_user_link.telegram_id = telegram_id
@@ -257,7 +257,7 @@ def post_link_form(
         id=uuid.uuid4(),
         user_id=user.id,
         telegram_id=telegram_id,
-        linked_at=datetime.now(timezone.utc),
+        linked_at=datetime.now(UTC),
     )
     db.add(link)
     db.commit()

@@ -11,8 +11,12 @@ Startup order:
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
 
 structlog.configure(
     processors=[
@@ -36,6 +40,12 @@ app = FastAPI(
     redoc_url=None,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Middleware order: last added = outermost. CORS stays outermost, rate
+# limiting runs just inside it.
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if settings.app_env == "development" else [settings.app_base_url],
@@ -45,7 +55,15 @@ app.add_middleware(
 )
 
 # ── Routers ────────────────────────────────────────────────────────────────────
-from app.api import auth, categories, accounts, transactions, telegram_linking, telegram_webhook  # noqa: E402
+from app.api import (  # noqa: E402
+    accounts,
+    auth,
+    categories,
+    reports,
+    telegram_linking,
+    telegram_webhook,
+    transactions,
+)
 
 app.include_router(auth.router)
 app.include_router(telegram_linking.router)
@@ -53,9 +71,11 @@ app.include_router(telegram_webhook.router)
 app.include_router(categories.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
+app.include_router(reports.router)
 
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────────
+
 
 @app.on_event("startup")
 async def on_startup() -> None:
@@ -63,6 +83,7 @@ async def on_startup() -> None:
 
 
 # ── System endpoints ───────────────────────────────────────────────────────────
+
 
 @app.get("/health", tags=["System"])
 async def health_check() -> dict:

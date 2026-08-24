@@ -10,11 +10,13 @@ GET  /api/auth/me        — return the current user's profile
 import uuid
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_active_user
+from app.api.deps import require_active_user
+from app.core.audit_service import record_audit
+from app.core.rate_limit import limiter
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -70,17 +72,21 @@ def register(body: UserRegisterRequest, db: Session = Depends(get_db)) -> User:
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: UserLoginRequest, db: Session = Depends(get_db)) -> dict:
+@limiter.limit("10/minute")
+def login(body: UserLoginRequest, request: Request, db: Session = Depends(get_db)) -> dict:
     """
     Authenticate with email + password.
 
     Deliberately uses the same error message for wrong email OR wrong password
-    to avoid user enumeration attacks.
+    to avoid user enumeration attacks. Success/failure is audited (CODING_RULES
+    §2.6); failed logins for unknown emails cannot be audited because the
+    audit_logs.user_id column is NOT NULL.
     """
     _auth_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid email or password",
     )
+    client_ip = request.client.host if request.client else None
 
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     if user is None:
@@ -88,6 +94,15 @@ def login(body: UserLoginRequest, db: Session = Depends(get_db)) -> dict:
 
     if not verify_password(body.password, user.password_hash):
         log.warning("login_failed", email=body.email)
+        record_audit(
+            db,
+            user_id=user.id,
+            action="login_failed",
+            entity_type="auth",
+            source="app",
+            ip_address=client_ip,
+        )
+        db.commit()
         raise _auth_error
 
     if not user.is_active:
@@ -102,6 +117,15 @@ def login(body: UserLoginRequest, db: Session = Depends(get_db)) -> dict:
         db.commit()
 
     log.info("login_success", user_id=str(user.id))
+    record_audit(
+        db,
+        user_id=user.id,
+        action="login",
+        entity_type="auth",
+        source="app",
+        ip_address=client_ip,
+    )
+    db.commit()
     return {
         "access_token": create_access_token(str(user.id)),
         "refresh_token": create_refresh_token(str(user.id)),
@@ -120,7 +144,6 @@ def refresh_access_token(body: RefreshTokenRequest, db: Session = Depends(get_db
         detail="Invalid or expired refresh token",
     )
     try:
-        from jose import JWTError
         user_id_str = decode_token(body.refresh_token, expected_type="refresh")
     except Exception:
         raise credentials_exception

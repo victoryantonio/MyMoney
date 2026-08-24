@@ -7,8 +7,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-
 # ── Request schemas ─────────────────────────────────────────────────────────
+
 
 class UserRegisterRequest(BaseModel):
     email: EmailStr
@@ -38,6 +38,7 @@ class RefreshTokenRequest(BaseModel):
 
 # ── Response schemas ─────────────────────────────────────────────────────────
 
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -46,6 +47,7 @@ class TokenResponse(BaseModel):
 
 class AccessTokenResponse(BaseModel):
     """Used only for the /refresh endpoint (returns a new access token only)."""
+
     access_token: str
     token_type: str = "bearer"
 

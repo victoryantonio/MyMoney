@@ -3,7 +3,6 @@ Pydantic v2 schemas for categories.
 """
 
 import uuid
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel

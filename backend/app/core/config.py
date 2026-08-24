@@ -22,9 +22,10 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 30
 
-    # ── OpenRouter ────────────────────────────────────────────────────────────
-    openrouter_api_key: str
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # ── DeepSeek ──────────────────────────────────────────────────────────────
+    deepseek_api_key: str = ""
+    # /v1 is required: the working client config calls https://api.deepseek.com/v1/chat/completions
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     # ── Telegram ─────────────────────────────────────────────────────────────
     telegram_bot_token: str

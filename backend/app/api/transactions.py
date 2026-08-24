@@ -14,7 +14,7 @@ Cursor-based pagination:
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -22,10 +22,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_db, require_active_user
-from app.models.category import Category
+from app.core.transaction_service import (
+    create_transaction_internal,
+    delete_transaction_internal,
+    update_transaction_internal,
+)
 from app.models.account import Account
+from app.models.category import Category
 from app.models.transaction import Transaction
-from app.models.transaction_item import TransactionItem
 from app.models.user import User
 from app.schemas.transaction import (
     TransactionCreateRequest,
@@ -130,9 +134,7 @@ def list_transactions(
     has_next = len(rows) > _PAGE_SIZE
     page_items = rows[:_PAGE_SIZE]
 
-    next_cursor = (
-        page_items[-1].transaction_date.isoformat() if has_next and page_items else None
-    )
+    next_cursor = page_items[-1].transaction_date.isoformat() if has_next and page_items else None
 
     return TransactionListResponse(
         items=page_items,
@@ -150,36 +152,23 @@ def create_transaction(
     """
     Create a manual transaction with optional line items.
     Source is set to 'app' for transactions created via the REST API.
+    All mutations are delegated to the service layer (CODING_RULES §2.1).
     """
     _verify_category_and_account(body.category_id, body.account_id, current_user.id, db)
 
-    transaction = Transaction(
-        id=uuid.uuid4(),
+    return create_transaction_internal(
+        db=db,
         user_id=current_user.id,
         type=body.type,
         total_amount=body.total_amount,
         category_id=body.category_id,
         account_id=body.account_id,
-        merchant=body.merchant.strip() if body.merchant else None,
         source="app",
         note=body.note,
+        merchant=body.merchant.strip() if body.merchant else None,
         transaction_date=body.transaction_date,
+        items=[item.model_dump() for item in body.items],
     )
-    db.add(transaction)
-
-    for item_data in body.items:
-        item = TransactionItem(
-            id=uuid.uuid4(),
-            transaction_id=transaction.id,
-            name=item_data.name.strip(),
-            qty=item_data.qty,
-            price=item_data.price,
-        )
-        db.add(item)
-
-    db.commit()
-    db.refresh(transaction)
-    return transaction
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
@@ -232,38 +221,25 @@ def update_transaction(
             db,
         )
 
-    if body.type is not None:
-        transaction.type = body.type
-    if body.total_amount is not None:
-        transaction.total_amount = body.total_amount
-    if body.category_id is not None:
-        transaction.category_id = body.category_id
-    if body.account_id is not None:
-        transaction.account_id = body.account_id
-    if body.merchant is not None:
-        transaction.merchant = body.merchant.strip() or None
-    if body.note is not None:
-        transaction.note = body.note
-    if body.transaction_date is not None:
-        transaction.transaction_date = body.transaction_date
-
-    # Replace items only if the caller explicitly provided an items list
-    if body.items is not None:
-        for item in list(transaction.items):
-            db.delete(item)
-        for item_data in body.items:
-            new_item = TransactionItem(
-                id=uuid.uuid4(),
-                transaction_id=transaction.id,
-                name=item_data.name.strip(),
-                qty=item_data.qty,
-                price=item_data.price,
-            )
-            db.add(new_item)
-
-    db.commit()
-    db.refresh(transaction)
-    return transaction
+    # Resolve PATCH semantics into final values, then delegate to the service
+    # layer (CODING_RULES §2.1). `items` stays None to keep existing items
+    # unless the caller explicitly provided a new list.
+    return update_transaction_internal(
+        db=db,
+        transaction=transaction,
+        type=body.type if body.type is not None else transaction.type,
+        total_amount=(
+            body.total_amount if body.total_amount is not None else transaction.total_amount
+        ),
+        category_id=body.category_id or transaction.category_id,
+        account_id=body.account_id or transaction.account_id,
+        note=body.note if body.note is not None else transaction.note,
+        merchant=(
+            body.merchant.strip() or None if body.merchant is not None else transaction.merchant
+        ),
+        transaction_date=body.transaction_date or transaction.transaction_date,
+        items=[item.model_dump() for item in body.items] if body.items is not None else None,
+    )
 
 
 @router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -282,5 +258,4 @@ def delete_transaction(
     if transaction is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
-    db.delete(transaction)
-    db.commit()
+    delete_transaction_internal(db, transaction)

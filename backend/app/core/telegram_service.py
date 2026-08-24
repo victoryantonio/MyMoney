@@ -1,25 +1,56 @@
 """
 Telegram bot business logic.
-Handles /start (account linking), /undo, /edit, and natural language text logging.
+Handles /start (account linking), /undo, /edit, /confirm, /cancel, and
+natural language text logging.
+
+LLM-parsed results (natural language + /edit) NEVER commit directly: they go
+through a pending-confirmation state (CODING_RULES §2.4, REQUIREMENTS US-05).
 """
 
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.nlu_parser import parse_text_to_transaction
-from app.core.security import create_telegram_link_token
-from app.core.transaction_service import (
-    create_transaction_internal,
-    get_or_create_category,
-    get_or_create_default_account,
-    update_transaction_internal,
+from app.core.pending_service import (
+    cancel_pending_transaction,
+    confirm_pending_transaction,
+    create_pending_transaction,
 )
+from app.core.report_service import get_report_summary, parse_period_arg, period_label
+from app.core.security import create_telegram_link_token
+from app.core.transaction_service import delete_transaction_internal, get_or_create_category
 from app.models.telegram_link import TelegramLink
 from app.models.transaction import Transaction
 from app.models.user import User
+from app.schemas.report import ReportSummaryResponse
+
+
+def _format_report(summary: ReportSummaryResponse, label: str) -> str:
+    """Render a period summary as a compact Telegram text message."""
+
+    def fmt(v) -> str:
+        return f"{v:,.0f}"
+
+    lines = [
+        f"📊 Report — {label}",
+        f"📈 Income: {fmt(summary.total_income)} IDR",
+        f"📉 Expense: {fmt(summary.total_expense)} IDR",
+        f"Net: {summary.net:+,.0f} IDR",
+    ]
+    if summary.categories:
+        lines.append("")
+        lines.append("By category:")
+        for c in summary.categories:
+            icon = "📈" if c.type == "income" else "📉"
+            lines.append(f"{icon} {c.name}: {fmt(c.total)} IDR")
+    else:
+        lines.append("")
+        lines.append("No transactions in this period.")
+    return "\n".join(lines)
 
 
 async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | None:
@@ -46,9 +77,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
     # ── 1. Handle /start (Account Linking) ───────────────────────────────────
     if text.startswith("/start"):
         # Check if already linked
-        link = db.scalar(
-            select(TelegramLink).where(TelegramLink.telegram_id == chat_id)
-        )
+        link = db.scalar(select(TelegramLink).where(TelegramLink.telegram_id == chat_id))
         if link and link.user_id:
             user = db.get(User, link.user_id)
             if user:
@@ -85,8 +114,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
 
         amount_fmt = f"{latest_tx.total_amount:,.0f}"
         reply = f"Undid your last transaction:\n🗑️ {latest_tx.type.title()} - {amount_fmt} (Note: {latest_tx.note or 'none'})"
-        db.delete(latest_tx)
-        db.commit()
+        delete_transaction_internal(db, latest_tx)
         return reply
 
     # ── 3. Handle /edit ──────────────────────────────────────────────────────
@@ -111,49 +139,100 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         if not latest_tx:
             return "No recent Telegram transaction found to edit."
 
-        # Parse the new text
+        # Parse the new text → pending edit, confirmed via /confirm (US-05).
+        # The LLM result is NOT applied directly.
         parsed = await parse_text_to_transaction(new_text)
         if not parsed:
             return "I couldn't understand the new transaction. Please try again (e.g. '/edit makan siang 50rb')."
 
-        # Get or create category for the new type
-        category = get_or_create_category(db, user_id, parsed.category, parsed.type)
+        # Category is locked for LLM paths (CODING_RULES §2.9.D) — unknown names
+        # resolve to the default "Other" category instead of being auto-created.
+        category = get_or_create_category(
+            db, user_id, parsed.category, parsed.type, allow_create=False
+        )
 
-        # Update the transaction
-        updated_tx = update_transaction_internal(
+        pending = create_pending_transaction(
             db=db,
-            transaction=latest_tx,
+            user_id=user_id,
             type=parsed.type,  # type: ignore
             total_amount=parsed.amount,
             category_id=category.id,
+            source="telegram",
             note=parsed.note or new_text,
+            raw_input=new_text,  # forensics for prompt injection (§2.9.B.4)
+            action="update",
+            target_transaction_id=latest_tx.id,
         )
 
-        amount_fmt = f"{updated_tx.total_amount:,.0f}"
-        icon = "📉" if updated_tx.type == "expense" else "📈"
-        return f"Updated! {icon}\n{category.name}: {amount_fmt} IDR\nNote: {updated_tx.note}"
+        amount_fmt = f"{pending.total_amount:,.0f}"
+        return (
+            f"📝 Edit parsed (awaiting confirmation):\n"
+            f"{category.name}: {amount_fmt} IDR\n"
+            f"Note: {pending.note}\n\n"
+            "Reply /confirm to apply the edit, or /cancel to discard."
+        )
+
+    # ── 3.5 Handle /confirm and /cancel (pending confirmation) ────────────────
+    if text.startswith("/confirm"):
+        try:
+            tx = confirm_pending_transaction(db, user_id)
+        except ValueError as e:
+            if "expired" in str(e):
+                return "Your pending transaction has expired. Please type it again."
+            return "No transaction is waiting for confirmation."
+        amount_fmt = f"{tx.total_amount:,.0f}"
+        icon = "📉" if tx.type == "expense" else "📈"
+        cat_name = tx.category.name if tx.category else "Other"
+        return f"Saved! {icon}\n{cat_name}: {amount_fmt} IDR\nNote: {tx.note or 'none'}"
+
+    if text.startswith("/cancel"):
+        try:
+            cancel_pending_transaction(db, user_id)
+        except ValueError as e:
+            if "expired" in str(e):
+                return "Your pending transaction has expired. Please type it again."
+            return "No transaction is waiting for confirmation."
+        return "Cancelled. Nothing was saved."
+
+    # ── 3.6 Handle /report (US-17) ───────────────────────────────────────────
+    if text.startswith("/report"):
+        parts = text.split(maxsplit=1)
+        arg = parts[1].strip() if len(parts) > 1 else ""
+        # Resolve the user's timezone so "bulan ini" means *their* month.
+        user = db.get(User, user_id)
+        tz_str = getattr(user, "timezone", None) if user else None
+        tz = ZoneInfo(tz_str) if tz_str else ZoneInfo("UTC")
+        start, end = parse_period_arg(arg, tz)
+        summary = get_report_summary(db, user_id, start_date=start, end_date=end)
+        return _format_report(summary, period_label(arg))
 
     # ── 4. Handle Natural Language Transaction ───────────────────────────────
-    # We call OpenRouter via the NLU parser
+    # We call DeepSeek via the NLU parser. The result goes to a
+    # PendingTransaction row — it is NOT committed until /confirm (US-05).
     parsed = await parse_text_to_transaction(text)
 
     if not parsed:
         return "I couldn't understand that transaction. Please try again (e.g. 'Beli bensin 20rb')."
 
-    account = get_or_create_default_account(db, user_id)
-    category = get_or_create_category(db, user_id, parsed.category, parsed.type)
+    # Locked categories for LLM paths (CODING_RULES §2.9.D): unknown names
+    # resolve to the default "Other" category instead of being auto-created.
+    category = get_or_create_category(db, user_id, parsed.category, parsed.type, allow_create=False)
 
-    tx = create_transaction_internal(
+    pending = create_pending_transaction(
         db=db,
         user_id=user_id,
         type=parsed.type,  # type: ignore
         total_amount=parsed.amount,
         category_id=category.id,
-        account_id=account.id,
         source="telegram",
         note=parsed.note or text,  # use original text as note if LLM didn't extract one
+        raw_input=text,  # forensics for prompt injection (§2.9.B.4)
     )
 
-    amount_fmt = f"{tx.total_amount:,.0f}"
-    icon = "📉" if tx.type == "expense" else "📈"
-    return f"Saved! {icon}\n{category.name}: {amount_fmt} IDR\nNote: {tx.note}"
+    amount_fmt = f"{pending.total_amount:,.0f}"
+    return (
+        f"📝 Parsed (awaiting confirmation):\n"
+        f"{category.name}: {amount_fmt} IDR\n"
+        f"Note: {pending.note}\n\n"
+        "Reply /confirm to save, or /cancel to discard."
+    )

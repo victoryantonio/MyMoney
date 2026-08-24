@@ -14,9 +14,7 @@ class Category(Base):
         CheckConstraint("type IN ('income', 'expense')", name="categories_type_check"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # NULL = global default category (belongs to all users)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
@@ -32,4 +30,9 @@ class Category(Base):
 
     # Relationships
     user: Mapped["User | None"] = relationship(back_populates="categories")  # noqa: F821
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="category")  # noqa: F821
+    transactions: Mapped[list["Transaction"]] = relationship(  # noqa: F821
+        back_populates="category"
+    )
+    pending_transactions: Mapped[list["PendingTransaction"]] = relationship(  # noqa: F821
+        back_populates="category"
+    )
