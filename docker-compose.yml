@@ -46,8 +46,9 @@ services:
   tunnel:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --url http://backend:8000
-    # command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    # Named tunnel with a permanent custom domain (e.g. api.mymoneyofficial.online).
+    # Requires CLOUDFLARE_TUNNEL_TOKEN from Cloudflare Zero Trust (Networks > Tunnels).
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     networks:
       - mymoney_net
     depends_on:
