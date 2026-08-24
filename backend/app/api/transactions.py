@@ -1,16 +1,18 @@
 """
 Transactions API routes.
 
-GET    /api/transactions         — list (cursor-based pagination, newest first)
+GET    /api/transactions         — list (keyset pagination, newest first)
 POST   /api/transactions         — create a manual transaction (with optional items)
 GET    /api/transactions/{id}    — get a single transaction with its items
 PUT    /api/transactions/{id}    — update a transaction (replaces items if provided)
 DELETE /api/transactions/{id}    — hard-delete a transaction
 
-Cursor-based pagination:
-  Each response includes `next_cursor` (ISO timestamp of the last item's created_at).
-  To fetch the next page, pass `?cursor=<next_cursor>`.
-  This is stable: new inserts don't shift page boundaries.
+Keyset (cursor-based) pagination — DATABASE.md §3.2:
+  Rows are ordered by (transaction_date DESC, id DESC); the cursor encodes
+  the last seen row as "{transaction_date_iso}|{id}". The next page fetches
+  rows strictly before that keyset, so inserts don't shift page boundaries
+  and ties on transaction_date are broken by id (no skips/duplicates).
+  Legacy cursors (a bare ISO timestamp) are still accepted.
 """
 
 import uuid
@@ -18,7 +20,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_db, require_active_user
@@ -41,6 +43,36 @@ from app.schemas.transaction import (
 router = APIRouter(prefix="/api/transactions", tags=["Transactions"])
 
 _PAGE_SIZE = 20
+
+
+def _encode_cursor(tx: Transaction) -> str:
+    """Encode the last seen row's keyset as '{iso_date}|{id}'."""
+    return f"{tx.transaction_date.isoformat()}|{tx.id}"
+
+
+def _apply_cursor(stmt, cursor: str | None):
+    """
+    Apply the keyset filter (transaction_date, id) < (cursor_date, cursor_id)
+    — matching the ORDER BY so pagination is stable on ties (DATABASE.md §3.2).
+
+    Legacy cursors (a bare ISO timestamp, no '|') fall back to the old
+    transaction_date <= ts behaviour.
+    """
+    if not cursor:
+        return stmt
+    parts = cursor.split("|")
+    try:
+        cursor_dt = datetime.fromisoformat(parts[0])
+        if len(parts) == 2:
+            cursor_id = uuid.UUID(parts[1])
+            return stmt.where(
+                tuple_(Transaction.transaction_date, Transaction.id) < (cursor_dt, cursor_id)
+            )
+        # Legacy: timestamp-only cursor.
+        return stmt.where(Transaction.transaction_date <= cursor_dt)
+    except (ValueError, AttributeError):
+        # Invalid cursor is silently ignored — returns from beginning.
+        return stmt
 
 
 def _verify_category_and_account(
@@ -84,7 +116,10 @@ def _verify_category_and_account(
 
 @router.get("", response_model=TransactionListResponse)
 def list_transactions(
-    cursor: str | None = Query(default=None, description="ISO timestamp of last seen item"),
+    cursor: str | None = Query(
+        default=None,
+        description="Keyset of last seen item: '{ISO transaction_date}|{id}'",
+    ),
     type: Literal["income", "expense"] | None = Query(default=None),
     category_id: uuid.UUID | None = Query(default=None),
     account_id: uuid.UUID | None = Query(default=None),
@@ -92,7 +127,8 @@ def list_transactions(
     db: Session = Depends(get_db),
 ) -> TransactionListResponse:
     """
-    List transactions newest-first with cursor-based pagination.
+    List transactions newest-first with keyset pagination
+    ((transaction_date, id) — DATABASE.md §3.2).
     Supports optional filtering by type, category, and account.
     """
     # Count total for UI (runs before cursor filter)
@@ -105,12 +141,12 @@ def list_transactions(
         count_stmt = count_stmt.where(Transaction.account_id == account_id)
     total_count = db.scalar(count_stmt) or 0
 
-    # Main query
+    # Main query — keyset order: (transaction_date DESC, id DESC)
     stmt = (
         select(Transaction)
         .where(Transaction.user_id == current_user.id)
         .options(selectinload(Transaction.items))
-        .order_by(Transaction.transaction_date.desc(), Transaction.created_at.desc())
+        .order_by(Transaction.transaction_date.desc(), Transaction.id.desc())
         .limit(_PAGE_SIZE + 1)  # fetch one extra to determine if there's a next page
     )
 
@@ -121,20 +157,14 @@ def list_transactions(
     if account_id:
         stmt = stmt.where(Transaction.account_id == account_id)
 
-    # Apply cursor: filter to transactions older than the cursor timestamp
-    if cursor:
-        try:
-            cursor_dt = datetime.fromisoformat(cursor)
-            stmt = stmt.where(Transaction.transaction_date <= cursor_dt)
-        except ValueError:
-            pass  # invalid cursor is silently ignored — returns from beginning
+    stmt = _apply_cursor(stmt, cursor)
 
     rows = list(db.scalars(stmt))
 
     has_next = len(rows) > _PAGE_SIZE
     page_items = rows[:_PAGE_SIZE]
 
-    next_cursor = page_items[-1].transaction_date.isoformat() if has_next and page_items else None
+    next_cursor = _encode_cursor(page_items[-1]) if has_next and page_items else None
 
     return TransactionListResponse(
         items=page_items,
