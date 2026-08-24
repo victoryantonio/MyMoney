@@ -5,11 +5,121 @@
 > edited so the "Current Phase" points at the active one and completed phases
 > move under `## Completed Phases`.
 
-**Current Phase: Phase 3 — Report Dasar**
+**Current Phase: Phase 4 — Android App**
 
 ---
 
-## Phase 3 — Report Dasar
+## Phase 4 — Android App
+
+### 1. Goal Description
+
+**Primary goal:** Ship the Android app (Kotlin + Jetpack Compose, MVVM) on top of
+the Phase 1–3 REST API — the user logs in, records/edits/deletes manual
+transactions, manages custom categories, and views the report dashboard with
+charts, all against the same backend the Telegram bot uses. **The app launcher
+icon is `./icon.png`** (1254×1254 RGB PNG at the repo root) — no new icon
+design needed; Phase 4 generates all Android icon resources from it in-repo.
+
+**Current reality (verified in repo after Phase 3):** Backend covers everything
+the app needs: JWT auth with refresh (`/api/auth/login|register|refresh`),
+transactions CRUD + cursor pagination, accounts with computed balance,
+categories (global seed + user custom), and `GET /api/reports/summary` for the
+dashboard. No `android/` source tree exists yet — `android/` in `.gitignore` is
+only build output (`.gradle/`, `build/`, `local.properties`, `*.apk`), so the
+source tree will be tracked normally.
+
+**Definition of done (ROADMAP §Fase 4 checkpoint):**
+- App can login/register (JWT stored locally, auto-refresh), record/edit/delete
+  manual transactions, list them with pagination, manage custom categories, and
+  show the report dashboard charts.
+- Launcher icon generated from `./icon.png`: adaptive icon
+  (`mipmap-anydpi-v26/ic_launcher.xml`) + density PNGs (mdpi 48px … xxxhdpi
+  192px) + round variants, all committed under `android/app/src/main/res/`.
+
+**Out of scope for this phase:** receipt/vision OCR + upload UI (Phase 5),
+Telegram-side work, deploy/hardening (Phase 6).
+
+### 2. User Review Required
+
+- [ ] **App icon.** Confirm `./icon.png` (1254×1254 RGB PNG, repo root) is the
+      final launcher icon. Planned: adaptive icon — full image scaled ~66% as
+      foreground over a solid background color sampled from the icon's edge
+      pixels; legacy + round density PNGs generated in-repo by a committed
+      script (`android/tools/gen_icons.py`).
+- [ ] **Chart library.** ROADMAP lists "Vico/MPAndroidChart". Recommended: Vico
+      (Compose-native, no legacy views). Confirm before Step 3.
+- [ ] **Min SDK.** Plan: API 26 (Android 8.0) — adaptive icons require 26,
+      legacy PNGs cover lower; typical personal-device floor.
+
+### 3. Open Questions
+
+1. **Backend contract for charts.** `GET /api/reports/summary` returns
+   per-category totals for one period — enough for a pie/bar breakdown. Decide
+   whether the dashboard needs multi-period series (extra endpoint) or v1 uses
+   the existing summary per selected period. (Default: existing endpoint only.)
+2. **Refresh-token strategy.** Backend `POST /api/auth/refresh` exists; decide
+   silent refresh in an OkHttp `Authenticator` vs. explicit logout-on-401. Both
+   are easy; pick during Step 2.
+3. **Room vs. no local cache.** v1 can be network-only with DataStore for the
+   token pair; Room adds offline lists later. Confirm v1 scope.
+4. **E2E verification medium.** Headless CI can build + unit-test only; manual
+   E2E needs an emulator or physical device. Confirm who runs the manual
+   checklist (Step 5).
+
+### 4. Proposed Changes
+
+#### 4.1 Project scaffold — `android/` (new)
+- Gradle Kotlin DSL + version catalog (`gradle/libs.versions.toml`), AGP +
+  Kotlin + Compose BOM (Material 3), package `id.my.mymoney`, `MainActivity`
+  + Compose NavHost (Auth → Main), Manifest with
+  `android:icon="@mipmap/ic_launcher"` + `roundIcon`.
+
+#### 4.2 App icon from `./icon.png`
+- Committed script `android/tools/gen_icons.py` (Python/Pillow or ImageMagick)
+  reads `./icon.png` and writes:
+  - `res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`
+    (48/72/96/144/192 px) + `ic_launcher_round.png` twins
+  - `res/mipmap-anydpi-v26/ic_launcher.xml` + `ic_launcher_round.xml`
+    (adaptive; foreground = scaled icon, background =
+    `@color/ic_launcher_background` sampled from icon edge)
+
+#### 4.3 Networking + auth
+- `data/remote/` Retrofit service mirroring the API (auth, transactions,
+  accounts, categories, reports); OkHttp `AuthInterceptor` (Bearer) +
+  `TokenAuthenticator` (silent refresh on 401).
+- `data/local/` DataStore for the token pair; `AuthRepository`
+  (login/register/refresh/logout) exposing auth UiState.
+
+#### 4.4 Screens (Compose, MVVM)
+- Auth (login/register); Transactions list (cursor pagination, refresh,
+  edit/delete actions); Transaction form (amount, type, category dropdown,
+  account, date, merchant); Categories management (add/edit/soft-delete);
+  Dashboard (income/expense/net cards + category chart via Vico fed by
+  `GET /api/reports/summary?period=...`, period selector mirroring backend
+  keywords).
+
+### 5. Verification Plan
+
+1. `cd android && ./gradlew :app:assembleDebug` — clean build.
+2. `./gradlew :app:lintDebug` — no new issues; `./gradlew :app:testDebugUnitTest`
+   — repository/ViewModel unit tests pass (fake API / MockWebServer).
+3. **Manual E2E (emulator/device + live docker backend):** register/login →
+   list loads with paging → add/edit/delete transaction (audit rows on backend)
+   → custom category appears in the form → dashboard chart matches
+   `/api/reports/summary` numbers per period.
+4. **Icon check:** launcher shows adaptive + round `./icon.png`-derived icon
+   correctly (no stretch/alpha bleed) on API 26+ and legacy densities.
+5. **Negative cases:** wrong credentials → inline error; expired token →
+   silent refresh; refresh failure → back to login.
+6. **Backend contract:** no backend changes expected; if a gap is found (e.g.
+   missing field for the chart), record it and add a minimal backend follow-up
+   before Phase 5.
+
+---
+
+## Completed Phases
+
+### Phase 3 — Report Dasar ✅
 
 ### 1. Goal Description
 
@@ -123,8 +233,6 @@ receipt/vision OCR (Phase 5), aggregation caching (ROADMAP: none in v1).
    new rows).
 
 ---
-
-## Completed Phases
 
 ### Phase 2 — Telegram Integration + Text Parsing ✅
 

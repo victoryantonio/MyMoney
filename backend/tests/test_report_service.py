@@ -96,10 +96,15 @@ class TestParsePeriod:
 
 class TestReportAggregation:
     def _seed(self, db, user):
-        """Create categories, an account, and transactions with fixed dates."""
-        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=None)
-        transport = Category(id=uuid.uuid4(), name="Transport", type="expense", user_id=None)
-        salary = Category(id=uuid.uuid4(), name="Salary", type="income", user_id=None)
+        """Create categories, an account, and transactions with fixed dates.
+
+        Categories are user-scoped (user_id=user.id) so repeated test runs on
+        the shared dev DB never pollute the global default set — the unique
+        index idx_categories_user_name_type forbids duplicate globals.
+        """
+        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=user.id)
+        transport = Category(id=uuid.uuid4(), name="Transport", type="expense", user_id=user.id)
+        salary = Category(id=uuid.uuid4(), name="Salary", type="income", user_id=user.id)
         db.add_all([food, transport, salary])
         db.flush()
 

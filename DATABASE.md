@@ -137,6 +137,35 @@ updated_at	TIMESTAMPTZ	NOT NULL, default now()
 
 Index: INDEX idx_accounts_user_id ON accounts(user_id)
 
+### 2.8 `pending_transactions`
+
+Hasil parsing LLM yang menunggu konfirmasi user sebelum menjadi transaksi nyata (REQUIREMENTS US-05/US-08, CODING_RULES §2.4 — pending-confirmation flow, ditambahkan di Phase 2, migrasi `0002` + `0003`).
+
+| Kolom | Tipe | Constraint | Keterangan |
+|---|---|---|---|
+| id | UUID | PK, default `gen_random_uuid()` | |
+| user_id | UUID | FK → users(id), NOT NULL | |
+| action | VARCHAR(10) | NOT NULL, CHECK (`action IN ('create','update')`), default `'create'` | `'update'` = hasil edit transaksi yang menunggu konfirmasi |
+| target_transaction_id | UUID | FK → transactions(id), NULLABLE, ON DELETE CASCADE | Wajib diisi jika `action = 'update'` |
+| type | VARCHAR(10) | NOT NULL, CHECK (`type IN ('income','expense')`) | |
+| total_amount | NUMERIC(14,2) | NOT NULL, CHECK (`total_amount > 0`) | |
+| category_id | UUID | FK → categories(id), NOT NULL | |
+| merchant | VARCHAR(150) | NULLABLE | |
+| source | VARCHAR(10) | NOT NULL, CHECK (`source IN ('telegram','app')`) | |
+| note | TEXT | NULLABLE | |
+| confidence | VARCHAR(10) | NULLABLE | Hanya jika berasal dari parsing LLM |
+| raw_input | TEXT | NULLABLE | Pesan asli dari user (untuk debug/refetch) |
+| items | JSONB | NULLABLE | Line items hasil parsing (mirip `transaction_items`) |
+| created_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
+| expires_at | TIMESTAMPTZ | NULLABLE | Batas waktu konfirmasi (default 10 menit) |
+
+**Index:**
+- `INDEX idx_pending_transactions_user_id ON pending_transactions(user_id)`
+- `INDEX idx_pending_transactions_user_created ON pending_transactions(user_id, created_at DESC)` — ambil pending terbaru per user
+- `INDEX idx_pending_transactions_action ON pending_transactions(action)`
+
+> Baris pending dihapus dalam commit yang sama dengan transaksi hasil konfirmasi (tidak ada window crash) — lihat `transaction_service.create/update_transaction_internal(pending=...)`.
+
 ## 3. Prinsip Desain Query & Performa
 
 ### 3.1 Composite index, bukan index per kolom terpisah
@@ -241,6 +270,10 @@ Bagian ini **bukan implementasi**, hanya catatan desain agar migrasi ke skala le
 
 ## 7. Seed Data — Kategori Default
 
-Kategori default (`user_id = NULL`, `is_default = TRUE`) diisi lewat migration awal, bukan hardcode di kode aplikasi:
-Pengeluaran: Makanan, Transport, Belanja, Tagihan, Hiburan, Kesehatan, Pendidikan, Lainnya
-Pemasukan: Gaji, Bonus, Investasi, Hadiah, Lainnya
+Kategori default (`user_id = NULL`, `is_default = TRUE`) diisi lewat migration awal (`0001_initial_schema`), bukan hardcode di kode aplikasi. Nama seed mengikuti yang tertanam di migrasi (bahasa Inggris); daftar lengkap:
+
+**Pengeluaran (expense):** Food, Transport, Shopping, Bills, Entertainment, Health, Education, Other
+**Pemasukan (income):** Salary, Bonus, Investment, Gift, Other
+**Transfer/Penyesuaian Akun:** Transfer (expense) dan Transfer (income) — `is_default = TRUE`, ditambahkan untuk balancing saat akun dinonaktifkan (lihat catatan §2.4).
+
+Keunikan `(owner, name, type)` dijamin index `idx_categories_user_name_type` (§2.3) — kategori global memakai sentinel `00000000-0000-0000-0000-000000000000` sebagai owner. Aplikasi (REST/Android) menampilkan daftar gabungan: global default + kategori custom milik user.

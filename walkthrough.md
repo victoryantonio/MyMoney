@@ -1,13 +1,15 @@
-# walkthrough.md — MyMoney Phase 3 Execution Guide
+# walkthrough.md — MyMoney Phase 4 Execution Guide
 
-> This is the concrete, step-by-step "how to actually do Phase 3" companion to
+> This is the concrete, step-by-step "how to actually do Phase 4" companion to
 > `task.md`. Every step names the real file to touch and what to change. Run
 > verification tasks at each checkpoint. **Work is grounded in the repo state at
-> the end of Phase 2 (all 66 tests green).**
+> the end of Phase 3 (all 88 tests green, pushed `cce9c12`).**
 
-Phase 3 = **Report Dasar** — read-only income/expense summaries per period
-(today / this week / this month / last month) with a per-category breakdown,
-served both to Telegram (`/report`, US-17) and the REST API (US-16 for Android).
+Phase 4 = **Android App** — Kotlin + Jetpack Compose, MVVM, JWT auth with
+auto-refresh, manual transaction CRUD, custom category management, and a report
+dashboard with charts. **The app launcher icon is `./icon.png`** (1254×1254 RGB
+PNG at the repo root) — all Android icon resources are generated from it
+in-repo (no Android Studio / new design needed).
 
 ---
 
@@ -15,176 +17,121 @@ served both to Telegram (`/report`, US-17) and the REST API (US-16 for Android).
 
 Read `IMPLEMENTATION_PLAN.md §2/§3`. Resolved decisions:
 
-1. **Aggregation location.** DATABASE.md §3.4 mandates **SQL** `SUM`/`GROUP BY`,
-   never Python loops. All report math lives in `core/report_service.py` queries.
-2. **Period format.** `/report` takes an optional arg; keywords accepted in
-   Indonesian + English (`hari-ini`/`today`, `minggu ini`/`this week`,
-   `bulan lalu`/`last month`, default `bulan ini`). Boundaries computed in the
-   **user's timezone** (`user.timezone`, default `Asia/Jakarta`).
-3. **Caching.** None in v1 (ROADMAP) — queries are cheap on a personal dataset.
+1. **App icon.** Use `./icon.png` (repo root, 1254×1254 RGB PNG) as the launcher
+   icon. Generate resources in-repo with a committed script:
+   - `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`
+     (48 / 72 / 96 / 144 / 192 px) + `ic_launcher_round.png` twins
+   - `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` +
+     `ic_launcher_round.xml` (adaptive: foreground = icon scaled ~66%, background
+     = solid color sampled from the icon edge)
+2. **Architecture.** MVVM: Repository (Retrofit + OkHttp) → ViewModel (UiState)
+   → Compose screens. JWT pair stored in DataStore, silent refresh via OkHttp
+   `Authenticator`.
+3. **Chart library.** Vico (Compose-native) — ROADMAP lists "Vico/MPAndroidChart";
+   pick Vico unless review objects.
+4. **Min SDK.** API 26 (Android 8.0) — adaptive icons need 26; legacy PNGs
+   cover anything below.
 
 ---
 
-## Step 1 — Report service (`core/report_service.py`) + schema
+## Step 1 — Project scaffold (`android/`) + app icon
 
-### 1.1 Create `backend/app/schemas/report.py`
+### 1.1 Scaffold
+- Create `android/` Gradle project: `settings.gradle.kts`, root
+  `build.gradle.kts` (AGP + Kotlin + Compose BOM via version catalog
+  `gradle/libs.versions.toml`), `app/` module with `build.gradle.kts`.
+- Package `id.my.mymoney`; `MainActivity` (Compose), Material 3 theme,
+  NavHost (Auth → Main).
+- Manifest: internet permission, `android:icon="@mipmap/ic_launcher"`,
+  `roundIcon="@mipmap/ic_launcher_round"`.
+- `cd android && ./gradlew :app:assembleDebug` must build.
 
-```python
-from datetime import datetime
-from decimal import Decimal
-
-from pydantic import BaseModel
-
-
-class CategoryTotal(BaseModel):
-    name: str
-    type: str  # "income" | "expense"
-    total: Decimal
-
-
-class ReportSummaryResponse(BaseModel):
-    start_date: datetime
-    end_date: datetime      # exclusive
-    total_income: Decimal
-    total_expense: Decimal
-    net: Decimal
-    categories: list[CategoryTotal]
-```
-
-### 1.2 Create `backend/app/core/report_service.py`
-
-Three pieces, all pure/DB-only:
-
-- `_normalize(arg)` — collapse whitespace + lowercase into kebab keywords
-  (`"bulan ini"` → `"bulan-ini"`).
-- `parse_period_arg(arg, tz) -> (start, end)` — inclusive `[start, end)` pair in
-  the user's timezone:
-  - `hari-ini`/`today` → `[today 00:00, +1 day)`
-  - `minggu-ini`/`week`/`this-week` → `[Monday 00:00, +7 days)`
-  - `bulan-lalu`/`last-month`/`previous-month` → `[1st prev month, 1st this month)`
-  - default/empty/`bulan-ini` → `[1st this month, 1st next month)`
-- `period_label(arg) -> str` — `"today"` / `"this week"` / `"last month"` /
-  `"this month"`.
-- `get_report_summary(db, user_id, *, start_date, end_date)` — **SQL-only**
-  (DATABASE.md §3.4):
-  - totals: `select(Transaction.type, func.sum(Transaction.total_amount))
-    .where(user_id == ?, transaction_date >= start, < end).group_by(type)`
-  - breakdown: same filter `join(Category, category_id)`, group by
-    `(Category.name, Transaction.type)`, `order_by(func.sum(...).desc())`
-  - `net = income - expense`
-
-> Aggregation must never loop in Python — one `GROUP BY` query per concern.
+### 1.2 App icon from `./icon.png`
+- Commit `android/tools/gen_icons.py` (Python/Pillow or ImageMagick) that reads
+  `./icon.png` (1254×1254, repo root) and writes:
+  - `app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`
+    (48 / 72 / 96 / 144 / 192 px) + `ic_launcher_round.png` twins
+  - `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` +
+    `ic_launcher_round.xml` (adaptive icon)
+  - `values/ic_launcher_background.xml` color sampled from the icon edge
+- Adaptive XML:
+  ```xml
+  <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+      <background android:drawable="@color/ic_launcher_background"/>
+      <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+  </adaptive-icon>
+  ```
+- Verify in emulator launcher: no stretch, no alpha bleed, round OK.
 
 ---
 
-## Step 2 — REST endpoint (`api/reports.py`, US-16)
+## Step 2 — Networking + auth
 
-Create `backend/app/api/reports.py`:
-
-```python
-router = APIRouter(prefix="/api/reports", tags=["Reports"])
-
-@router.get("/summary", response_model=ReportSummaryResponse)
-def report_summary(
-    period: str = Query(default="month"),
-    start: datetime | None = Query(default=None),
-    end: datetime | None = Query(default=None),
-    current_user: User = Depends(require_active_user),
-    db: Session = Depends(get_db),
-):
-    # custom range → validate start < end (else 422)
-    # named period → parse_period_arg(period, ZoneInfo(current_user.timezone))
-    # invalid named period → 422
-    return get_report_summary(db, current_user.id, start_date=..., end_date=...)
-```
-
-Then register in `backend/app/main.py` — add `reports` to the
-`from app.api import (...)` block and `app.include_router(reports.router)`.
-No migration needed (read-only).
+- `data/remote/` — Retrofit service mirroring the backend: `POST
+  /api/auth/login|register|refresh`, transactions CRUD, accounts, categories,
+  `GET /api/reports/summary`.
+- OkHttp `AuthInterceptor` adds `Authorization: Bearer <access>`;
+  `TokenAuthenticator` silently refreshes via `/api/auth/refresh` on 401.
+- `data/local/` — DataStore for the access/refresh token pair (async).
+- `AuthRepository` — login/register/refresh/logout; expose auth UiState.
 
 ---
 
-## Step 3 — Telegram `/report` handler (US-17)
+## Step 3 — Screens (Compose, MVVM)
 
-In `backend/app/core/telegram_service.py`, add a new section (before the
-natural-language branch, after `/cancel`):
-
-```python
-if text.startswith("/report"):
-    parts = text.split(maxsplit=1)
-    arg = parts[1].strip() if len(parts) > 1 else ""
-    user = db.get(User, user_id)
-    tz_str = getattr(user, "timezone", None) if user else None
-    tz = ZoneInfo(tz_str) if tz_str else ZoneInfo("UTC")
-    start, end = parse_period_arg(arg, tz)
-    summary = get_report_summary(db, user_id, start_date=start, end_date=end)
-    return _format_report(summary, period_label(arg))
-```
-
-- Add a `_format_report(summary, label)` helper that renders:
-  `📊 Report — {label}` / `📈 Income` / `📉 Expense` / `Net` / `By category` lines.
-- New imports: `from zoneinfo import ZoneInfo`,
-  `from app.core.report_service import get_report_summary, parse_period_arg, period_label`,
-  `from app.schemas.report import ReportSummaryResponse`.
-- **No LLM call** — reports are pure DB reads.
+- **Auth screen** — email/password form; login + register; on success → Main.
+- **Transactions list** — paging from the cursor API (`?cursor=&limit=`),
+  swipe-to-refresh, next page on scroll end; income/expense rows with category
+  chip; edit/delete actions.
+- **Transaction form** — amount, type toggle, category dropdown (custom),
+  account, date, merchant; create + edit + delete confirm dialog.
+- **Categories management** — list global + user categories, add/edit/soft-delete.
+- **Dashboard** — total income / expense / net cards + per-category chart
+  (Vico) from `GET /api/reports/summary?period=...`; period selector
+  today/week/month/last-month mirroring backend keywords.
 
 ---
 
 ## Step 4 — Tests
 
-### 4.1 `tests/test_report_service.py`
-- Unit: `parse_period_arg` boundaries for every keyword + default + normalization
-  (`"bulan ini"` == `"bulan-ini"`); `period_label` for all keywords.
-- Integration (real `SessionLocal`, like `test_category_locked.py`): seed a user +
-  categories + account + transactions with fixed `transaction_date` values, then
-  assert `get_report_summary` totals & per-category breakdown match hand-computed
-  numbers; out-of-period rows excluded; empty period → zeros; largest category first.
-
-### 4.2 `tests/test_reports_api.py` (TestClient)
-- 401 without token; default month returns zeros; all valid periods 200; invalid
-  period 422; custom range 200; inverted range 422.
-
-### 4.3 `tests/test_telegram_service.py` (add `/report` cases)
-- Requires link; default period → "this month"; `minggu ini` → "this week";
-  user timezone resolved via `db.get(User, ...)`.
-
-> ⚠️ The Docker image bakes source **and** tests — after editing tests, run
-> `docker compose up -d --build backend` before `pytest`.
+- Unit: `AuthRepository` + ViewModels with fake repositories / MockWebServer
+  (loading / error / success states).
+- API-contract check: app DTOs match backend responses — especially
+  `/api/reports/summary` shape and the transaction create payload (from the
+  Phase-3 E2E notes).
+- Instrumented smoke test (emulator, optional): login → list → report.
+- No backend changes expected; if a gap appears, record it and add a minimal
+  backend follow-up before Phase 5.
 
 ---
 
 ## Step 5 — Verification (checkpoint)
 
 ```bash
-cd backend
-ruff check app/ tests/ --no-cache && black --check app/ tests/
-docker compose up -d --build backend
-docker compose exec -T backend pytest -q tests/
+cd android
+./gradlew :app:assembleDebug      # builds clean
+./gradlew :app:lintDebug          # lint clean
+./gradlew :app:testDebugUnitTest  # unit tests pass
 ```
 
-Expected: lint/format clean; **88 passed** (66 Phase 2 + 22 new Phase 3).
-
-### Manual E2E (live service)
-- Register → login → create account (expect 201) → create income + expense this
-  month + one expense last month.
-- `GET /api/reports/summary` → correct month totals + per-category rows;
-  `?period=last-month` → only the old expense; `?period=bogus` → 422.
-- Telegram: `process_telegram_update(db, {…text:"/report"})` → formatted summary;
-  `/report bulan lalu` → zeros.
+### Manual E2E (emulator/device + live docker backend)
+- Login/register against the live backend → transactions list loads (paging).
+- Add / edit / delete a transaction → list reflects change (backend audit rows).
+- Create a custom category → appears in the form dropdown.
+- Dashboard chart matches `/api/reports/summary` numbers for each period.
+- Launcher icon: adaptive + round render correctly (from `./icon.png`).
 
 ### Negative cases
-- Invalid period → 422; `start >= end` → 422.
-- Unlinked Telegram user → "not linked yet".
-
-### Data check
-- Report endpoints are read-only — no new rows, no migration.
+- Wrong credentials → inline error, no crash.
+- Expired token → silent refresh; refresh fails → back to login.
 
 ---
 
-## Done — move to Phase 4
-When `task.md`'s Phase-3 items are all `[x]`, update:
-1. `IMPLEMENTATION_PLAN.md` → move Phase 3 to Completed, make **Phase 4** current,
-   fill its Goal/Open Questions/Changes/Verification from the roadmap.
-2. `task.md` → move Phase 3 to Done, unmute Phase 4 items.
-3. `walkthrough.md` → replace Phase-3 steps with Phase-4 steps
-   (Kotlin + Compose Android app, MVVM, auth, transactions list, report charts).
+## Done — move to Phase 5
+When `task.md`'s Phase-4 items are all `[x]`, update:
+1. `IMPLEMENTATION_PLAN.md` → move Phase 4 to Completed, make **Phase 5**
+   current (OCR Foto Nota), fill its Goal/Open Questions/Changes/Verification
+   from the roadmap.
+2. `task.md` → move Phase 4 to Done, unmute Phase 5 items.
+3. `walkthrough.md` → replace Phase-4 steps with Phase-5 steps
+   (receipt upload, vision OCR via `call_llm()`, multi-item confirm UI).

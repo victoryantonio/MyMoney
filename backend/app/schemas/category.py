@@ -22,3 +22,10 @@ class CategoryResponse(BaseModel):
 class CategoryCreateRequest(BaseModel):
     name: str
     type: Literal["income", "expense"]
+
+
+class CategoryUpdateRequest(BaseModel):
+    """All fields optional — PATCH semantics."""
+
+    name: str | None = None
+    type: Literal["income", "expense"] | None = None
