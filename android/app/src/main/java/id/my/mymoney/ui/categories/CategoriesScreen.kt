@@ -46,6 +46,7 @@ import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
+import id.my.mymoney.ui.components.MyMoneyCard
 import id.my.mymoney.ui.theme.ExpenseRed
 import id.my.mymoney.ui.theme.IncomeGreen
 
@@ -141,7 +142,7 @@ fun CategoriesScreen(viewModel: CategoriesViewModel = viewModel(factory = Catego
 
 @Composable
 private fun CategoryRow(cat: CategoryResponse, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,

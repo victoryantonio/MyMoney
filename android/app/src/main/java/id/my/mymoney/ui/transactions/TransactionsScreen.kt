@@ -45,6 +45,7 @@ import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
+import id.my.mymoney.ui.components.MyMoneyCard
 import id.my.mymoney.ui.theme.ExpenseRed
 import id.my.mymoney.ui.theme.IncomeGreen
 import id.my.mymoney.util.Formatters
@@ -139,7 +140,7 @@ fun TransactionsScreen(
 
 @Composable
 private fun TransactionCard(tx: TransactionResponse, onClick: () -> Unit, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    MyMoneyCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,

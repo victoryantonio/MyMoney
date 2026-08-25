@@ -45,6 +45,7 @@ import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
+import id.my.mymoney.ui.components.MyMoneyCard
 import id.my.mymoney.ui.theme.ExpenseRed
 import id.my.mymoney.ui.theme.IncomeGreen
 import id.my.mymoney.ui.theme.MoneyMedium
@@ -145,10 +146,7 @@ fun DashboardCategoryListScreen(
 
 @Composable
 private fun CategoryTotalCard(total: BigDecimal, accent: Color) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
+    MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
                 "Total",
@@ -168,10 +166,7 @@ private fun CategoryTotalCard(total: BigDecimal, accent: Color) {
 @Composable
 private fun CategorySummaryRow(cat: CategoryTotal, accent: Color, max: BigDecimal) {
     val fraction = (cat.totalDecimal / max).toFloat().coerceIn(0f, 1f)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
+    MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(

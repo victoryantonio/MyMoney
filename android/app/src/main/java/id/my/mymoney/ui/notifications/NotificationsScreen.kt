@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import id.my.mymoney.data.reminder.ReminderScheduler
 import id.my.mymoney.ui.components.EmptyState
+import id.my.mymoney.ui.components.MyMoneyCard
 
 /** Notifikasi (DESIGN.md §8.5) + pengingat per jam (WorkManager). */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,12 +85,7 @@ fun NotificationsScreen() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // ── Pengingat per jam ──
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            ) {
+            MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -156,12 +152,7 @@ private val sampleNotifications: List<SampleNotification> = emptyList()
 
 @Composable
 private fun NotificationRow(notif: SampleNotification) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
+    MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
