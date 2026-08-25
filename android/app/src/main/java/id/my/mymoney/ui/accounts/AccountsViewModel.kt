@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import id.my.mymoney.MyMoneyApp
 import id.my.mymoney.data.api.ApiService
 import id.my.mymoney.data.model.AccountCreateRequest
+import id.my.mymoney.data.model.AccountDeactivateRequest
 import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.AccountUpdateRequest
 import id.my.mymoney.data.toUserMessage
@@ -84,11 +85,21 @@ class AccountsViewModel(private val api: ApiService) : ViewModel() {
         }
     }
 
-    fun delete(acc: AccountResponse, onDone: (Boolean, String?) -> Unit) {
+    /**
+     * Deactivate an account (ARCHITECTURE.md §4.4). Accounts are never deleted.
+     * `targetAccountId` is required when the account still has a balance — the
+     * leftover funds are transferred there via balancing transactions.
+     */
+    fun deactivate(acc: AccountResponse, targetAccountId: String?, onDone: (Boolean, String?) -> Unit) {
         if (_uiState.value.busy) return
         _uiState.value = _uiState.value.copy(busy = true, error = null)
         viewModelScope.launch {
-            val result = runCatching { api.deleteAccount(acc.id) }
+            val result = runCatching {
+                api.deactivateAccount(
+                    acc.id,
+                    AccountDeactivateRequest(target_account_id = targetAccountId),
+                )
+            }
             _uiState.value = _uiState.value.copy(busy = false)
             result.onSuccess {
                 load()

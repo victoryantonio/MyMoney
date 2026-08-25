@@ -35,3 +35,12 @@ data class AccountUpdateRequest(
     val account_name: String? = null,
     val bank_name: String? = null,
 )
+
+/**
+ * Body for deactivating an account (ARCHITECTURE.md §4.4).
+ * target_account_id is required when the account still has a non-zero balance.
+ */
+@Serializable
+data class AccountDeactivateRequest(
+    val target_account_id: String? = null,
+)

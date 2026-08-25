@@ -1,6 +1,7 @@
 package id.my.mymoney.data.api
 
 import id.my.mymoney.data.model.AccountCreateRequest
+import id.my.mymoney.data.model.AccountDeactivateRequest
 import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.AccountUpdateRequest
 import id.my.mymoney.data.model.CategoryCreateRequest
@@ -89,8 +90,9 @@ interface ApiService {
     @PUT("api/accounts/{id}")
     suspend fun updateAccount(@Path("id") id: String, @Body body: AccountUpdateRequest): AccountResponse
 
-    @DELETE("api/accounts/{id}")
-    suspend fun deleteAccount(@Path("id") id: String): Response<Unit>
+    /** Accounts are never deleted — only deactivated (ARCHITECTURE.md §4.4). */
+    @POST("api/accounts/{id}/deactivate")
+    suspend fun deactivateAccount(@Path("id") id: String, @Body body: AccountDeactivateRequest): AccountResponse
 
     // ── Reports ─────────────────────────────────────────────────────────
     @GET("api/reports/summary")
