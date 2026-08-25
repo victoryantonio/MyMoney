@@ -1,11 +1,17 @@
 """
 Accounts API routes.
 
-GET    /api/accounts            — list all active accounts with computed current balance
-POST   /api/accounts            — create a new account
-GET    /api/accounts/{id}       — get account detail with current balance
-PUT    /api/accounts/{id}       — update account name or bank name
-POST   /api/accounts/{id}/deactivate — deactivate an account (NEVER delete)
+GET    /api/accounts                        — list accounts (active only by default)
+POST   /api/accounts                        — create a new account
+GET    /api/accounts/{id}                   — get account detail with computed balance
+PUT    /api/accounts/{id}                   — update account name or bank name
+POST   /api/accounts/{id}/deactivate        — deactivate an account (NOT delete).
+                                               Per ARCHITECTURE.md §4.4: remaining
+                                               balance is moved to a target account
+                                               via balancing transactions.
+
+Accounts can never be hard-deleted — only deactivated (is_active=False).
+Transactions are preserved for historical accuracy.
 
 Balance computation:
   current_balance = initial_balance
@@ -13,15 +19,10 @@ Balance computation:
                   - SUM(amount WHERE type='expense')
 
 This is computed per-query per ARCHITECTURE.md — no stored balance field.
-
-Deactivation (ARCHITECTURE.md §4.4 / CODING_RULES §2.8): accounts are never
-deleted. If the account has a non-zero balance, balancing transactions are
-created (expense on source + income on target, or the reverse for negative
-balances) using the seeded global "Transfer" categories, so the user's total
-stays consistent. History is fully preserved.
 """
 
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -30,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_active_user
 from app.core.audit_service import record_audit
-from app.core.transaction_service import create_transaction_internal, get_or_create_category
+from app.core.transaction_service import get_or_create_category
 from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -89,15 +90,25 @@ def _to_response(account: Account, db: Session) -> AccountResponse:
 
 @router.get("", response_model=list[AccountResponse])
 def list_accounts(
+    include_inactive: bool = False,
     current_user: User = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> list[AccountResponse]:
-    """List all active accounts for the current user, including computed balance."""
+    """
+    List accounts for the current user, including computed balance.
+
+    Active accounts are returned by default. Pass `include_inactive=true` to
+    also include deactivated accounts (used by Accounts Management UI to show
+    the "Nonaktif" section).
+    """
     accounts = list(
         db.scalars(
             select(Account)
-            .where(Account.user_id == current_user.id, Account.is_active == True)  # noqa: E712
-            .order_by(Account.created_at)
+            .where(
+                Account.user_id == current_user.id,
+                Account.is_active == True if not include_inactive else Account.is_active.in_([True, False]),  # noqa: E712
+            )
+            .order_by(Account.is_active.desc(), Account.created_at)
         )
     )
     return [_to_response(a, db) for a in accounts]
@@ -178,35 +189,33 @@ def deactivate_account(
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """
-    Deactivate an account — accounts are NEVER deleted (CODING_RULES §2.8).
+    Deactivate an account (ARCHITECTURE.md §4.4). Accounts are NEVER deleted —
+    only marked is_active=False.
 
-    Per ARCHITECTURE.md §4.4:
-      - If current balance == 0 → just set is_active = False.
-      - If current balance != 0 → target_account_id is REQUIRED; balancing
-        transactions are created (expense on source + income on target for a
-        positive balance, the reverse for a negative balance) using the seeded
-        global "Transfer" categories, so totals stay consistent.
-      - Transaction history is fully preserved.
+    If the account has a non-zero balance, the balance MUST be moved to a
+    target account first:
+      - one expense transaction on the source account,
+      - one income transaction on the target account (same amount),
+    so the ledger stays balanced and no money silently disappears.
+    If the balance is zero, deactivation happens directly.
+
+    When the balance is non-zero and no target is given, HTTP 400 is returned.
     """
-    source = db.scalar(
+    account = db.scalar(
         select(Account).where(
             Account.id == account_id,
             Account.user_id == current_user.id,
             Account.is_active == True,  # noqa: E712
         )
     )
-    if source is None:
+    if account is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
-    current_balance, _ = _compute_balance(source, db)
+    balance, _net = _compute_balance(account, db)
 
-    if current_balance != 0:
-        if body.target_account_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="target_account_id is required — this account still has a balance",
-            )
-        if body.target_account_id == source.id:
+    target: Account | None = None
+    if body.target_account_id is not None:
+        if body.target_account_id == account.id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Target account must be different from the source account",
@@ -219,54 +228,61 @@ def deactivate_account(
             )
         )
         if target is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Target account not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target account not found",
+            )
 
-        amount = abs(current_balance)
-        if current_balance > 0:
-            src_type, tgt_type = "expense", "income"
-        else:
-            src_type, tgt_type = "income", "expense"
-
-        src_category = get_or_create_category(
-            db, current_user.id, "Transfer", src_type, allow_create=False
-        )
-        tgt_category = get_or_create_category(
-            db, current_user.id, "Transfer", tgt_type, allow_create=False
+    if balance != Decimal("0.00") and target is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account has a balance. Pick a target account to move it to.",
         )
 
-        # Balancing transactions (expense on source, income on target — or reverse).
-        create_transaction_internal(
-            db,
-            user_id=current_user.id,
-            type=src_type,
-            total_amount=amount,
-            category_id=src_category.id,
-            account_id=source.id,
-            source="app",
-            note=f"Balance transfer to {target.account_name} (account deactivated)",
-        )
-        create_transaction_internal(
-            db,
-            user_id=current_user.id,
-            type=tgt_type,
-            total_amount=amount,
-            category_id=tgt_category.id,
-            account_id=target.id,
-            source="app",
-            note=f"Balance transfer from {source.account_name} (account deactivated)",
-        )
+    # Move the remaining balance via balancing transactions (§4.4).
+    # Created inline (not via create_transaction_internal) so the whole
+    # deactivation — transfer + flag + audit — commits atomically in ONE
+    # transaction: no half-applied transfer on failure.
+    if balance != Decimal("0.00") and target is not None:
+        expense_cat = get_or_create_category(db, current_user.id, "Transfer", "expense")
+        income_cat = get_or_create_category(db, current_user.id, "Transfer", "income")
+        transfer_note = f"Saldo dipindah dari {account.account_name} ke {target.account_name}"
+        now = datetime.now(UTC)
 
-    source.is_active = False
+        for tx_type, tx_account, tx_category, tx_merchant in (
+            ("expense", account, expense_cat, target.account_name),
+            ("income", target, income_cat, account.account_name),
+        ):
+            transfer_tx = Transaction(
+                id=uuid.uuid4(),
+                user_id=current_user.id,
+                type=tx_type,
+                total_amount=balance,
+                category_id=tx_category.id,
+                account_id=tx_account.id,
+                merchant=tx_merchant,
+                source="app",
+                note=transfer_note,
+                transaction_date=now,
+            )
+            db.add(transfer_tx)
+
+    account.is_active = False
     record_audit(
         db,
         user_id=current_user.id,
         action="update",
         entity_type="account",
-        entity_id=source.id,
+        entity_id=account.id,
         old_value={"is_active": True},
-        new_value={"is_active": False},
+        new_value={
+            "is_active": False,
+            "moved_balance": str(balance),
+            "target_account_id": str(target.id) if target else None,
+        },
         source="app",
+        ip_address=None,
     )
     db.commit()
-    db.refresh(source)
-    return _to_response(source, db)
+    db.refresh(account)
+    return _to_response(account, db)

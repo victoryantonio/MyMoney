@@ -25,11 +25,10 @@ class AccountUpdateRequest(BaseModel):
 
 class AccountDeactivateRequest(BaseModel):
     """
-    Body for deactivating an account (ARCHITECTURE.md §4.4, CODING_RULES §2.8).
+    Deactivation request (ARCHITECTURE.md §4.4).
 
-    target_account_id is REQUIRED when the source account has a non-zero
-    balance — the leftover funds must be transferred to another active account
-    via balancing transactions. Accounts are NEVER deleted; history is kept.
+    `target_account_id` is REQUIRED when the account still has a non-zero
+    balance — the balance is moved to the target via balancing transactions.
     """
 
     target_account_id: uuid.UUID | None = None
