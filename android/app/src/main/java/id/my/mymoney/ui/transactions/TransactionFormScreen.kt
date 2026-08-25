@@ -56,12 +56,16 @@ import java.time.ZoneOffset
 fun TransactionFormScreen(
     txId: String?,
     onDone: () -> Unit,
+    initialType: String? = null,
     viewModel: TransactionFormViewModel = viewModel(factory = TransactionFormViewModel.Factory),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val isEdit = txId != null
 
-    var type by rememberSaveable { mutableStateOf("expense") }
+    // Preselect dari quick action (Catat Pengeluaran/Pemasukan). Saat edit,
+    // nilai dari server menimpa di bawah. Perlu rememberSaveable key agar state
+    // per instance route tidak bocor antar navigasi.
+    var type by rememberSaveable(initialType) { mutableStateOf(initialType ?: "expense") }
     var amountText by rememberSaveable { mutableStateOf("") }
     var categoryId by rememberSaveable { mutableStateOf<String?>(null) }
     var accountId by rememberSaveable { mutableStateOf<String?>(null) }

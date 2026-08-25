@@ -2,10 +2,10 @@ package id.my.mymoney.ui.main
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ReceiptLong
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -34,17 +34,18 @@ object Routes {
     const val TRANSACTIONS = "transactions"
     const val CATEGORIES = "categories"
     const val ACCOUNTS = "accounts"
-    const val TRANSACTION_FORM = "transaction_form?txId={txId}"
-    fun transactionForm(txId: String?) = "transaction_form?txId=${txId ?: ""}"
+    const val TRANSACTION_FORM = "transaction_form?txId={txId}&type={type}"
+    fun transactionForm(txId: String?, type: String? = null) =
+        "transaction_form?txId=${txId ?: ""}&type=${type ?: ""}"
 }
 
 private data class BottomTab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 private val tabs = listOf(
-    BottomTab(Routes.DASHBOARD, "Dashboard", Icons.Filled.Dashboard),
-    BottomTab(Routes.TRANSACTIONS, "Transactions", Icons.AutoMirrored.Filled.ReceiptLong),
-    BottomTab(Routes.CATEGORIES, "Categories", Icons.Filled.Category),
-    BottomTab(Routes.ACCOUNTS, "Accounts", Icons.Filled.AccountBalance),
+    BottomTab(Routes.DASHBOARD, "Dashboard", Icons.Outlined.Dashboard),
+    BottomTab(Routes.TRANSACTIONS, "Transactions", Icons.AutoMirrored.Outlined.ReceiptLong),
+    BottomTab(Routes.CATEGORIES, "Categories", Icons.Outlined.Category),
+    BottomTab(Routes.ACCOUNTS, "Accounts", Icons.Outlined.AccountBalance),
 )
 
 @Composable
@@ -82,7 +83,19 @@ fun MainScreen(onLogout: () -> Unit) {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(Routes.DASHBOARD) {
-                DashboardScreen(onLogout = onLogout)
+                DashboardScreen(
+                    onLogout = onLogout,
+                    onAddExpense = { navController.navigate(Routes.transactionForm(null)) },
+                    onAddIncome = { navController.navigate(Routes.transactionForm(null, "income")) },
+                    onOpenTransactions = {
+                        navController.navigate(Routes.TRANSACTIONS) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onEditTransaction = { txId -> navController.navigate(Routes.transactionForm(txId)) },
+                )
             }
             composable(Routes.TRANSACTIONS) { entry ->
                 val refresh by entry.savedStateHandle
@@ -96,10 +109,14 @@ fun MainScreen(onLogout: () -> Unit) {
             }
             composable(
                 route = Routes.TRANSACTION_FORM,
-                arguments = listOf(navArgument("txId") { type = NavType.StringType; defaultValue = "" }),
+                arguments = listOf(
+                    navArgument("txId") { type = NavType.StringType; defaultValue = "" },
+                    navArgument("type") { type = NavType.StringType; defaultValue = "" },
+                ),
             ) { entry ->
                 TransactionFormScreen(
                     txId = entry.arguments?.getString("txId")?.takeIf { it.isNotBlank() },
+                    initialType = entry.arguments?.getString("type")?.takeIf { it.isNotBlank() },
                     onDone = {
                         navController.previousBackStackEntry
                             ?.savedStateHandle
