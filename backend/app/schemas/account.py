@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, Field
 
 
 class AccountCreateRequest(BaseModel):
@@ -29,6 +29,7 @@ class AccountResponse(BaseModel):
     bank_name: str | None
     initial_balance: Decimal
     current_balance: Decimal  # computed field, not in DB
+    net_balance: Decimal = Field(default=Decimal("0.00"))  # income − expense for this account
     is_active: bool
     created_at: datetime
 

@@ -31,10 +31,11 @@ from app.schemas.account import AccountCreateRequest, AccountResponse, AccountUp
 router = APIRouter(prefix="/api/accounts", tags=["Accounts"])
 
 
-def _compute_balance(account: Account, db: Session) -> Decimal:
+def _compute_balance(account: Account, db: Session) -> tuple[Decimal, Decimal]:
     """
-    Compute current balance from initial_balance + transaction history.
+    Compute (current_balance, net_balance) from initial_balance + transaction history.
     All income transactions are added; all expense transactions are subtracted.
+    net_balance = income − expense (excludes initial_balance).
     Uses a single aggregate SQL query for efficiency.
     """
     result = db.execute(
@@ -55,16 +56,19 @@ def _compute_balance(account: Account, db: Session) -> Decimal:
         ).where(Transaction.account_id == account.id)
     ).scalar()
 
-    return account.initial_balance + (result or Decimal("0.00"))
+    delta = result or Decimal("0.00")
+    return account.initial_balance + delta, delta
 
 
 def _to_response(account: Account, db: Session) -> AccountResponse:
+    current_balance, net_balance = _compute_balance(account, db)
     return AccountResponse(
         id=account.id,
         account_name=account.account_name,
         bank_name=account.bank_name,
         initial_balance=account.initial_balance,
-        current_balance=_compute_balance(account, db),
+        current_balance=current_balance,
+        net_balance=net_balance,
         is_active=account.is_active,
         created_at=account.created_at,
     )
