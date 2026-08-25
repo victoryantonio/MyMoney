@@ -135,6 +135,11 @@ cd android
 > **Status: not started.** Placeholder — fill in the concrete steps while
 > working Phase 5 (see ROADMAP Fase 5).
 
+> **Telegram UX revision (2026-08-25, already shipped):** Telegram now saves
+> NL text + `/edit` directly (no `/confirm`), adds `/logout`, and the linking
+> pages use the DESIGN.md palette + `./icon.png` logo + auto-close. See
+> `task.md` → Done and commit `7aeed35`.
+
 **Goal:** user uploads a receipt photo from the Android app / Telegram; the
 vision LLM (`call_llm()` with `VISION_MODELS`) extracts items, amounts, and a
 category suggestion with confidence; the user confirms/edits before the

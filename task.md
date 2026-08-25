@@ -79,6 +79,18 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 - [x] Tests + lint + build green → `IMPLEMENTATION_PLAN.md`, `walkthrough.md`,
       and this file updated. (Phase 4 complete, ready for Phase 5.)
 
+- [x] **Telegram UX revision (2026-08-25)** — user decision, backend-only:
+      - NL text + `/edit` now **save directly** (no `/confirm` gate); replies
+        `Saved! 📉/📈` / `Edited!` and hint `/undo`. `/confirm` & `/cancel`
+        kept as no-op fallbacks for leftover pending rows.
+      - New `/logout` command unlinks the Telegram account.
+      - Linking pages restyled per DESIGN.md (dusty slate blue palette,
+        Manrope, 12px/8px radii, SVG icons) + **logo from `./icon.png`** via
+        `app/static/icon.png` (`/static` mount) + browser auto-close on success.
+      - Tests: telegram suite 27 green (incl. 2 new `/logout` tests); 45 unit
+        tests total. Deployed: commit `7aeed35`, `docker compose up -d --build
+        backend`.
+
 - [x] **Phase 3 — Report Dasar** ✅ (report_service SQL aggregation, REST
       `GET /api/reports/summary`, Telegram `/report`, 22 new tests — 88 total,
       E2E verified, pushed `cce9c12`).

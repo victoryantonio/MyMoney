@@ -276,6 +276,17 @@ refactoring to be _correct_ before Phase 3 builds on top of it.
   `pending_transactions` and only commit on explicit `/confirm` (REQUIREMENTS
   US-05/US-08, CODING_RULES §2.4) — never a direct save from a parse.
 
+> **⚠️ User override (2026-08-25, Telegram only):** the user decided that
+> Telegram natural-language text and `/edit` must **save directly** with no
+> `/confirm` gate. `telegram_service.py` now calls
+> `create_transaction_internal` / `update_transaction_internal` immediately
+> and replies `Saved!` / `Edited!` (hints `/undo`). `/confirm` & `/cancel` are
+> kept as no-op fallbacks for leftover pending rows; the pending-confirmation
+> machinery (`pending_service.py`, `pending_transactions` table) remains intact
+> for future flows (e.g. Phase 5 receipt confirmation). This override is a
+> product decision — see `task.md` — and deliberately does NOT touch
+> `CODING_RULES.md §2.4`.
+
 **Out of scope for this phase:** receipt/vision OCR (Phase 5), report service
 (Phase 3), Android app (Phase 4).
 
