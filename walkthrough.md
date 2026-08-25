@@ -1,9 +1,12 @@
-# walkthrough.md — MyMoney Phase 4 Execution Guide
+# walkthrough.md — MyMoney Phase 5 Execution Guide
 
-> This is the concrete, step-by-step "how to actually do Phase 4" companion to
-> `task.md`. Every step names the real file to touch and what to change. Run
-> verification tasks at each checkpoint. **Work is grounded in the repo state at
-> the end of Phase 3 (all 88 tests green, pushed `cce9c12`).**
+> ✅ **Phase 4 (Android App) is COMPLETE (2026-08-25).** Results: 23 unit tests
+> green, `lintDebug` clean, `assembleDebug` clean (`app-debug.apk`), launcher
+> icons generated in-repo from `./icon.png`, pushed to `main`.
+>
+> Phase 4's step-by-step guide below is kept as the record of how the app was
+> built. The current phase is **Phase 5 — OCR Foto Nota** (see the new guide at
+> the bottom of this file).
 
 Phase 4 = **Android App** — Kotlin + Jetpack Compose, MVVM, JWT auth with
 auto-refresh, manual transaction CRUD, custom category management, and a report
@@ -127,11 +130,28 @@ cd android
 
 ---
 
-## Done — move to Phase 5
-When `task.md`'s Phase-4 items are all `[x]`, update:
-1. `IMPLEMENTATION_PLAN.md` → move Phase 4 to Completed, make **Phase 5**
-   current (OCR Foto Nota), fill its Goal/Open Questions/Changes/Verification
-   from the roadmap.
-2. `task.md` → move Phase 4 to Done, unmute Phase 5 items.
-3. `walkthrough.md` → replace Phase-4 steps with Phase-5 steps
-   (receipt upload, vision OCR via `call_llm()`, multi-item confirm UI).
+## Phase 5 — OCR Foto Nota (next)
+
+> **Status: not started.** Placeholder — fill in the concrete steps while
+> working Phase 5 (see ROADMAP Fase 5).
+
+**Goal:** user uploads a receipt photo from the Android app / Telegram; the
+vision LLM (`call_llm()` with `VISION_MODELS`) extracts items, amounts, and a
+category suggestion with confidence; the user confirms/edits before the
+transaction is created; receipt images are stored and referenced.
+
+Planned touch points:
+1. Backend: `receipt_service` + `POST /api/receipts` (multipart upload),
+   multi-item schema, confidence fields, image storage + serving.
+2. Android: receipt capture/upload UI + confirm screen wired to the new API.
+3. Telegram: forward a photo → same extraction + confirm flow.
+4. Tests for the extraction/validation logic; E2E with a sample receipt.
+
+---
+
+## Phase 4 — Android App (COMPLETE ✅, 2026-08-25)
+
+> This is the concrete, step-by-step "how to actually do Phase 4" companion to
+> `task.md`. Every step names the real file to touch and what to change. Run
+> verification tasks at each checkpoint. **Work was grounded in the repo state
+> at the end of Phase 3 (all 88 tests green, pushed `cce9c12`).**

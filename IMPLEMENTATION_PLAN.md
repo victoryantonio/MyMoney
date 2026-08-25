@@ -5,11 +5,24 @@
 > edited so the "Current Phase" points at the active one and completed phases
 > move under `## Completed Phases`.
 
-**Current Phase: Phase 4 — Android App**
+**Current Phase: Phase 5 — OCR Foto Nota**
 
 ---
 
-## Phase 4 — Android App
+## Phase 5 — OCR Foto Nota (current)
+
+**Goal:** Receipt OCR + vision LLM (`call_llm()` with `VISION_MODELS`), multi-item
+schema, confidence handling, image storage. Not started — see ROADMAP Fase 5.
+
+---
+
+## Completed Phases
+
+### Phase 4 — Android App ✅ (2026-08-25)
+
+> **Shipped:** Kotlin + Jetpack Compose (MVVM), package `id.my.mymoney`,
+> 23 unit tests green, `lintDebug` clean, `assembleDebug` clean, launcher icons
+> generated in-repo from `./icon.png`, pushed to `main`.
 
 ### 1. Goal Description
 
@@ -116,8 +129,6 @@ Telegram-side work, deploy/hardening (Phase 6).
    before Phase 5.
 
 ---
-
-## Completed Phases
 
 ### Phase 3 — Report Dasar ✅
 
