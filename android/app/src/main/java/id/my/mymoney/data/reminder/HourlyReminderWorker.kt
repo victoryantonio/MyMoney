@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -46,6 +47,9 @@ class HourlyReminderWorker(
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_notify)
+            .setLargeIcon(
+                BitmapFactory.decodeResource(context.resources, R.drawable.ic_notification_large),
+            )
             .setContentTitle("Catat transaksi Anda")
             .setContentText("Jangan lupa mencatat pengeluaran/pemasukan Anda sekarang.")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
