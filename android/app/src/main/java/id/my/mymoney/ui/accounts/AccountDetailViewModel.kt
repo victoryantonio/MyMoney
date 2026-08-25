@@ -7,21 +7,25 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import id.my.mymoney.MyMoneyApp
 import id.my.mymoney.data.api.ApiService
-import id.my.mymoney.data.model.AccountCreateRequest
 import id.my.mymoney.data.model.AccountDeactivateRequest
 import id.my.mymoney.data.model.AccountResponse
-import id.my.mymoney.data.model.AccountUpdateRequest
+import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.data.toUserMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.math.BigDecimal
 
-class AccountsViewModel(private val api: ApiService) : ViewModel() {
+/**
+ * Account detail (TASK 4.1): loads the account + its transaction history
+ * (filtered by account_id) and exposes deactivation (ARCHITECTURE.md §4.4).
+ */
+class AccountDetailViewModel(private val api: ApiService) : ViewModel() {
 
     data class UiState(
-        val accounts: List<AccountResponse> = emptyList(),
+        val account: AccountResponse? = null,
+        val transactions: List<TransactionResponse> = emptyList(),
+        val activeAccounts: List<AccountResponse> = emptyList(),
         val loading: Boolean = true,
         val error: String? = null,
         val busy: Boolean = false,
@@ -30,49 +34,46 @@ class AccountsViewModel(private val api: ApiService) : ViewModel() {
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
-    init {
-        load()
-    }
-
-    fun load() {
+    fun load(accountId: String) {
         _uiState.value = _uiState.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            // include_inactive=true → UI shows active + "Nonaktif" section.
-            runCatching { api.accounts(includeInactive = true) }
-                .onSuccess { _uiState.value = _uiState.value.copy(accounts = it, loading = false) }
-                .onFailure { _uiState.value = _uiState.value.copy(loading = false, error = it.toUserMessage()) }
-        }
-    }
-
-    fun create(name: String, bank: String?, initialBalance: BigDecimal, onDone: (Boolean, String?) -> Unit) {
-        if (_uiState.value.busy) return
-        _uiState.value = _uiState.value.copy(busy = true, error = null)
-        viewModelScope.launch {
             val result = runCatching {
-                api.createAccount(
-                    AccountCreateRequest(
-                        account_name = name.trim(),
-                        bank_name = bank?.takeIf { it.isNotBlank() },
-                        initial_balance = initialBalance.toPlainString(),
-                    )
-                )
+                val acc = api.account(accountId)
+                val txs = api.transactions(accountId = accountId)
+                // Active accounts for the transfer dropdown (excludes self in UI).
+                // 4.4: urut alfabetis konsisten dengan dropdown akun lain.
+                val active = api.accounts(includeInactive = false)
+                    .sortedBy { it.account_name.lowercase() }
+                Triple(acc, txs.items, active)
             }
-            _uiState.value = _uiState.value.copy(busy = false)
-            result.onSuccess {
-                load()
-                onDone(true, null)
-            }.onFailure { onDone(false, it.toUserMessage()) }
+            result.onSuccess { (acc, txs, active) ->
+                _uiState.value = _uiState.value.copy(
+                    account = acc,
+                    transactions = txs,
+                    activeAccounts = active,
+                    loading = false,
+                )
+            }.onFailure {
+                _uiState.value = _uiState.value.copy(loading = false, error = it.toUserMessage())
+            }
         }
     }
 
-    fun update(acc: AccountResponse, name: String, bank: String?, onDone: (Boolean, String?) -> Unit) {
+    fun refresh(accountId: String) = load(accountId)
+
+    fun update(
+        acc: AccountResponse,
+        name: String,
+        bank: String?,
+        onDone: (Boolean, String?) -> Unit,
+    ) {
         if (_uiState.value.busy) return
         _uiState.value = _uiState.value.copy(busy = true, error = null)
         viewModelScope.launch {
             val result = runCatching {
                 api.updateAccount(
                     acc.id,
-                    AccountUpdateRequest(
+                    id.my.mymoney.data.model.AccountUpdateRequest(
                         account_name = name.trim().ifBlank { null },
                         bank_name = bank?.takeIf { it.isNotBlank() },
                     )
@@ -80,18 +81,18 @@ class AccountsViewModel(private val api: ApiService) : ViewModel() {
             }
             _uiState.value = _uiState.value.copy(busy = false)
             result.onSuccess {
-                load()
+                load(acc.id)
                 onDone(true, null)
             }.onFailure { onDone(false, it.toUserMessage()) }
         }
     }
 
-    /**
-     * Deactivate an account (ARCHITECTURE.md §4.4). Accounts are NEVER deleted.
-     * When the account still has a balance, `targetId` MUST be provided — the
-     * backend moves the balance via balancing transactions.
-     */
-    fun deactivate(acc: AccountResponse, targetId: String?, onDone: (Boolean, String?) -> Unit) {
+    /** Deactivate. `targetId` required by backend when balance != 0 (transfer). */
+    fun deactivate(
+        acc: AccountResponse,
+        targetId: String?,
+        onDone: (Boolean, String?) -> Unit,
+    ) {
         if (_uiState.value.busy) return
         _uiState.value = _uiState.value.copy(busy = true, error = null)
         viewModelScope.launch {
@@ -100,7 +101,7 @@ class AccountsViewModel(private val api: ApiService) : ViewModel() {
             }
             _uiState.value = _uiState.value.copy(busy = false)
             result.onSuccess {
-                load()
+                load(acc.id)
                 onDone(true, null)
             }.onFailure { onDone(false, it.toUserMessage()) }
         }
@@ -110,7 +111,7 @@ class AccountsViewModel(private val api: ApiService) : ViewModel() {
         val Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as MyMoneyApp
-                AccountsViewModel(app.container.api)
+                AccountDetailViewModel(app.container.api)
             }
         }
     }

@@ -35,6 +35,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import id.my.mymoney.data.model.UserResponse
+import id.my.mymoney.ui.accounts.AccountDetailScreen
 import id.my.mymoney.ui.accounts.AccountsScreen
 import id.my.mymoney.ui.categories.CategoriesScreen
 import id.my.mymoney.ui.dashboard.DashboardCategoryListScreen
@@ -52,7 +53,9 @@ object Routes {
     const val PROFILE = "profile"
     const val CATEGORIES = "categories"
     const val ACCOUNTS = "accounts"
+    const val ACCOUNT_DETAIL = "account_detail/{accountId}"
     const val RECEIPT_CAPTURE = "receipt_capture"
+    fun accountDetail(id: String) = "account_detail/$id"
     const val CATEGORY_LIST = "category_list?type={type}"
     const val TRANSACTION_FORM = "transaction_form?txId={txId}&type={type}"
     fun transactionForm(txId: String?, type: String? = null) =
@@ -174,7 +177,20 @@ fun MainScreen(user: UserResponse, onLogout: () -> Unit) {
                 CategoriesScreen()
             }
             composable(Routes.ACCOUNTS) {
-                AccountsScreen()
+                AccountsScreen(
+                    onOpenDetail = { id -> navController.navigate(Routes.accountDetail(id)) },
+                )
+            }
+            composable(
+                route = Routes.ACCOUNT_DETAIL,
+                arguments = listOf(
+                    navArgument("accountId") { type = NavType.StringType },
+                ),
+            ) { entry ->
+                AccountDetailScreen(
+                    accountId = entry.arguments?.getString("accountId") ?: "",
+                    onDone = { navController.popBackStack() },
+                )
             }
             composable(
                 route = Routes.CATEGORY_LIST,
