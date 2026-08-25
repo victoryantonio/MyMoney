@@ -54,6 +54,23 @@ data class RefreshRequest(
     val refresh_token: String,
 )
 
+@Serializable
+data class ForgotPasswordRequest(
+    val email: String,
+)
+
+@Serializable
+data class ResetPasswordRequest(
+    val token: String,
+    val new_password: String,
+)
+
+/** Backend returns `{"message": "..."}` for generic info endpoints. */
+@Serializable
+data class GenericMessageResponse(
+    val message: String,
+)
+
 /** Response of POST /api/auth/login. */
 @Serializable
 data class TokenResponse(

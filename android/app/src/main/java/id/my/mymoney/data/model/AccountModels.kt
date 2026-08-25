@@ -37,8 +37,9 @@ data class AccountUpdateRequest(
 )
 
 /**
- * Body for deactivating an account (ARCHITECTURE.md §4.4).
- * target_account_id is required when the account still has a non-zero balance.
+ * Deactivation request (ARCHITECTURE.md §4.4). Accounts are NEVER deleted —
+ * only deactivated. `target_account_id` is required by the backend when the
+ * source still has a non-zero balance (money is moved via balancing txs).
  */
 @Serializable
 data class AccountDeactivateRequest(

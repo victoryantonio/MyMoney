@@ -7,10 +7,13 @@ import id.my.mymoney.data.model.AccountUpdateRequest
 import id.my.mymoney.data.model.CategoryCreateRequest
 import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.data.model.CategoryUpdateRequest
+import id.my.mymoney.data.model.ForgotPasswordRequest
+import id.my.mymoney.data.model.GenericMessageResponse
 import id.my.mymoney.data.model.LoginRequest
 import id.my.mymoney.data.model.RefreshRequest
 import id.my.mymoney.data.model.RefreshResponse
 import id.my.mymoney.data.model.RegisterRequest
+import id.my.mymoney.data.model.ResetPasswordRequest
 import id.my.mymoney.data.model.ReportSummaryResponse
 import id.my.mymoney.data.model.TokenResponse
 import id.my.mymoney.data.model.TransactionCreateRequest
@@ -46,6 +49,12 @@ interface ApiService {
     @GET("api/auth/me")
     suspend fun me(): UserResponse
 
+    @POST("api/auth/forgot-password")
+    suspend fun forgotPassword(@Body body: ForgotPasswordRequest): GenericMessageResponse
+
+    @POST("api/auth/reset-password")
+    suspend fun resetPassword(@Body body: ResetPasswordRequest): GenericMessageResponse
+
     // ── Transactions (keyset pagination via cursor) ─────────────────────
     @GET("api/transactions")
     suspend fun transactions(
@@ -80,17 +89,19 @@ interface ApiService {
     @DELETE("api/categories/{id}")
     suspend fun deleteCategory(@Path("id") id: String): Response<Unit>
 
-    // ── Accounts ────────────────────────────────────────────────────────
+    // ── Accounts (deactivate-only; NEVER hard-delete per ARCHITECTURE.md §4.4) ──
     @GET("api/accounts")
-    suspend fun accounts(): List<AccountResponse>
+    suspend fun accounts(@Query("include_inactive") includeInactive: Boolean = false): List<AccountResponse>
 
     @POST("api/accounts")
     suspend fun createAccount(@Body body: AccountCreateRequest): AccountResponse
 
+    @GET("api/accounts/{id}")
+    suspend fun account(@Path("id") id: String): AccountResponse
+
     @PUT("api/accounts/{id}")
     suspend fun updateAccount(@Path("id") id: String, @Body body: AccountUpdateRequest): AccountResponse
 
-    /** Accounts are never deleted — only deactivated (ARCHITECTURE.md §4.4). */
     @POST("api/accounts/{id}/deactivate")
     suspend fun deactivateAccount(@Path("id") id: String, @Body body: AccountDeactivateRequest): AccountResponse
 

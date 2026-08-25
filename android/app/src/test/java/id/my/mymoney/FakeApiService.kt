@@ -2,16 +2,20 @@ package id.my.mymoney
 
 import id.my.mymoney.data.api.ApiService
 import id.my.mymoney.data.model.AccountCreateRequest
+import id.my.mymoney.data.model.AccountDeactivateRequest
 import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.AccountUpdateRequest
 import id.my.mymoney.data.model.CategoryCreateRequest
 import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.data.model.CategoryUpdateRequest
+import id.my.mymoney.data.model.ForgotPasswordRequest
+import id.my.mymoney.data.model.GenericMessageResponse
 import id.my.mymoney.data.model.LoginRequest
 import id.my.mymoney.data.model.RefreshRequest
 import id.my.mymoney.data.model.RefreshResponse
 import id.my.mymoney.data.model.RegisterRequest
 import id.my.mymoney.data.model.ReportSummaryResponse
+import id.my.mymoney.data.model.ResetPasswordRequest
 import id.my.mymoney.data.model.TokenResponse
 import id.my.mymoney.data.model.TransactionCreateRequest
 import id.my.mymoney.data.model.TransactionListResponse
@@ -157,7 +161,12 @@ class FakeApiService : ApiService {
     }
 
     // ── Accounts ────────────────────────────────────────────────────────
-    override suspend fun accounts(): List<AccountResponse> = accountsList
+    var accountShouldFail: Boolean = false
+    var deactivateCalls: MutableList<Pair<String, AccountDeactivateRequest>> = mutableListOf()
+    var forgotCalls: MutableList<String> = mutableListOf()
+    var resetCalls: Int = 0
+
+    override suspend fun accounts(includeInactive: Boolean): List<AccountResponse> = accountsList
 
     override suspend fun createAccount(body: AccountCreateRequest): AccountResponse {
         if (txShouldFail) throw IOException("network")
@@ -169,6 +178,19 @@ class FakeApiService : ApiService {
             current_balance = body.initial_balance,
             created_at = "2026-08-25T10:00:00+07:00",
         )
+    }
+
+    override suspend fun account(id: String): AccountResponse {
+        if (accountShouldFail) throw IOException("network")
+        return accountsList.firstOrNull { it.id == id }
+            ?: AccountResponse(
+                id = id,
+                account_name = "Kas",
+                bank_name = null,
+                initial_balance = "0",
+                current_balance = "0",
+                created_at = "2026-08-25T10:00:00+07:00",
+            )
     }
 
     override suspend fun updateAccount(id: String, body: AccountUpdateRequest): AccountResponse {
@@ -183,9 +205,29 @@ class FakeApiService : ApiService {
         )
     }
 
-    override suspend fun deleteAccount(id: String): Response<Unit> {
+    override suspend fun deactivateAccount(id: String, body: AccountDeactivateRequest): AccountResponse {
         if (txShouldFail) throw IOException("network")
-        return Response.success(Unit)
+        deactivateCalls += id to body
+        return AccountResponse(
+            id = id,
+            account_name = "Kas",
+            bank_name = null,
+            initial_balance = "0",
+            current_balance = "0",
+            created_at = "2026-08-25T10:00:00+07:00",
+            is_active = false,
+        )
+    }
+
+    // ── Auth: forgot / reset password ──────────────────────────────────
+    override suspend fun forgotPassword(body: ForgotPasswordRequest): GenericMessageResponse {
+        forgotCalls += body.email
+        return GenericMessageResponse("If that email is registered, we've sent a password reset link to it.")
+    }
+
+    override suspend fun resetPassword(body: ResetPasswordRequest): GenericMessageResponse {
+        resetCalls++
+        return GenericMessageResponse("Password has been reset. You can now log in.")
     }
 
     // ── Reports ─────────────────────────────────────────────────────────

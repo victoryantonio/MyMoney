@@ -1,6 +1,7 @@
 package id.my.mymoney.data
 
 import id.my.mymoney.data.api.ApiService
+import id.my.mymoney.data.model.ForgotPasswordRequest
 import id.my.mymoney.data.model.LoginRequest
 import id.my.mymoney.data.model.RefreshRequest
 import id.my.mymoney.data.model.RegisterRequest
@@ -73,7 +74,6 @@ class AuthRepository(
     }
 
     suspend fun register(displayName: String, email: String, password: String): Result<UserResponse> {
-        _authState.value = AuthState.Loading
         return runCatching {
             val user = api.register(
                 RegisterRequest(email = email.trim(), password = password, display_name = displayName.trim())
@@ -86,6 +86,13 @@ class AuthRepository(
             user
         }.onFailure { _authState.value = AuthState.Unauthenticated }
     }
+
+    /**
+     * Anti-enumeration: the backend ALWAYS returns the same generic message
+     * (HTTP 200) whether or not the email is registered.
+     */
+    suspend fun forgotPassword(email: String): Result<String> =
+        runCatching { api.forgotPassword(ForgotPasswordRequest(email = email.trim())).message }
 
     /** Tries to exchange the refresh token for a new access token. Returns success. */
     suspend fun refreshAccessToken(): Boolean {
