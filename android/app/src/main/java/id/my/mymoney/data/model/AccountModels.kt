@@ -11,7 +11,11 @@ data class AccountResponse(
     @Serializable(with = FlexibleStringSerializer::class) val current_balance: String,
     val is_active: Boolean = true,
     val created_at: String,
-)
+) {
+    val currentBalanceDecimal: java.math.BigDecimal
+        get() = runCatching { java.math.BigDecimal(current_balance) }
+            .getOrDefault(java.math.BigDecimal.ZERO)
+}
 
 @Serializable
 data class AccountCreateRequest(
