@@ -22,7 +22,10 @@ fun AppNavHost(modifier: Modifier = Modifier) {
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
 
     when (val state = authState) {
-        is AuthState.Authenticated -> MainScreen(onLogout = { authViewModel.logout() })
+        is AuthState.Authenticated -> MainScreen(
+            user = state.user,
+            onLogout = { authViewModel.logout() },
+        )
         is AuthState.Loading -> LoadingView(modifier)
         is AuthState.Unknown -> LoadingView(modifier)
         is AuthState.Unauthenticated -> AuthScreen(
