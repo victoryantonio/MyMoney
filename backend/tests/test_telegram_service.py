@@ -1,5 +1,6 @@
 """
-Unit tests for telegram_service.py — testing /start, /undo, /edit, and text parsing.
+Unit tests for telegram_service.py — testing /start, /logout, /undo, /edit,
+/confirm, /cancel, /report, and text parsing.
 """
 
 import uuid
@@ -10,6 +11,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.telegram_service import process_telegram_update
+from app.models.account import Account
 from app.models.category import Category
 from app.models.pending_transaction import PendingTransaction
 from app.models.telegram_link import TelegramLink
@@ -89,6 +91,30 @@ class TestProcessTelegramUpdate:
                 result = await process_telegram_update(self.db, self._make_update("/start"))
 
         assert "Welcome to MyMoney" in result
+
+    # ── /logout tests ─────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_logout_success(self):
+        """Test /logout unlinks the Telegram account."""
+        link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
+        self.db.scalar.return_value = link
+
+        result = await process_telegram_update(self.db, self._make_update("/logout"))
+
+        assert "Logged out" in result
+        assert "no longer linked" in result
+        self.db.delete.assert_called_once_with(link)
+        self.db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_logout_not_linked(self):
+        """Test /logout when not linked returns an error."""
+        self.db.scalar.return_value = None
+
+        result = await process_telegram_update(self.db, self._make_update("/logout"))
+
+        assert "not linked yet" in result
 
     # ── /undo tests ───────────────────────────────────────────────────────────
 
@@ -187,7 +213,7 @@ class TestProcessTelegramUpdate:
 
     @pytest.mark.asyncio
     async def test_edit_success(self):
-        """Test successful /edit updates transaction."""
+        """Test successful /edit applies the change DIRECTLY (no /confirm gate)."""
         link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
         old_tx = Transaction(
             id=uuid.uuid4(),
@@ -200,16 +226,15 @@ class TestProcessTelegramUpdate:
             note="Old note",
         )
         new_category = Category(id=uuid.uuid4(), name="Transport", type="expense")
-        pending = PendingTransaction(
-            id=uuid.uuid4(),
+        updated_tx = Transaction(
+            id=old_tx.id,
             user_id=self.user_id,
-            action="update",
             type="expense",
             total_amount=Decimal("50000"),
             category_id=new_category.id,
+            account_id=old_tx.account_id,
             source="telegram",
             note="Bensin",
-            target_transaction_id=old_tx.id,
         )
         self.db.scalar.side_effect = [link, old_tx, new_category]
 
@@ -222,23 +247,25 @@ class TestProcessTelegramUpdate:
                 type="expense", amount=Decimal("50000"), category="Transport", note="Bensin"
             )
             with patch(
-                "app.core.telegram_service.create_pending_transaction"
-            ) as mock_create_pending:
-                mock_create_pending.return_value = pending
+                "app.core.telegram_service.update_transaction_internal"
+            ) as mock_update:
+                mock_update.return_value = updated_tx
 
                 result = await process_telegram_update(
                     self.db, self._make_update("/edit bensin 50rb")
                 )
 
-        assert "Edit parsed (awaiting confirmation)" in result
+        assert "Edited!" in result
         assert "50,000" in result
         assert "Transport" in result
         assert "Bensin" in result
-        # The edit is NOT applied directly — it lands in a pending row for /confirm.
-        call_args = mock_create_pending.call_args
-        assert call_args.kwargs["action"] == "update"
-        assert call_args.kwargs["target_transaction_id"] == old_tx.id
-        assert call_args.kwargs["raw_input"] == "bensin 50rb"
+        assert "/confirm" not in result
+        # The edit is applied directly to the latest Telegram transaction.
+        mock_update.assert_called_once()
+        call_args = mock_update.call_args
+        assert call_args.kwargs["transaction"].id == old_tx.id
+        assert call_args.kwargs["total_amount"] == Decimal("50000")
+        assert call_args.kwargs["note"] == "Bensin"
 
     # ── /report tests (US-17) ─────────────────────────────────────────────────
 
@@ -366,20 +393,21 @@ class TestProcessTelegramUpdate:
 
     @pytest.mark.asyncio
     async def test_text_parsing_success(self):
-        """Test successful text parsing creates a PENDING transaction (not a direct commit)."""
+        """Test successful text parsing commits a transaction DIRECTLY (no /confirm)."""
         link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
         category = Category(id=uuid.uuid4(), name="Food", type="expense")
-        pending = PendingTransaction(
+        account = Account(id=uuid.uuid4(), user_id=self.user_id, account_name="Cash")
+        tx = Transaction(
             id=uuid.uuid4(),
             user_id=self.user_id,
-            action="create",
             type="expense",
             total_amount=Decimal("35000"),
             category_id=category.id,
+            account_id=account.id,
             source="telegram",
             note="Makan siang",
         )
-        self.db.scalar.side_effect = [link, category]
+        self.db.scalar.side_effect = [link, category, account]
 
         with patch(
             "app.core.telegram_service.parse_text_to_transaction", new_callable=AsyncMock
@@ -390,42 +418,44 @@ class TestProcessTelegramUpdate:
                 type="expense", amount=Decimal("35000"), category="Food", note="Makan siang"
             )
             with patch(
-                "app.core.telegram_service.create_pending_transaction"
-            ) as mock_create_pending:
-                mock_create_pending.return_value = pending
+                "app.core.telegram_service.create_transaction_internal"
+            ) as mock_create:
+                mock_create.return_value = tx
 
                 result = await process_telegram_update(
                     self.db, self._make_update("Makan siang 35rb")
                 )
 
-        assert "Parsed (awaiting confirmation)" in result
+        assert "Saved!" in result
         assert "35,000" in result
         assert "Food" in result
         assert "Makan siang" in result
-        assert "/confirm" in result
-        # No direct transaction creation happened at parse time.
-        mock_create_pending.assert_called_once()
-        call_args = mock_create_pending.call_args
-        # action is omitted → defaults to "create" in the service
-        assert call_args.kwargs.get("action", "create") == "create"
-        assert call_args.kwargs["raw_input"] == "Makan siang 35rb"
+        assert "/confirm" not in result
+        # The transaction is committed immediately with source="telegram".
+        mock_create.assert_called_once()
+        call_args = mock_create.call_args
+        assert call_args.kwargs["source"] == "telegram"
+        assert call_args.kwargs["note"] == "Makan siang"
+        assert call_args.kwargs["account_id"] == account.id
+        assert call_args.kwargs["category_id"] == category.id
 
     @pytest.mark.asyncio
     async def test_text_uses_original_text_as_note_when_none(self):
         """Test that original text is used as note when LLM doesn't provide one."""
         link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
         category = Category(id=uuid.uuid4(), name="Food", type="expense")
-        pending = PendingTransaction(
+        account = Account(id=uuid.uuid4(), user_id=self.user_id, account_name="Cash")
+        tx = Transaction(
             id=uuid.uuid4(),
             user_id=self.user_id,
-            action="create",
             type="expense",
             total_amount=Decimal("35000"),
             category_id=category.id,
+            account_id=account.id,
             source="telegram",
             note="Makan siang 35rb",  # original text used as note
         )
-        self.db.scalar.side_effect = [link, category]
+        self.db.scalar.side_effect = [link, category, account]
 
         with patch(
             "app.core.telegram_service.parse_text_to_transaction", new_callable=AsyncMock
@@ -439,17 +469,17 @@ class TestProcessTelegramUpdate:
                 note=None,  # LLM didn't provide note
             )
             with patch(
-                "app.core.telegram_service.create_pending_transaction"
-            ) as mock_create_pending:
-                mock_create_pending.return_value = pending
+                "app.core.telegram_service.create_transaction_internal"
+            ) as mock_create:
+                mock_create.return_value = tx
 
                 result = await process_telegram_update(
                     self.db, self._make_update("Makan siang 35rb")
                 )
 
         assert "Makan siang 35rb" in result
-        # Verify create_pending_transaction was called with original text as note
-        call_args = mock_create_pending.call_args
+        # Verify create_transaction_internal was called with original text as note
+        call_args = mock_create.call_args
         assert call_args.kwargs["note"] == "Makan siang 35rb"
 
     # ── /confirm & /cancel tests ─────────────────────────────────────────────

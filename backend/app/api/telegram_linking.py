@@ -47,37 +47,97 @@ _LINK_FORM_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Link Telegram — MyMoney</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #f4f6f8; display: flex; align-items: center;
-            justify-content: center; min-height: 100vh; padding: 1rem; }}
-    .card {{ background: white; border-radius: 12px; padding: 2.5rem 2rem;
-             max-width: 400px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }}
-    .logo {{ font-size: 2rem; margin-bottom: 0.5rem; }}
-    h1 {{ font-size: 1.25rem; color: #1a202c; margin-bottom: 0.5rem; }}
-    p {{ font-size: 0.9rem; color: #718096; margin-bottom: 1.5rem; }}
-    label {{ display: block; font-size: 0.875rem; font-weight: 500;
-             color: #4a5568; margin-bottom: 0.35rem; }}
-    input {{ width: 100%; padding: 0.6rem 0.75rem; border: 1px solid #e2e8f0;
-             border-radius: 8px; font-size: 0.95rem; outline: none;
-             transition: border-color 0.15s; }}
-    input:focus {{ border-color: #667eea; }}
-    .field {{ margin-bottom: 1.25rem; }}
-    button {{ width: 100%; padding: 0.75rem; background: #667eea;
-              color: white; border: none; border-radius: 8px; font-size: 1rem;
-              font-weight: 600; cursor: pointer; transition: background 0.15s; }}
-    button:hover {{ background: #5a6fe8; }}
-    .error {{ background: #fff5f5; border: 1px solid #feb2b2; border-radius: 8px;
-              padding: 0.75rem 1rem; color: #c53030; font-size: 0.875rem;
-              margin-bottom: 1rem; }}
+    /* DESIGN.md §3 tokens — dusty slate blue, light + dark */
+    :root {
+      --surface: #F5F7FA;
+      --surface-card: #FFFFFF;
+      --on-surface: #1A2233;
+      --on-surface-variant: #556070;
+      --primary: #3B5B8C;
+      --primary-hover: #2F4A74;
+      --on-primary: #FFFFFF;
+      --primary-container: #D0DCF0;
+      --outline: #D0D8E8;
+      --error-bg: #FDF3F0;
+      --error-border: #E5B8AC;
+      --error-text: #A8503C;
+      --shadow: rgba(26, 34, 51, 0.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --surface: #131B27;
+        --surface-card: #1C2738;
+        --on-surface: #E2E8F5;
+        --on-surface-variant: #A0ABBE;
+        --primary: #7B9ED4;
+        --primary-hover: #8FB0DD;
+        --on-primary: #131B27;
+        --primary-container: #243554;
+        --outline: #2C3D57;
+        --error-bg: #3A2320;
+        --error-border: #6E3B30;
+        --error-text: #D18871;
+        --shadow: rgba(0, 0, 0, 0.25);
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1rem;
+    }
+    .card {
+      background: var(--surface-card);
+      border: 1px solid var(--outline);
+      border-radius: 12px; /* DESIGN.md §5: card = 12px, not extreme pill */
+      padding: 2.5rem 2rem;
+      max-width: 400px; width: 100%;
+      box-shadow: var(--shadow);
+    }
+    .brand { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.75rem; }
+    .brand-mark {
+      width: 36px; height: 36px; border-radius: 10px;
+      object-fit: cover; display: block;
+    }
+    .brand-name { font-weight: 700; font-size: 1.1rem; color: var(--on-surface); }
+    h1 { font-size: 1.25rem; font-weight: 600; color: var(--on-surface); margin-bottom: 0.4rem; }
+    .subtitle { font-size: 0.9rem; color: var(--on-surface-variant); margin-bottom: 1.75rem; line-height: 1.5; }
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--on-surface); margin-bottom: 0.35rem; }
+    input {
+      width: 100%; padding: 0.65rem 0.8rem;
+      border: 1px solid var(--outline); border-radius: 8px; /* DESIGN.md §5: button/field = 8px */
+      font-size: 0.95rem; font-family: inherit; color: var(--on-surface);
+      background: var(--surface-card); outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-container); }
+    .field { margin-bottom: 1.25rem; }
+    button {
+      width: 100%; padding: 0.75rem; background: var(--primary); color: var(--on-primary);
+      border: none; border-radius: 8px; font-size: 1rem; font-weight: 600;
+      font-family: inherit; cursor: pointer; transition: background 0.15s;
+    }
+    button:hover { background: var(--primary-hover); }
+    .error {
+      background: var(--error-bg); border: 1px solid var(--error-border); border-radius: 8px;
+      padding: 0.7rem 1rem; color: var(--error-text); font-size: 0.85rem;
+      margin-bottom: 1rem; line-height: 1.4;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">💸</div>
+    <div class="brand">
+      <img class="brand-mark" src="/static/icon.png" alt="MyMoney">
+      <span class="brand-name">MyMoney</span>
+    </div>
     <h1>Link your Telegram account</h1>
-    <p>Enter your MyMoney credentials to connect your Telegram account.</p>
+    <p class="subtitle">Enter your MyMoney credentials to connect your Telegram account.</p>
     {error_block}
     <form method="post">
       <input type="hidden" name="token" value="{token}">
@@ -101,25 +161,91 @@ _SUCCESS_HTML = """<!DOCTYPE html>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Linked — MyMoney</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: #f4f6f8; display: flex; align-items: center;
-            justify-content: center; min-height: 100vh; }}
-    .card {{ background: white; border-radius: 12px; padding: 2.5rem 2rem;
-             max-width: 400px; width: 100%; text-align: center;
-             box-shadow: 0 4px 24px rgba(0,0,0,0.08); }}
-    .icon {{ font-size: 3rem; margin-bottom: 1rem; }}
-    h1 {{ font-size: 1.25rem; color: #22543d; margin-bottom: 0.5rem; }}
-    p {{ font-size: 0.9rem; color: #718096; }}
+    /* DESIGN.md §3 tokens — dusty slate blue, light + dark */
+    :root {
+      --surface: #F5F7FA;
+      --surface-card: #FFFFFF;
+      --on-surface: #1A2233;
+      --on-surface-variant: #556070;
+      --primary: #3B5B8C;
+      --on-primary: #FFFFFF;
+      --primary-container: #D0DCF0;
+      --outline: #D0D8E8;
+      --shadow: rgba(26, 34, 51, 0.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --surface: #131B27;
+        --surface-card: #1C2738;
+        --on-surface: #E2E8F5;
+        --on-surface-variant: #A0ABBE;
+        --primary: #7B9ED4;
+        --on-primary: #131B27;
+        --primary-container: #243554;
+        --outline: #2C3D57;
+        --shadow: rgba(0, 0, 0, 0.25);
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1rem;
+    }
+    .card {
+      background: var(--surface-card);
+      border: 1px solid var(--outline);
+      border-radius: 12px; /* DESIGN.md §5: card = 12px */
+      padding: 2.5rem 2rem;
+      max-width: 400px; width: 100%; text-align: center;
+      box-shadow: var(--shadow);
+    }
+    .brand { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin-bottom: 1.75rem; }
+    .brand-mark {
+      width: 36px; height: 36px; border-radius: 10px;
+      object-fit: cover; display: block;
+    }
+    .brand-name { font-weight: 700; font-size: 1.1rem; color: var(--on-surface); }
+    .icon-wrap {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--primary-container);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.25rem;
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; color: var(--on-surface); margin-bottom: 0.5rem; }
+    p { font-size: 0.9rem; color: var(--on-surface-variant); line-height: 1.5; }
+    .closing { margin-top: 1.5rem; font-size: 0.78rem; color: var(--on-surface-variant); }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">✅</div>
+    <div class="brand">
+      <img class="brand-mark" src="/static/icon.png" alt="MyMoney">
+      <span class="brand-name">MyMoney</span>
+    </div>
+    <div class="icon-wrap">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M20 6L9 17l-5-5" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
     <h1>Account linked successfully!</h1>
     <p>You can now close this page and return to the MyMoney Telegram bot.</p>
+    <p class="closing">This page will close automatically. If not, you can close it manually.</p>
   </div>
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        // Telegram in-app browser closes the tab when the page calls window.close().
+        window.open('', '_self');
+        window.close();
+      }, 1200);
+    });
+  </script>
 </body>
 </html>"""
 
@@ -127,20 +253,80 @@ _EXPIRED_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Link Expired — MyMoney</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body {{ font-family: sans-serif; display: flex; align-items: center;
-            justify-content: center; min-height: 100vh; background: #f4f6f8; }}
-    .card {{ background: white; border-radius: 12px; padding: 2.5rem;
-             text-align: center; max-width: 380px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }}
-    .icon {{ font-size: 3rem; }}
-    h1 {{ color: #c53030; margin: 0.75rem 0 0.5rem; font-size: 1.25rem; }}
-    p {{ color: #718096; font-size: 0.9rem; }}
+    /* DESIGN.md §3 tokens — dusty slate blue, light + dark */
+    :root {
+      --surface: #F5F7FA;
+      --surface-card: #FFFFFF;
+      --on-surface: #1A2233;
+      --on-surface-variant: #556070;
+      --primary: #3B5B8C;
+      --on-primary: #FFFFFF;
+      --primary-container: #D0DCF0;
+      --outline: #D0D8E8;
+      --shadow: rgba(26, 34, 51, 0.06);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --surface: #131B27;
+        --surface-card: #1C2738;
+        --on-surface: #E2E8F5;
+        --on-surface-variant: #A0ABBE;
+        --primary: #7B9ED4;
+        --on-primary: #131B27;
+        --primary-container: #243554;
+        --outline: #2C3D57;
+        --shadow: rgba(0, 0, 0, 0.25);
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 1rem;
+    }
+    .card {
+      background: var(--surface-card);
+      border: 1px solid var(--outline);
+      border-radius: 12px; /* DESIGN.md §5: card = 12px */
+      padding: 2.5rem 2rem;
+      max-width: 400px; width: 100%; text-align: center;
+      box-shadow: var(--shadow);
+    }
+    .brand { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin-bottom: 1.75rem; }
+    .brand-mark {
+      width: 36px; height: 36px; border-radius: 10px;
+      object-fit: cover; display: block;
+    }
+    .brand-name { font-weight: 700; font-size: 1.1rem; color: var(--on-surface); }
+    .icon-wrap {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--primary-container);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.25rem;
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; color: var(--on-surface); margin-bottom: 0.5rem; }
+    p { font-size: 0.9rem; color: var(--on-surface-variant); line-height: 1.5; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon">⏰</div>
+    <div class="brand">
+      <img class="brand-mark" src="/static/icon.png" alt="MyMoney">
+      <span class="brand-name">MyMoney</span>
+    </div>
+    <div class="icon-wrap">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="9" stroke="var(--primary)" stroke-width="2"/>
+        <path d="M12 8v4l2.5 2.5" stroke="var(--primary)" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
     <h1>Link expired</h1>
     <p>This link has expired (valid for 10 minutes). Please send /start again in the bot to get a new link.</p>
   </div>
@@ -153,7 +339,10 @@ _EXPIRED_HTML = """<!DOCTYPE html>
 
 def _render_form(token: str, error: str | None = None) -> str:
     error_block = f'<div class="error">{error}</div>' if error else ""
-    return _LINK_FORM_HTML.format(token=token, error_block=error_block)
+    # .replace() (not .format()) so the CSS braces in the template stay unescaped.
+    return (
+        _LINK_FORM_HTML.replace("{token}", token).replace("{error_block}", error_block)
+    )
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────

@@ -11,12 +11,16 @@ Startup order:
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from pathlib import Path
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 structlog.configure(
     processors=[
@@ -72,6 +76,9 @@ app.include_router(categories.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
 app.include_router(reports.router)
+
+# ── Static files (brand logo used by the Telegram linking pages) ─────────────
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 # ── Lifecycle ──────────────────────────────────────────────────────────────────

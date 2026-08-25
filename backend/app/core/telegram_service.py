@@ -3,8 +3,10 @@ Telegram bot business logic.
 Handles /start (account linking), /undo, /edit, /confirm, /cancel, and
 natural language text logging.
 
-LLM-parsed results (natural language + /edit) NEVER commit directly: they go
-through a pending-confirmation state (CODING_RULES §2.4, REQUIREMENTS US-05).
+Natural-language results (text + /edit) are saved DIRECTLY — no
+/confirm confirmation gate (user decision, overrides pending-confirmation
+flow previously described by REQUIREMENTS US-05/US-08). /undo remains
+available to revert the most recent Telegram transaction.
 """
 
 from typing import Any
@@ -15,14 +17,16 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.nlu_parser import parse_text_to_transaction
-from app.core.pending_service import (
-    cancel_pending_transaction,
-    confirm_pending_transaction,
-    create_pending_transaction,
-)
+from app.core.pending_service import cancel_pending_transaction, confirm_pending_transaction
 from app.core.report_service import get_report_summary, parse_period_arg, period_label
 from app.core.security import create_telegram_link_token
-from app.core.transaction_service import delete_transaction_internal, get_or_create_category
+from app.core.transaction_service import (
+    create_transaction_internal,
+    delete_transaction_internal,
+    get_or_create_category,
+    get_or_create_default_account,
+    update_transaction_internal,
+)
 from app.models.telegram_link import TelegramLink
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -100,6 +104,15 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
 
     user_id = link.user_id
 
+    # ── 1.5 Handle /logout ───────────────────────────────────────────────────
+    if text.startswith("/logout"):
+        db.delete(link)
+        db.commit()
+        return (
+            "Logged out. Your Telegram account is no longer linked to MyMoney.\n"
+            "Send /start to link a different MyMoney account."
+        )
+
     # ── 2. Handle /undo ──────────────────────────────────────────────────────
     if text.startswith("/undo"):
         # Find the most recent transaction created by this user via Telegram
@@ -139,8 +152,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         if not latest_tx:
             return "No recent Telegram transaction found to edit."
 
-        # Parse the new text → pending edit, confirmed via /confirm (US-05).
-        # The LLM result is NOT applied directly.
+        # Parse the new text → apply the edit DIRECTLY (no /confirm gate).
         parsed = await parse_text_to_transaction(new_text)
         if not parsed:
             return "I couldn't understand the new transaction. Please try again (e.g. '/edit makan siang 50rb')."
@@ -151,25 +163,21 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
             db, user_id, parsed.category, parsed.type, allow_create=False
         )
 
-        pending = create_pending_transaction(
+        updated = update_transaction_internal(
             db=db,
-            user_id=user_id,
+            transaction=latest_tx,
             type=parsed.type,  # type: ignore
             total_amount=parsed.amount,
             category_id=category.id,
-            source="telegram",
             note=parsed.note or new_text,
-            raw_input=new_text,  # forensics for prompt injection (§2.9.B.4)
-            action="update",
-            target_transaction_id=latest_tx.id,
         )
 
-        amount_fmt = f"{pending.total_amount:,.0f}"
+        amount_fmt = f"{updated.total_amount:,.0f}"
+        icon = "📉" if updated.type == "expense" else "📈"
         return (
-            f"📝 Edit parsed (awaiting confirmation):\n"
+            f"Edited! {icon}\n"
             f"{category.name}: {amount_fmt} IDR\n"
-            f"Note: {pending.note}\n\n"
-            "Reply /confirm to apply the edit, or /cancel to discard."
+            f"Note: {updated.note or 'none'}"
         )
 
     # ── 3.5 Handle /confirm and /cancel (pending confirmation) ────────────────
@@ -207,8 +215,8 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         return _format_report(summary, period_label(arg))
 
     # ── 4. Handle Natural Language Transaction ───────────────────────────────
-    # We call DeepSeek via the NLU parser. The result goes to a
-    # PendingTransaction row — it is NOT committed until /confirm (US-05).
+    # We call DeepSeek via the NLU parser and SAVE the result DIRECTLY.
+    # No /confirm gate (user decision). Use /undo to revert.
     parsed = await parse_text_to_transaction(text)
 
     if not parsed:
@@ -217,22 +225,24 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
     # Locked categories for LLM paths (CODING_RULES §2.9.D): unknown names
     # resolve to the default "Other" category instead of being auto-created.
     category = get_or_create_category(db, user_id, parsed.category, parsed.type, allow_create=False)
+    account = get_or_create_default_account(db, user_id)
 
-    pending = create_pending_transaction(
+    tx = create_transaction_internal(
         db=db,
         user_id=user_id,
         type=parsed.type,  # type: ignore
         total_amount=parsed.amount,
         category_id=category.id,
+        account_id=account.id,
         source="telegram",
         note=parsed.note or text,  # use original text as note if LLM didn't extract one
-        raw_input=text,  # forensics for prompt injection (§2.9.B.4)
     )
 
-    amount_fmt = f"{pending.total_amount:,.0f}"
+    amount_fmt = f"{tx.total_amount:,.0f}"
+    icon = "📉" if tx.type == "expense" else "📈"
     return (
-        f"📝 Parsed (awaiting confirmation):\n"
+        f"Saved! {icon}\n"
         f"{category.name}: {amount_fmt} IDR\n"
-        f"Note: {pending.note}\n\n"
-        "Reply /confirm to save, or /cancel to discard."
+        f"Note: {tx.note or 'none'}\n\n"
+        "Type /undo to revert."
     )
