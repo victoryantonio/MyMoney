@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -37,6 +38,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -73,6 +78,9 @@ fun TransactionFormScreen(
     var note by rememberSaveable { mutableStateOf("") }
     var dateMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var localError by remember { mutableStateOf<String?>(null) }
+    val merchantFocus = remember { FocusRequester() }
+    val noteFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) {
         viewModel.loadOptions {
@@ -127,6 +135,50 @@ fun TransactionFormScreen(
         Instant.ofEpochMilli(dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
     }
 
+    fun save() {
+        if (state.saving) return
+        localError = null
+        val amount = runCatching { BigDecimal(amountText) }.getOrNull()
+        if (amount == null || amount <= BigDecimal.ZERO) {
+            localError = "Enter a valid amount"
+            return
+        }
+        val cat = categoryId
+        val acc = accountId
+        if (cat == null || acc == null) {
+            localError = "Pick a category and account"
+            return
+        }
+        val dateTime: OffsetDateTime = selectedDate.atTime(12, 0).atZone(ZoneId.systemDefault()).toOffsetDateTime()
+        val callback: (Boolean, String?) -> Unit = { ok, err ->
+            if (ok) onDone() else localError = err
+        }
+        if (isEdit && viewModel.uiState.value.editing != null) {
+            viewModel.update(
+                tx = viewModel.uiState.value.editing!!,
+                type = type,
+                totalAmount = amount,
+                categoryId = cat,
+                accountId = acc,
+                merchant = merchant,
+                note = note,
+                transactionDate = dateTime,
+                onDone = callback,
+            )
+        } else {
+            viewModel.create(
+                type = type,
+                totalAmount = amount,
+                categoryId = cat,
+                accountId = acc,
+                merchant = merchant,
+                note = note,
+                transactionDate = dateTime,
+                onDone = callback,
+            )
+        }
+    }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text(if (isEdit) "Edit transaction" else "New transaction") }) },
     ) { innerPadding ->
@@ -157,7 +209,11 @@ fun TransactionFormScreen(
                 onValueChange = { amountText = it.filter { c -> c.isDigit() || c == '.' } },
                 label = { Text("Amount (IDR)") },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(onNext = { merchantFocus.requestFocus() }),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(12.dp))
@@ -183,7 +239,12 @@ fun TransactionFormScreen(
                 onValueChange = { merchant = it },
                 label = { Text("Merchant (optional)") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(onNext = { noteFocus.requestFocus() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(merchantFocus),
             )
             Spacer(Modifier.height(12.dp))
 
@@ -191,7 +252,13 @@ fun TransactionFormScreen(
                 value = note,
                 onValueChange = { note = it },
                 label = { Text("Note (optional)") },
-                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); save() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(noteFocus),
             )
             Spacer(Modifier.height(12.dp))
 
@@ -212,48 +279,7 @@ fun TransactionFormScreen(
             }
 
             Button(
-                onClick = {
-                    localError = null
-                    val amount = runCatching { BigDecimal(amountText) }.getOrNull()
-                    if (amount == null || amount <= BigDecimal.ZERO) {
-                        localError = "Enter a valid amount"
-                        return@Button
-                    }
-                    val cat = categoryId
-                    val acc = accountId
-                    if (cat == null || acc == null) {
-                        localError = "Pick a category and account"
-                        return@Button
-                    }
-                    val dateTime: OffsetDateTime = selectedDate.atTime(12, 0).atZone(ZoneId.systemDefault()).toOffsetDateTime()
-                    val callback: (Boolean, String?) -> Unit = { ok, err ->
-                        if (ok) onDone() else localError = err
-                    }
-                    if (isEdit && viewModel.uiState.value.editing != null) {
-                        viewModel.update(
-                            tx = viewModel.uiState.value.editing!!,
-                            type = type,
-                            totalAmount = amount,
-                            categoryId = cat,
-                            accountId = acc,
-                            merchant = merchant,
-                            note = note,
-                            transactionDate = dateTime,
-                            onDone = callback,
-                        )
-                    } else {
-                        viewModel.create(
-                            type = type,
-                            totalAmount = amount,
-                            categoryId = cat,
-                            accountId = acc,
-                            merchant = merchant,
-                            note = note,
-                            transactionDate = dateTime,
-                            onDone = callback,
-                        )
-                    }
-                },
+                onClick = { save() },
                 enabled = !state.saving,
                 modifier = Modifier.fillMaxWidth(),
             ) {

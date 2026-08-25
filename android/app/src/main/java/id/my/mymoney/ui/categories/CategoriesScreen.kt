@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -35,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -178,6 +182,11 @@ private fun CategoryEditDialog(
     var name by remember { mutableStateOf(initialName) }
     var type by remember { mutableStateOf(initialType) }
     var error by remember { mutableStateOf<String?>(null) }
+    val focusManager = LocalFocusManager.current
+
+    fun save() {
+        if (name.isBlank()) error = "Name is required" else onSave(name, type)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -189,6 +198,8 @@ private fun CategoryEditDialog(
                     onValueChange = { name = it },
                     label = { Text("Name") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); save() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
@@ -203,9 +214,7 @@ private fun CategoryEditDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (name.isBlank()) error = "Name is required" else onSave(name, type)
-            }) { Text("Save") }
+            TextButton(onClick = { save() }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

@@ -9,10 +9,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
@@ -27,8 +32,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -48,6 +58,32 @@ fun AuthScreen(viewModel: AuthViewModel, onAuthenticated: () -> Unit) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var localError by remember { mutableStateOf<String?>(null) }
+    var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    val emailFocus = remember { FocusRequester() }
+    val passwordFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
+    fun submit() {
+        if (busy) return
+        localError = null
+        if (email.isBlank() || password.isBlank()) {
+            localError = "Email and password are required"
+            return
+        }
+        if (tab == 1) {
+            if (displayName.isBlank()) {
+                localError = "Display name is required"
+                return
+            }
+            if (password.length < 8 || !password.any { it.isLetter() } || !password.any { it.isDigit() }) {
+                localError = "Password must be 8+ chars with at least one letter and one digit"
+                return
+            }
+            viewModel.register(displayName, email, password) { onAuthenticated() }
+        } else {
+            viewModel.login(email, password) { onAuthenticated() }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -77,6 +113,11 @@ fun AuthScreen(viewModel: AuthViewModel, onAuthenticated: () -> Unit) {
                 onValueChange = { displayName = it },
                 label = { Text("Display name") },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Next,
+                ),
+                keyboardActions = KeyboardActions(onNext = { emailFocus.requestFocus() }),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(12.dp))
@@ -87,8 +128,12 @@ fun AuthScreen(viewModel: AuthViewModel, onAuthenticated: () -> Unit) {
             onValueChange = { email = it },
             label = { Text("Email") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                imeAction = ImeAction.Next,
+            ),
+            keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
+            modifier = Modifier.fillMaxWidth().focusRequester(emailFocus),
         )
         Spacer(Modifier.height(12.dp))
 
@@ -97,9 +142,22 @@ fun AuthScreen(viewModel: AuthViewModel, onAuthenticated: () -> Unit) {
             onValueChange = { password = it },
             label = { Text("Password") },
             singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); submit() }),
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        Icons.Outlined.VisibilityOff,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth().focusRequester(passwordFocus),
         )
         Spacer(Modifier.height(20.dp))
 
@@ -114,26 +172,7 @@ fun AuthScreen(viewModel: AuthViewModel, onAuthenticated: () -> Unit) {
         }
 
         Button(
-            onClick = {
-                localError = null
-                if (email.isBlank() || password.isBlank()) {
-                    localError = "Email and password are required"
-                    return@Button
-                }
-                if (tab == 1) {
-                    if (displayName.isBlank()) {
-                        localError = "Display name is required"
-                        return@Button
-                    }
-                    if (password.length < 8 || !password.any { it.isLetter() } || !password.any { it.isDigit() }) {
-                        localError = "Password must be 8+ chars with at least one letter and one digit"
-                        return@Button
-                    }
-                    viewModel.register(displayName, email, password) { onAuthenticated() }
-                } else {
-                    viewModel.login(email, password) { onAuthenticated() }
-                }
-            },
+            onClick = { submit() },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
         ) {

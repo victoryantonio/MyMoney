@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -34,7 +35,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -178,6 +183,23 @@ private fun AccountEditDialog(
     var bank by remember { mutableStateOf(initialBank) }
     var balanceText by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val bankFocus = remember { FocusRequester() }
+    val balanceFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+
+    fun save() {
+        if (name.isBlank()) {
+            error = "Account name is required"
+            return
+        }
+        val balance = if (showBalance) {
+            runCatching { BigDecimal(balanceText) }.getOrNull() ?: run {
+                error = "Enter a valid balance"
+                return
+            }
+        } else BigDecimal.ZERO
+        onSave(name, bank, balance)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -189,6 +211,11 @@ private fun AccountEditDialog(
                     onValueChange = { name = it },
                     label = { Text("Account name") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Next,
+                    ),
+                    keyboardActions = KeyboardActions(onNext = { bankFocus.requestFocus() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
@@ -197,7 +224,15 @@ private fun AccountEditDialog(
                     onValueChange = { bank = it },
                     label = { Text("Bank (optional)") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = if (showBalance) ImeAction.Next else ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { balanceFocus.requestFocus() },
+                        onDone = { focusManager.clearFocus(); save() },
+                    ),
+                    modifier = Modifier.fillMaxWidth().focusRequester(bankFocus),
                 )
                 if (showBalance) {
                     Spacer(Modifier.height(12.dp))
@@ -206,8 +241,12 @@ private fun AccountEditDialog(
                         onValueChange = { balanceText = it.filter { c -> c.isDigit() || c == '.' } },
                         label = { Text("Initial balance (IDR)") },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); save() }),
+                        modifier = Modifier.fillMaxWidth().focusRequester(balanceFocus),
                     )
                 }
                 if (error != null) {
@@ -217,19 +256,7 @@ private fun AccountEditDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (name.isBlank()) {
-                    error = "Account name is required"
-                    return@TextButton
-                }
-                val balance = if (showBalance) {
-                    runCatching { BigDecimal(balanceText) }.getOrNull() ?: run {
-                        error = "Enter a valid balance"
-                        return@TextButton
-                    }
-                } else BigDecimal.ZERO
-                onSave(name, bank, balance)
-            }) { Text("Save") }
+            TextButton(onClick = { save() }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
