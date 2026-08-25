@@ -573,11 +573,117 @@ class TestProcessTelegramUpdate:
 
         result = await process_telegram_update(self.db, self._make_update("   "))
 
-        assert "can only process text messages" in result
+        assert "can only process text or receipt photos" in result
+
+    def _make_photo_update(self) -> dict:
+        """Create a mock Telegram photo update dict."""
+        return {
+            "update_id": 1,
+            "message": {
+                "message_id": 1,
+                "date": 1234567890,
+                "chat": {"id": self.chat_id, "type": "private"},
+                "from": {"id": self.telegram_id, "is_bot": False, "first_name": "Test"},
+                "photo": [
+                    {"file_id": "small", "width": 320, "height": 240, "file_size": 1000},
+                    {"file_id": "large", "width": 1280, "height": 960, "file_size": 50000},
+                ],
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_photo_not_linked_returns_link_instruction(self):
+        """Test photo message when not linked returns link instruction."""
+        self.db.scalar.return_value = None
+
+        result = await process_telegram_update(self.db, self._make_photo_update())
+
+        assert "not linked" in result
+
+    @pytest.mark.asyncio
+    async def test_photo_receipt_saves_transaction(self):
+        """Test a photo receipt is OCR'd and saved (same concept as Android)."""
+        link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
+        self.db.scalar.return_value = link
+
+        user = User(id=self.user_id, display_name="Test User", email="test@example.com")
+        self.db.get.return_value = user
+
+        account = Account(
+            id=uuid.uuid4(),
+            user_id=self.user_id,
+            account_name="Cash",
+            initial_balance=Decimal("0.00"),
+            is_active=True,
+        )
+        category = Category(
+            id=uuid.uuid4(),
+            name="Other",
+            type="expense",
+            is_active=True,
+            user_id=None,
+        )
+        tx = Transaction(id=uuid.uuid4(), user_id=self.user_id, type="expense")
+        tx.total_amount = Decimal("42000")
+        tx.note = "Mixue"
+        tx.items = []
+
+        from app.core.receipt_ocr import ParsedReceipt, ReceiptItem
+
+        parsed = ParsedReceipt(
+            type="expense",
+            merchant="Mixue",
+            date="2026-08-25",
+            items=[
+                ReceiptItem(name="Ice Cream Tofee Hazelnut Latte (M)", qty=Decimal("2"), price=Decimal("21000"))
+            ],
+        )
+
+        with (
+            patch(
+                "app.core.telegram_service._download_telegram_file",
+                new=AsyncMock(return_value=b"fake-image-bytes"),
+            ),
+            patch(
+                "app.core.telegram_service.parse_receipt_image",
+                new=AsyncMock(return_value=parsed),
+            ),
+            patch("app.core.telegram_service.get_or_create_category", return_value=category),
+            patch("app.core.telegram_service._find_account_by_name", return_value=account),
+            patch("app.core.telegram_service.get_or_create_default_account", return_value=account),
+            patch(
+                "app.core.telegram_service.create_transaction_internal",
+                return_value=tx,
+            ),
+        ):
+            result = await process_telegram_update(self.db, self._make_photo_update())
+
+        assert "Saved!" in result
+        assert "Mixue" in result
+
+    @pytest.mark.asyncio
+    async def test_photo_unreadable_returns_error(self):
+        """Test an unreadable receipt photo returns a friendly error."""
+        link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
+        self.db.scalar.return_value = link
+
+        with (
+            patch(
+                "app.core.telegram_service._download_telegram_file",
+                new=AsyncMock(return_value=b"fake-image-bytes"),
+            ),
+            patch(
+                "app.core.telegram_service.parse_receipt_image",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            result = await process_telegram_update(self.db, self._make_photo_update())
+
+        assert "couldn't read" in result
 
     @pytest.mark.asyncio
     async def test_non_text_message_returns_none(self):
-        """Test non-text message (e.g., photo) returns None."""
+        """Test non-text message (e.g., sticker) returns None."""
         update = {
             "update_id": 1,
             "message": {
@@ -585,7 +691,7 @@ class TestProcessTelegramUpdate:
                 "date": 1234567890,
                 "chat": {"id": self.chat_id, "type": "private"},
                 "from": {"id": self.telegram_id, "is_bot": False, "first_name": "Test"},
-                "photo": [{"file_id": "abc"}],
+                "sticker": {"file_id": "sticker_id"},
             },
         }
 

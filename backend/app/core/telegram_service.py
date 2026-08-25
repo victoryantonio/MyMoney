@@ -1,23 +1,33 @@
 """
 Telegram bot business logic.
-Handles /start (account linking), /undo, /edit, /confirm, /cancel, and
-natural language text logging.
+Handles /start (account linking), /undo, /edit, /confirm, /cancel, photo
+receipts (OCR via vision LLM), and natural language text logging.
 
 Natural-language results (text + /edit) are saved DIRECTLY — no
 /confirm confirmation gate (user decision, overrides pending-confirmation
 flow previously described by REQUIREMENTS US-05/US-08). /undo remains
 available to revert the most recent Telegram transaction.
+
+Receipt photos use the same OCR concept as the Android camera menu
+(Phase 6): merchant, line items (name/qty/price), date dd-mm-yyyy,
+category (locked → "Other" when unknown), account (matched by name →
+default account when absent).
 """
 
+from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import httpx
+import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.nlu_parser import parse_text_to_transaction
 from app.core.pending_service import cancel_pending_transaction, confirm_pending_transaction
+from app.core.receipt_ocr import ParsedReceipt, parse_receipt_image
 from app.core.report_service import get_report_summary, parse_period_arg, period_label
 from app.core.security import create_telegram_link_token
 from app.core.transaction_service import (
@@ -27,10 +37,13 @@ from app.core.transaction_service import (
     get_or_create_default_account,
     update_transaction_internal,
 )
+from app.models.account import Account
 from app.models.telegram_link import TelegramLink
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.report import ReportSummaryResponse
+
+log = structlog.get_logger()
 
 
 def _format_report(summary: ReportSummaryResponse, label: str) -> str:
@@ -47,7 +60,7 @@ def _format_report(summary: ReportSummaryResponse, label: str) -> str:
     ]
     if summary.categories:
         lines.append("")
-        lines.append("By category:")
+        lines.append("By Category:")
         for c in summary.categories:
             icon = "📈" if c.type == "income" else "📉"
             lines.append(f"{icon} {c.name}: {fmt(c.total)} IDR")
@@ -55,6 +68,125 @@ def _format_report(summary: ReportSummaryResponse, label: str) -> str:
         lines.append("")
         lines.append("No transactions in this period.")
     return "\n".join(lines)
+
+
+async def _download_telegram_file(file_id: str) -> bytes | None:
+    """Download a Telegram file (by file_id) as raw bytes via the Bot API."""
+    base = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.get(f"{base}/getFile", params={"file_id": file_id})
+            resp.raise_for_status()
+            data = resp.json()
+            file_path = data["result"]["file_path"]
+            file_resp = await client.get(f"{base}/{file_path}")
+            file_resp.raise_for_status()
+            return file_resp.content
+        except Exception as e:  # noqa: BLE001 — gateway must degrade gracefully
+            log.warning("telegram_file_download_failed", error=str(e), file_id=file_id)
+            return None
+
+
+def _find_account_by_name(db: Session, user_id: Any, account_name: str) -> Account | None:
+    """Match a user's account by name (case-insensitive). Returns None if absent."""
+    name = account_name.strip()
+    if not name:
+        return None
+    return db.scalar(
+        select(Account).where(
+            Account.user_id == user_id,
+            Account.is_active == True,  # noqa: E712
+            Account.account_name.ilike(f"%{name}%"),
+        )
+    )
+
+
+def _format_receipt_reply(parsed: ParsedReceipt, tx: Transaction) -> str:
+    """Render a saved receipt transaction as a compact Telegram text message."""
+
+    def fmt(v) -> str:
+        return f"{v:,.0f}"
+
+    icon = "📉" if tx.type == "expense" else "📈"
+    lines = [
+        f"Saved! {icon}",
+        f"🏪 {parsed.merchant or tx.note or 'Receipt'}",
+        f"💰 {fmt(tx.total_amount)} IDR",
+    ]
+    if tx.items:
+        lines.append("")
+        for item in tx.items:
+            qty = f"{item.qty:g}".rstrip("0").rstrip(".") if item.qty % 1 else f"{item.qty:.0f}"
+            lines.append(f"• {item.name} — {qty} x {fmt(item.price)}")
+    if tx.note:
+        lines.append("")
+        lines.append(f"Note: {tx.note}")
+    lines.append("")
+    lines.append("Type /undo to revert.")
+    return "\n".join(lines)
+
+
+async def _handle_photo_message(db: Session, message: dict[str, Any], chat_id: int) -> str | None:
+    """OCR a receipt photo, then save the transaction (same concept as Android)."""
+    # The user MUST be linked first (same gate as text commands).
+    link = db.scalar(select(TelegramLink).where(TelegramLink.telegram_id == chat_id))
+    if not link or not link.user_id:
+        return "Your account is not linked yet. Please type /start to link your account."
+
+    photos = message.get("photo") or []
+    if not photos:
+        return None
+    # Telegram sends several sizes — the last entry is the largest.
+    file_id = photos[-1]["file_id"]
+
+    image_bytes = await _download_telegram_file(file_id)
+    if not image_bytes:
+        return "I couldn't download your photo. Please try again."
+
+    parsed = await parse_receipt_image(image_bytes)
+    if parsed is None:
+        return (
+            "I couldn't read that nota. 😕\n"
+            "Please make sure the photo is clear and well-lit, then try again.\n"
+            "You can also type it manually, e.g. 'Mixue 2x21000'."
+        )
+
+    # ── Resolve category (locked for LLM paths — CODING_RULES §2.9.D) ────────
+    category_name = parsed.category or "Other"
+    category = get_or_create_category(
+        db, link.user_id, category_name, parsed.type, allow_create=False
+    )
+
+    # ── Resolve account (match by name → default account when absent) ────────
+    account = _find_account_by_name(db, link.user_id, parsed.account or "") or (
+        get_or_create_default_account(db, link.user_id)
+    )
+
+    # ── Transaction date (dd-mm-yyyy from receipt, else now) ─────────────────
+    tz_str = getattr(db.get(User, link.user_id), "timezone", None)
+    tz = ZoneInfo(tz_str) if tz_str else ZoneInfo("UTC")
+    if parsed.date:
+        transaction_date = datetime.strptime(parsed.date, "%Y-%m-%d").replace(tzinfo=tz)
+    else:
+        transaction_date = datetime.now(tz)
+
+    total = sum(item.qty * item.price for item in parsed.items)
+
+    tx = create_transaction_internal(
+        db=db,
+        user_id=link.user_id,
+        type=parsed.type,  # type: ignore
+        total_amount=Decimal(str(total)),
+        category_id=category.id,
+        account_id=account.id,
+        source="telegram",
+        note=parsed.merchant,
+        merchant=parsed.merchant,
+        transaction_date=transaction_date,
+        items=[item.model_dump() for item in parsed.items],
+    )
+
+    return _format_receipt_reply(parsed, tx)
 
 
 async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | None:
@@ -69,14 +201,18 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
     message = update["message"]
     chat_id = message["chat"]["id"]
 
-    # Check if message has text field (non-text messages like photos don't)
+    # ── 0. Photo receipts (OCR via vision LLM — same concept as Android) ────
+    if "photo" in message:
+        return await _handle_photo_message(db, message, chat_id)
+
+    # Non-text messages (stickers, voice, etc.) are ignored.
     if "text" not in message:
         return None
 
     text = message["text"].strip()
 
     if not text:
-        return "I can only process text messages right now. Try saying: 'Makan siang 35rb'."
+        return "I can only process text or receipt photos. Try saying: 'Makan siang 35rb' or send a photo of your nota."
 
     # ── 1. Handle /start (Account Linking) ───────────────────────────────────
     if text.startswith("/start"):
