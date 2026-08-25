@@ -13,6 +13,7 @@ import id.my.mymoney.data.model.ReportSummaryResponse
 import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.data.toUserMessage
 import java.math.BigDecimal
+import java.time.LocalDate
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,13 +25,15 @@ enum class ReportPeriod(val apiValue: String, val label: String) {
     TODAY("today", "Today"),
     WEEK("week", "This Week"),
     MONTH("month", "This Month"),
-    LAST_MONTH("last-month", "Last Month"),
+    CUSTOM("custom", "Custom"),
 }
 
 class DashboardViewModel(private val api: ApiService) : ViewModel() {
 
     data class UiState(
         val period: ReportPeriod = ReportPeriod.MONTH,
+        val customStart: LocalDate? = null,
+        val customEnd: LocalDate? = null,
         val summary: ReportSummaryResponse? = null,
         val accounts: List<AccountResponse> = emptyList(),
         val categories: List<CategoryResponse> = emptyList(),
@@ -58,6 +61,17 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
         load()
     }
 
+    /** Periode kustom: from/to (end exclusive di backend). */
+    fun selectCustomPeriod(start: LocalDate, end: LocalDate) {
+        _uiState.value = _uiState.value.copy(
+            period = ReportPeriod.CUSTOM,
+            customStart = start,
+            customEnd = end,
+            error = null,
+        )
+        load()
+    }
+
     fun refresh() = load()
 
     /**
@@ -66,10 +80,15 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
      * tidak memblokir layar.
      */
     private fun load() {
-        val period = _uiState.value.period
+        val state = _uiState.value
+        val period = state.period
+        val start = if (period == ReportPeriod.CUSTOM) state.customStart?.toString() else null
+        val end = if (period == ReportPeriod.CUSTOM) state.customEnd?.toString() else null
         _uiState.value = _uiState.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            val summaryDeferred = async { runCatching { api.reportSummary(period = period.apiValue) } }
+            val summaryDeferred = async {
+                runCatching { api.reportSummary(period = period.apiValue, start = start, end = end) }
+            }
             val accountsDeferred = async { runCatching { api.accounts() } }
             val categoriesDeferred = async { runCatching { api.categories() } }
             val txDeferred = async { runCatching { api.transactions() } }

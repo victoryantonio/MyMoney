@@ -3,7 +3,6 @@ package id.my.mymoney.ui.dashboard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,14 +22,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -39,7 +39,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +56,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,8 +76,9 @@ import id.my.mymoney.ui.theme.MoneySmall
 import id.my.mymoney.ui.theme.NetBlue
 import id.my.mymoney.util.Formatters
 import java.math.BigDecimal
-import kotlin.math.atan2
-import kotlin.math.sqrt
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 // Nominal pengganti saat mode privasi aktif (ikon mata di card saldo).
 private const val MASKED_AMOUNT = "Rp ••••••"
@@ -84,10 +86,8 @@ private const val MASKED_AMOUNT = "Rp ••••••"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    onLogout: () -> Unit,
-    onAddExpense: () -> Unit,
-    onAddIncome: () -> Unit,
     onOpenTransactions: () -> Unit,
+    onOpenCategoryList: (String) -> Unit,
     onEditTransaction: (String) -> Unit,
     viewModel: DashboardViewModel = viewModel(factory = DashboardViewModel.Factory),
 ) {
@@ -109,23 +109,22 @@ fun DashboardScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Dashboard") },
-                actions = {
-                    IconButton(onClick = onLogout) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout")
-                    }
-                },
-            )
+            TopAppBar(title = { Text("Dashboard") })
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddExpense) {
+            FloatingActionButton(onClick = { onOpenCategoryList("expense") }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add transaction")
             }
         },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            PeriodSelector(period = state.period, onSelect = viewModel::selectPeriod)
+            PeriodSelector(
+                period = state.period,
+                customStart = state.customStart,
+                customEnd = state.customEnd,
+                onSelect = viewModel::selectPeriod,
+                onCustomRange = viewModel::selectCustomPeriod,
+            )
 
             when {
                 state.loading && state.summary == null && state.accounts.isEmpty() -> LoadingView()
@@ -143,15 +142,14 @@ fun DashboardScreen(
                             onToggleHidden = { amountsHidden = !amountsHidden },
                         )
                     }
-                    item {
-                        QuickActionRow(
-                            onExpense = onAddExpense,
-                            onIncome = onAddIncome,
-                            onHistory = onOpenTransactions,
-                        )
-                    }
                     if (state.summary != null) {
-                        item { SummaryCards(summary = state.summary!!, amountsHidden = amountsHidden) }
+                        item {
+                            SummaryCards(
+                                summary = state.summary!!,
+                                amountsHidden = amountsHidden,
+                                onCardClick = onOpenCategoryList,
+                            )
+                        }
                         item {
                             CategoryBreakdownCard(
                                 summary = state.summary!!,
@@ -171,45 +169,191 @@ fun DashboardScreen(
 }
 
 // ── Period selector (DESIGN.md §8.4) ────────────────────────────────────────
-// Segmented control: lebar tetap per opsi + horizontalScroll. Tidak pernah
-// terpotong di layar sempit (fix BUG 1: chip wrapContentWidth tanpa scroll).
 @Composable
-private fun PeriodSelector(period: ReportPeriod, onSelect: (ReportPeriod) -> Unit) {
+private fun PeriodSelector(
+    period: ReportPeriod,
+    customStart: LocalDate?,
+    customEnd: LocalDate?,
+    onSelect: (ReportPeriod) -> Unit,
+    onCustomRange: (LocalDate, LocalDate) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(4.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            ReportPeriod.entries.forEach { option ->
+                val selected = option == period
+                Box(
+                    modifier = Modifier
+                        .widthIn(min = 84.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        )
+                        .clickable { onSelect(option) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        option.label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        if (period == ReportPeriod.CUSTOM) {
+            Spacer(Modifier.height(8.dp))
+            CustomRangeRow(
+                start = customStart,
+                end = customEnd,
+                onApply = onCustomRange,
+            )
+        }
+    }
+}
+
+// ── Rentang kustom From/To (menggantikan Last Month) ────────────────────────
+@Composable
+private fun CustomRangeRow(
+    start: LocalDate?,
+    end: LocalDate?,
+    onApply: (LocalDate, LocalDate) -> Unit,
+) {
+    var startDate by remember { mutableStateOf(start) }
+    var endDate by remember { mutableStateOf(end) }
+    // State dialog: null = tertutup, "from"/"to" = yang sedang dipilih.
+    var pickerTarget by remember { mutableStateOf<String?>(null) }
+    val today = remember { LocalDate.now() }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(4.dp)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        ReportPeriod.entries.forEach { option ->
-            val selected = option == period
-            Box(
-                modifier = Modifier
-                    .widthIn(min = 84.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                    )
-                    .clickable { onSelect(option) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    option.label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    maxLines = 1,
-                )
-            }
+        DateChip(
+            label = startDate?.toString() ?: "From",
+            onClick = { pickerTarget = "from" },
+            modifier = Modifier.weight(1f),
+        )
+        DateChip(
+            label = endDate?.toString() ?: "To",
+            onClick = { pickerTarget = "to" },
+            modifier = Modifier.weight(1f),
+        )
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .clickable(enabled = startDate != null && endDate != null) {
+                    if (startDate != null && endDate != null) {
+                        val s = startDate!!
+                        val e = endDate!!
+                        onApply(if (s.isAfter(e)) e else s, if (s.isAfter(e)) s else e)
+                    }
+                }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "Apply",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
+    }
+
+    if (pickerTarget != null) {
+        val isFrom = pickerTarget == "from"
+        DateRangePickerDialog(
+            title = if (isFrom) "From date" else "To date",
+            initial = if (isFrom) (startDate ?: today.minusDays(30)) else (endDate ?: today),
+            onPick = {
+                if (isFrom) startDate = it else endDate = it
+                pickerTarget = null
+            },
+            onDismiss = { pickerTarget = null },
+        )
+    }
+}
+
+@Composable
+private fun DateChip(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (label == "From" || label == "To") {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            maxLines = 1,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateRangePickerDialog(
+    title: String,
+    initial: LocalDate,
+    onPick: (LocalDate) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val pickerState = rememberDatePickerState(
+        initialSelectedDateMillis = initial
+            .atStartOfDay(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli(),
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                pickerState.selectedDateMillis?.let { millis ->
+                    onPick(
+                        Instant.ofEpochMilli(millis)
+                            .atZone(ZoneId.systemDefault())
+                            .toLocalDate(),
+                    )
+                }
+                onDismiss()
+            }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    ) {
+        DatePicker(state = pickerState)
     }
 }
 
@@ -257,62 +401,42 @@ private fun BalanceCard(
     }
 }
 
-// ── Quick actions (icon Material Symbols outlined) ──────────────────────────
-@Composable
-private fun QuickActionRow(
-    onExpense: () -> Unit,
-    onIncome: () -> Unit,
-    onHistory: () -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Income di paling kiri.
-        QuickAction("Income", Icons.Outlined.ArrowUpward, IncomeGreen, onIncome, Modifier.weight(1f))
-        QuickAction("Expense", Icons.Outlined.ArrowDownward, ExpenseRed, onExpense, Modifier.weight(1f))
-        QuickAction("History", Icons.Outlined.History, MaterialTheme.colorScheme.primary, onHistory, Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun QuickAction(
-    label: String,
-    icon: ImageVector,
-    tint: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(
-        modifier = modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
-        }
-    }
-}
-
 // ── Ringkasan Income/Expense/Net ────────────────────────────────────────────
-// Card berbagi lebar proporsional (weight(1f)) — tidak ada lebar tetap yang
-// menyempit. Nominal IBM Plex Mono maxLines=1 overflow Visible + autoSize:
-// data finansial tidak boleh terpotong (diuji dengan nilai 7 digit).
+// Tap card → layar daftar kategori tipe tsb (DESIGN.md §8.5).
 @Composable
-private fun SummaryCards(summary: ReportSummaryResponse, amountsHidden: Boolean) {
+private fun SummaryCards(
+    summary: ReportSummaryResponse,
+    amountsHidden: Boolean,
+    onCardClick: (String) -> Unit,
+) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        SummaryCard("Income", summary.income, IncomeGreen, Modifier.weight(1f), amountsHidden)
-        SummaryCard("Expense", summary.expense, ExpenseRed, Modifier.weight(1f), amountsHidden)
-        SummaryCard("Net", summary.netDecimal, NetBlue, Modifier.weight(1f), amountsHidden)
+        SummaryCard(
+            label = "Income",
+            amount = summary.income,
+            color = IncomeGreen,
+            icon = Icons.Outlined.ArrowUpward,
+            modifier = Modifier.weight(1f),
+            amountsHidden = amountsHidden,
+            onClick = { onCardClick("income") },
+        )
+        SummaryCard(
+            label = "Expense",
+            amount = summary.expense,
+            color = ExpenseRed,
+            icon = Icons.Outlined.ArrowDownward,
+            modifier = Modifier.weight(1f),
+            amountsHidden = amountsHidden,
+            onClick = { onCardClick("expense") },
+        )
+        SummaryCard(
+            label = "Net",
+            amount = summary.netDecimal,
+            color = NetBlue,
+            icon = Icons.Outlined.Balance,
+            modifier = Modifier.weight(1f),
+            amountsHidden = amountsHidden,
+            onClick = { onCardClick("all") },
+        )
     }
 }
 
@@ -321,21 +445,40 @@ private fun SummaryCard(
     label: String,
     amount: BigDecimal,
     color: Color,
+    icon: ImageVector,
     modifier: Modifier = Modifier,
     amountsHidden: Boolean = false,
+    onClick: () -> Unit,
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
         // §3: card = surface-variant — bukan tint warna translusen (sumber silau light mode).
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(16.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
                 if (amountsHidden) MASKED_AMOUNT else Formatters.idr(amount),
                 style = MoneyMedium,
@@ -375,24 +518,27 @@ private fun CategoryBreakdownCard(
                 return@Card
             }
 
-            if (expenseCats.isNotEmpty()) {
-                DonutChart(
-                    cats = expenseCats,
-                    selectedCategory = selectedCategory,
-                    onSelect = onCategorySelect,
-                )
-                Spacer(Modifier.height(12.dp))
-            }
+            // Donut default: income vs expense (§8.5).
+            IncomeExpenseDonut(
+                income = summary.income,
+                expense = summary.expense,
+                amountsHidden = false,
+            )
+            Spacer(Modifier.height(12.dp))
 
-            val expenseMax = expenseCats.maxOfOrNull { it.totalDecimal } ?: BigDecimal.ONE
-            expenseCats.forEach { cat ->
-                CategoryRow(
-                    cat = cat,
-                    color = ExpenseRed,
-                    max = expenseMax,
-                    selected = selectedCategory == cat.name,
-                    onClick = { onCategorySelect(cat.name) },
-                )
+            if (expenseCats.isNotEmpty()) {
+                Text("Expense", style = MaterialTheme.typography.labelLarge, color = ExpenseRed)
+                Spacer(Modifier.height(4.dp))
+                val expenseMax = expenseCats.maxOfOrNull { it.totalDecimal } ?: BigDecimal.ONE
+                expenseCats.forEach { cat ->
+                    CategoryRow(
+                        cat = cat,
+                        color = ExpenseRed,
+                        max = expenseMax,
+                        selected = selectedCategory == cat.name,
+                        onClick = { onCategorySelect(cat.name) },
+                    )
+                }
             }
 
             if (incomeCats.isNotEmpty()) {
@@ -433,80 +579,98 @@ private fun CategoryBreakdownCard(
     }
 }
 
-/** Donut chart pengeluaran. Tap slice = filter daftar transaksi. */
+/** Donut income vs expense — dua segmen, nilai net di tengah. */
 @Composable
-private fun DonutChart(
-    cats: List<CategoryTotal>,
-    selectedCategory: String?,
-    onSelect: (String) -> Unit,
+private fun IncomeExpenseDonut(
+    income: BigDecimal,
+    expense: BigDecimal,
+    amountsHidden: Boolean,
 ) {
-    val total = cats.fold(BigDecimal.ZERO) { acc, cat -> acc + cat.totalDecimal }
-    if (total <= BigDecimal.ZERO) return
-
-    val fractions = cats.map { (it.totalDecimal / total).toFloat() }
-    // Palet monokrom turunan token expense — bukan warna random (DESIGN.md §8.4).
-    // Alpha puncak dibatasi 0.85 agar tidak menyilaukan di light mode.
-    val palette = List(cats.size) { i ->
-        ExpenseRed.copy(alpha = (0.85f - 0.16f * i).coerceAtLeast(0.28f))
+    val total = income + expense
+    if (total <= BigDecimal.ZERO) {
+        EmptyState("No transactions in this period", modifier = Modifier.height(120.dp))
+        return
     }
+    val incomeFraction = (income / total).toFloat().coerceIn(0f, 1f)
+    val expenseFraction = (expense / total).toFloat().coerceIn(0f, 1f)
+    val net = income - expense
+
+    // Baca token warna di konteks composable (draw scope Canvas bukan composable).
+    val incomeColor = IncomeGreen
+    val expenseColor = ExpenseRed
 
     Box(contentAlignment = Alignment.Center) {
-        Canvas(
-            modifier = Modifier
-                .size(160.dp)
-                .pointerInput(cats, selectedCategory) {
-                    detectTapGestures { offset ->
-                        val stroke = 18.dp.toPx()
-                        val center = Offset(size.width / 2f, size.height / 2f)
-                        val dx = offset.x - center.x
-                        val dy = offset.y - center.y
-                        val dist = sqrt(dx * dx + dy * dy)
-                        val outer = minOf(size.width, size.height) / 2f
-                        val inner = outer - stroke
-                        if (dist in inner..outer) {
-                            var angle = Math.toDegrees(atan2(dy, dx).toDouble()).toFloat() + 90f
-                            if (angle < 0f) angle += 360f
-                            var acc = 0f
-                            cats.forEachIndexed { index, cat ->
-                                val sweep = fractions[index] * 360f
-                                if (angle in acc..(acc + sweep)) {
-                                    onSelect(cat.name)
-                                    return@detectTapGestures
-                                }
-                                acc += sweep
-                            }
-                        }
-                    }
-                },
-        ) {
+        Canvas(modifier = Modifier.size(160.dp)) {
             val stroke = 18.dp.toPx()
             val diameter = minOf(size.width, size.height) - stroke
             val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
             var startAngle = -90f
-            cats.forEachIndexed { index, cat ->
-                val sweep = fractions[index] * 360f
-                val gap = if (cat.name == selectedCategory) 0f else 2f
-                drawArc(
-                    color = palette[index],
-                    startAngle = startAngle,
-                    sweepAngle = (sweep - gap).coerceAtLeast(0f),
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = Size(diameter, diameter),
-                    style = Stroke(width = stroke),
-                )
-                startAngle += sweep
-            }
+            // Income segmen dulu (dari atas, searah jarum jam).
+            drawArc(
+                color = incomeColor,
+                startAngle = startAngle,
+                sweepAngle = incomeFraction * 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = Size(diameter, diameter),
+                style = Stroke(width = stroke),
+            )
+            startAngle += incomeFraction * 360f
+            drawArc(
+                color = expenseColor,
+                startAngle = startAngle,
+                sweepAngle = expenseFraction * 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = Size(diameter, diameter),
+                style = Stroke(width = stroke),
+            )
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(Formatters.idr(total), style = MoneyMedium, color = MaterialTheme.colorScheme.onSurface)
             Text(
-                "Expenses",
+                if (amountsHidden) MASKED_AMOUNT else Formatters.idr(net),
+                style = MoneyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                "Net",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+    Spacer(Modifier.height(8.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LegendDot(IncomeGreen)
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "Income",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(16.dp))
+        LegendDot(ExpenseRed)
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "Expense",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun LegendDot(color: Color) {
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(color),
+    )
 }
 
 /**

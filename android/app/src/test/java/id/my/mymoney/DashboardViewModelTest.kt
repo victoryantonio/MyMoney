@@ -67,11 +67,11 @@ class DashboardViewModelTest {
         advanceUntilIdle()
         api.reportPeriods.clear()
 
-        vm.selectPeriod(ReportPeriod.LAST_MONTH)
+        vm.selectPeriod(ReportPeriod.WEEK)
         advanceUntilIdle()
 
-        assertEquals("last-month", api.reportPeriods.last())
-        assertEquals(ReportPeriod.LAST_MONTH, vm.uiState.value.period)
+        assertEquals("week", api.reportPeriods.last())
+        assertEquals(ReportPeriod.WEEK, vm.uiState.value.period)
     }
 
     @Test
