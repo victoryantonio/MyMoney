@@ -1,10 +1,12 @@
 """
 Authentication API routes.
 
-POST /api/auth/register  — create a new user account
-POST /api/auth/login     — authenticate and receive JWT tokens
-POST /api/auth/refresh   — exchange a refresh token for a new access token
-GET  /api/auth/me        — return the current user's profile
+POST /api/auth/register        — create a new user account
+POST /api/auth/login           — authenticate and receive JWT tokens
+POST /api/auth/refresh         — exchange a refresh token for a new access token
+GET  /api/auth/me              — return the current user's profile
+POST /api/auth/forgot-password — request a password reset link (anti-enumeration)
+POST /api/auth/reset-password  — exchange a reset token for a new password
 """
 
 import uuid
@@ -16,9 +18,11 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_active_user
 from app.core.audit_service import record_audit
+from app.core.config import settings
 from app.core.rate_limit import limiter
 from app.core.security import (
     create_access_token,
+    create_password_reset_token,
     create_refresh_token,
     decode_token,
     hash_password,
@@ -29,7 +33,9 @@ from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
     AccessTokenResponse,
+    ForgotPasswordRequest,
     RefreshTokenRequest,
+    ResetPasswordRequest,
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
@@ -167,3 +173,76 @@ def refresh_access_token(body: RefreshTokenRequest, db: Session = Depends(get_db
 def get_me(current_user: User = Depends(require_active_user)) -> User:
     """Return the currently authenticated user's profile."""
     return current_user
+
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)) -> dict:
+    """
+    Step 1 of password reset — ALWAYS returns the same generic message,
+    regardless of whether the email exists (anti user-enumeration, §10 security).
+
+    If the email IS registered: generate a short-lived signed reset token
+    (30 min, type=password_reset) and deliver a reset link.
+
+    Delivery: no SMTP is configured in this deployment yet, so the reset link
+    is logged to the server log (structlog). Wire this to a real email provider
+    by adding SMTP settings to config and swapping the log call for a send.
+    """
+    generic_message = {
+        "message": "If that email is registered, we've sent a password reset link to it.",
+    }
+
+    user = db.scalar(select(User).where(User.email == body.email.lower()))
+    if user is None or not user.is_active:
+        # Burn identical work regardless of existence (timing-side hygiene).
+        return generic_message
+
+    token = create_password_reset_token(str(user.id))
+    reset_url = f"{settings.app_base_url}/reset-password?token={token}"
+    log.info(
+        "password_reset_link_generated",
+        user_id=str(user.id),
+        email=user.email,
+        reset_url=reset_url,
+        expires_in_minutes=30,
+    )
+    # TODO(phase-2): send `reset_url` via email (SMTP) instead of logging it.
+    return generic_message
+
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK)
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)) -> dict:
+    """
+    Step 2 of password reset — verify the signed token and set a new password.
+
+    The token is a JWT (type=password_reset, 30 min expiry). A single-use
+    guarantee is out of scope for Phase 1 (stateless tokens); the short expiry
+    bounds the window.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Invalid or expired reset token",
+    )
+    try:
+        user_id_str = decode_token(body.token, expected_type="password_reset")
+        user_id = uuid.UUID(user_id_str)
+    except Exception:
+        raise credentials_exception
+
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise credentials_exception
+
+    user.hashed_password = hash_password(body.new_password)
+    record_audit(
+        db,
+        user_id=user.id,
+        action="update",
+        entity_type="user",
+        entity_id=user.id,
+        new_value={"password_reset": True},
+        source="app",
+    )
+    db.commit()
+    log.info("password_reset_completed", user_id=str(user.id))
+    return {"message": "Password has been reset. You can now log in."}

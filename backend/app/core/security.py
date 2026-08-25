@@ -41,7 +41,7 @@ def needs_rehash(hashed: str) -> bool:
 
 
 # ── JWT token creation ─────────────────────────────────────────────────────
-TokenType = Literal["access", "refresh", "telegram_link"]
+TokenType = Literal["access", "refresh", "telegram_link", "password_reset"]
 
 
 def _create_token(subject: str, token_type: TokenType, expires_delta: timedelta) -> str:
@@ -50,7 +50,7 @@ def _create_token(subject: str, token_type: TokenType, expires_delta: timedelta)
 
     Payload fields:
       sub  — the user's UUID as string (or telegram_id for telegram_link tokens)
-      type — one of 'access' | 'refresh' | 'telegram_link'
+      type — one of 'access' | 'refresh' | 'telegram_link' | 'password_reset'
       exp  — UTC expiry timestamp
       iat  — UTC issued-at timestamp
     """
@@ -91,6 +91,19 @@ def create_telegram_link_token(telegram_id: int) -> str:
         subject=str(telegram_id),
         token_type="telegram_link",
         expires_delta=timedelta(minutes=10),
+    )
+
+
+def create_password_reset_token(user_id: str) -> str:
+    """
+    Create a short-lived (30-minute) password-reset token for the given user
+    (UUID string). The token is emailed to the user as part of a reset link;
+    no OTP is stored in the DB — verification is JWT signature + expiry.
+    """
+    return _create_token(
+        subject=user_id,
+        token_type="password_reset",
+        expires_delta=timedelta(minutes=30),
     )
 
 
