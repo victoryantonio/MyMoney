@@ -149,9 +149,9 @@ private fun AccountRow(acc: AccountResponse, onEdit: () -> Unit, onDelete: () ->
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    "init ${Formatters.idr(acc.initialBalanceDecimal())}",
+                    "net ${Formatters.idr(acc.netBalanceDecimal())}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (acc.netBalanceDecimal() >= BigDecimal.ZERO) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 )
             }
             IconButton(onClick = onEdit) {
@@ -169,6 +169,9 @@ private fun AccountResponse.currentBalanceDecimal(): BigDecimal =
 
 private fun AccountResponse.initialBalanceDecimal(): BigDecimal =
     runCatching { BigDecimal(initial_balance) }.getOrDefault(BigDecimal.ZERO)
+
+private fun AccountResponse.netBalanceDecimal(): BigDecimal =
+    runCatching { BigDecimal(net_balance) }.getOrDefault(BigDecimal.ZERO)
 
 @Composable
 private fun AccountEditDialog(
