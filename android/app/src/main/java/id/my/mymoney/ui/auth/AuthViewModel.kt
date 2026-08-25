@@ -56,6 +56,18 @@ class AuthViewModel(private val repo: AuthRepository) : ViewModel() {
         viewModelScope.launch { repo.logout() }
     }
 
+    /** Anti-enumeration: backend returns the same generic message for any email. */
+    fun forgotPassword(email: String, onResult: (Result<String>) -> Unit) {
+        if (_busy.value) return
+        _error.value = null
+        _busy.value = true
+        viewModelScope.launch {
+            val result = repo.forgotPassword(email)
+            _busy.value = false
+            onResult(result)
+        }
+    }
+
     companion object {
         val Factory = viewModelFactory {
             initializer {
