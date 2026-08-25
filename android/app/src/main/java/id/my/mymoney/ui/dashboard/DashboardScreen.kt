@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Balance
@@ -32,7 +31,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -65,6 +63,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.my.mymoney.data.model.CategoryTotal
 import id.my.mymoney.data.model.ReportSummaryResponse
 import id.my.mymoney.data.model.TransactionResponse
+import id.my.mymoney.data.model.TrendPoint
+import id.my.mymoney.ui.components.CashFlowLineChart
+import id.my.mymoney.ui.components.CashFlowPoint
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
@@ -111,11 +112,6 @@ fun DashboardScreen(
         topBar = {
             TopAppBar(title = { Text("Dashboard") })
         },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { onOpenCategoryList("expense") }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add transaction")
-            }
-        },
     ) { innerPadding ->
         Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             PeriodSelector(
@@ -149,6 +145,11 @@ fun DashboardScreen(
                                 amountsHidden = amountsHidden,
                                 onCardClick = onOpenCategoryList,
                             )
+                        }
+                        // Tren arus kas harian (income hijau / expense merah) —
+                        // TASK 1: data dari GET /api/reports/trend.
+                        item {
+                            CashFlowTrendCard(points = state.trend?.points.orEmpty())
                         }
                         item {
                             CategoryBreakdownCard(
@@ -316,6 +317,41 @@ private fun DateChip(
             },
             maxLines = 1,
         )
+    }
+}
+
+// ── Tren arus kas (TASK 1: income line hijau, expense line merah) ───────────
+@Composable
+private fun CashFlowTrendCard(points: List<TrendPoint>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(
+                "Cash flow",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Tren harian pemasukan vs pengeluaran",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            CashFlowLineChart(
+                points = points.map { point ->
+                    CashFlowPoint(
+                        date = runCatching {
+                            LocalDate.parse(point.date)
+                        }.getOrDefault(LocalDate.MIN),
+                        income = point.incomeDecimal,
+                        expense = point.expenseDecimal,
+                    )
+                },
+            )
+        }
     }
 }
 

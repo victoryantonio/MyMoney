@@ -54,6 +54,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.TransactionResponse
+import id.my.mymoney.ui.components.CashFlowLineChart
+import id.my.mymoney.ui.components.CashFlowPoint
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
@@ -62,6 +64,7 @@ import id.my.mymoney.ui.theme.IncomeGreen
 import id.my.mymoney.ui.theme.MoneyMedium
 import id.my.mymoney.util.Formatters
 import java.math.BigDecimal
+import java.time.LocalDate
 
 /**
  * Account detail (TASK 4.1): header + transaction history + edit +
@@ -110,6 +113,11 @@ fun AccountDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     item(key = "header") { AccountHeaderCard(acc) }
+                    // Arus kas per akun (TASK 1): dihitung client-side dari
+                    // transaksi akun tsb — income hijau, expense merah.
+                    item(key = "cashflow") {
+                        AccountCashFlowCard(transactions = state.transactions)
+                    }
                     if (acc.is_active) {
                         item(key = "actions") {
                             Row(
@@ -238,6 +246,55 @@ private fun AccountHeaderCard(acc: AccountResponse) {
             }
         }
     }
+}
+
+// ── Arus kas per akun (TASK 1) ──────────────────────────────────────────────
+@Composable
+private fun AccountCashFlowCard(transactions: List<TransactionResponse>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(
+                "Cash flow",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Tren harian pemasukan vs pengeluaran akun ini",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            CashFlowLineChart(
+                points = buildCashFlowPoints(transactions),
+            )
+        }
+    }
+}
+
+/** Agregasi transaksi per hari (client-side): income/expense dijumlahkan. */
+private fun buildCashFlowPoints(transactions: List<TransactionResponse>): List<CashFlowPoint> {
+    if (transactions.isEmpty()) return emptyList()
+    val byDay = LinkedHashMap<LocalDate, Pair<BigDecimal, BigDecimal>>()
+    for (tx in transactions) {
+        val date = runCatching {
+            LocalDate.parse(tx.transaction_date.take(10))
+        }.getOrNull() ?: continue
+        val (income, expense) = byDay[date] ?: (BigDecimal.ZERO to BigDecimal.ZERO)
+        if (tx.isExpense) {
+            byDay[date] = income to (expense + tx.totalAmountDecimal)
+        } else {
+            byDay[date] = (income + tx.totalAmountDecimal) to expense
+        }
+    }
+    return byDay.map { (date, pair) ->
+        CashFlowPoint(date = date, income = pair.first, expense = pair.second)
+    }.sortedBy { it.date }
 }
 
 /**

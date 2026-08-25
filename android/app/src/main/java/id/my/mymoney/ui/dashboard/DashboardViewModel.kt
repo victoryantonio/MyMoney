@@ -10,6 +10,7 @@ import id.my.mymoney.data.api.ApiService
 import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.data.model.ReportSummaryResponse
+import id.my.mymoney.data.model.ReportTrendResponse
 import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.data.toUserMessage
 import java.math.BigDecimal
@@ -35,6 +36,7 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
         val customStart: LocalDate? = null,
         val customEnd: LocalDate? = null,
         val summary: ReportSummaryResponse? = null,
+        val trend: ReportTrendResponse? = null,
         val accounts: List<AccountResponse> = emptyList(),
         val categories: List<CategoryResponse> = emptyList(),
         val recentTransactions: List<TransactionResponse> = emptyList(),
@@ -89,17 +91,22 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
             val summaryDeferred = async {
                 runCatching { api.reportSummary(period = period.apiValue, start = start, end = end) }
             }
+            val trendDeferred = async {
+                runCatching { api.reportTrend(period = period.apiValue, start = start, end = end) }
+            }
             val accountsDeferred = async { runCatching { api.accounts() } }
             val categoriesDeferred = async { runCatching { api.categories() } }
             val txDeferred = async { runCatching { api.transactions() } }
 
             val summaryRes = summaryDeferred.await()
+            val trendRes = trendDeferred.await()
             val accountsRes = accountsDeferred.await()
             val categoriesRes = categoriesDeferred.await()
             val txRes = txDeferred.await()
 
             _uiState.value = _uiState.value.copy(
                 summary = summaryRes.getOrNull(),
+                trend = trendRes.getOrNull(),
                 accounts = accountsRes.getOrDefault(emptyList()),
                 categories = categoriesRes.getOrDefault(emptyList()),
                 recentTransactions = txRes.getOrNull()?.items.orEmpty(),
