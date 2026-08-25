@@ -15,6 +15,7 @@ import id.my.mymoney.data.model.RefreshRequest
 import id.my.mymoney.data.model.RefreshResponse
 import id.my.mymoney.data.model.RegisterRequest
 import id.my.mymoney.data.model.ReportSummaryResponse
+import id.my.mymoney.data.model.ReportTrendResponse
 import id.my.mymoney.data.model.ResetPasswordRequest
 import id.my.mymoney.data.model.TokenResponse
 import id.my.mymoney.data.model.TransactionCreateRequest
@@ -235,5 +236,19 @@ class FakeApiService : ApiService {
         reportPeriods += period
         if (reportShouldFail) throw IOException("network")
         return report
+    }
+
+    var reportTrendShouldFail: Boolean = false
+    var reportTrendResponse: ReportTrendResponse = ReportTrendResponse(
+        start_date = "2026-08-01T00:00:00+07:00",
+        end_date = "2026-08-31T00:00:00+07:00",
+        points = emptyList(),
+    )
+    val trendPeriods: MutableList<String?> = mutableListOf()
+
+    override suspend fun reportTrend(period: String?, start: String?, end: String?): ReportTrendResponse {
+        trendPeriods += period
+        if (reportTrendShouldFail) throw IOException("network")
+        return reportTrendResponse
     }
 }

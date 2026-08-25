@@ -77,3 +77,17 @@ data class TransactionListResponse(
     val next_cursor: String? = null,
     val total_count: Int = 0,
 )
+
+/**
+ * Hasil OCR dari alur kamera, ditulis ke AppContainer.pendingReceipt lalu
+ * dibaca oleh TransactionFormScreen saat membuka form baru — jadi kamera dan
+ * tombol "+" membuka SATU form New Transaction yang sama (multi-item).
+ */
+@Serializable
+data class PendingReceiptData(
+    val type: String, // "expense" | "income"
+    val merchant: String,
+    val items: List<TransactionItemCreate>,
+    val suggestedCategoryId: String? = null,
+    val suggestedAccountId: String? = null,
+)

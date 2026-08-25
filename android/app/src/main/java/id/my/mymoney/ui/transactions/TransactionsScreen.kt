@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,6 +54,7 @@ import id.my.mymoney.util.Formatters
 @Composable
 fun TransactionsScreen(
     onAdd: () -> Unit,
+    onCapture: () -> Unit,
     onEdit: (String) -> Unit,
     refreshTrigger: Boolean = false,
     viewModel: TransactionsViewModel = viewModel(factory = TransactionsViewModel.Factory),
@@ -78,8 +80,21 @@ fun TransactionsScreen(
     Scaffold(
         topBar = { TopAppBar(title = { Text("Transactions") }) },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAdd) {
-                Icon(Icons.Filled.Add, contentDescription = "Add transaction")
+            // TASK 1: dua FAB bertumpuk — kamera (capture nota) DI ATAS "+".
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                FloatingActionButton(
+                    onClick = onCapture,
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(Icons.Outlined.CameraAlt, contentDescription = "Capture receipt")
+                }
+                FloatingActionButton(onClick = onAdd) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add transaction")
+                }
             }
         },
     ) { innerPadding ->
@@ -94,7 +109,7 @@ fun TransactionsScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp
+                            start = 16.dp, end = 16.dp, top = 8.dp, bottom = 160.dp
                         ),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {

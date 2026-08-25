@@ -15,6 +15,7 @@ import id.my.mymoney.data.model.RefreshResponse
 import id.my.mymoney.data.model.RegisterRequest
 import id.my.mymoney.data.model.ResetPasswordRequest
 import id.my.mymoney.data.model.ReportSummaryResponse
+import id.my.mymoney.data.model.ReportTrendResponse
 import id.my.mymoney.data.model.TokenResponse
 import id.my.mymoney.data.model.TransactionCreateRequest
 import id.my.mymoney.data.model.TransactionListResponse
@@ -112,4 +113,11 @@ interface ApiService {
         @Query("start") start: String? = null,
         @Query("end") end: String? = null,
     ): ReportSummaryResponse
+
+    @GET("api/reports/trend")
+    suspend fun reportTrend(
+        @Query("period") period: String? = null,
+        @Query("start") start: String? = null,
+        @Query("end") end: String? = null,
+    ): ReportTrendResponse
 }

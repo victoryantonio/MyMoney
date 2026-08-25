@@ -14,7 +14,7 @@ import id.my.mymoney.MyMoneyApp
 import id.my.mymoney.data.api.ApiService
 import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.CategoryResponse
-import id.my.mymoney.data.model.TransactionCreateRequest
+import id.my.mymoney.data.model.PendingReceiptData
 import id.my.mymoney.data.model.TransactionItemCreate
 import id.my.mymoney.data.toUserMessage
 import java.math.BigDecimal
@@ -39,7 +39,19 @@ data class ReceiptItem(
         }.getOrDefault(BigDecimal.ZERO)
 }
 
-class ReceiptViewModel(private val api: ApiService) : ViewModel() {
+/**
+ * Keyword yang menandakan nota adalah pemasukan (income). Default = expense
+ * (user bisa toggle manual di form) — TASK 3: OCR classification.
+ */
+private val INCOME_KEYWORDS = listOf(
+    "gaji", "salary", "income", "pendapatan", "pemasukan", "transfer masuk",
+    "dana masuk", "topup", "top up", "credit", "uang masuk", "bonus", "dividen",
+)
+
+class ReceiptViewModel(
+    private val api: ApiService,
+    private val pendingReceipt: MutableStateFlow<PendingReceiptData?>,
+) : ViewModel() {
 
     data class UiState(
         val items: List<ReceiptItem> = emptyList(),
@@ -75,7 +87,12 @@ class ReceiptViewModel(private val api: ApiService) : ViewModel() {
         }
     }
 
-    /** Jalankan ML Kit OCR lalu parse baris nota jadi items. */
+    /**
+     * Jalankan ML Kit OCR lalu parse baris nota jadi items. Setelah itu
+     * klasifikasi otomatis (TASK 3): type (default expense, income bila ada
+     * keyword), kategori & akun dicocokkan dengan nama yang muncul di teks.
+     * Hasilnya ditulis ke [pendingReceipt] agar form New Transaction mengisinya.
+     */
     fun processBitmap(bitmap: Bitmap) {
         if (_uiState.value.processing) return
         _uiState.value = _uiState.value.copy(processing = true, error = null)
@@ -90,41 +107,33 @@ class ReceiptViewModel(private val api: ApiService) : ViewModel() {
             }
             result.onSuccess { raw ->
                 val parsed = ReceiptParser.parse(raw)
+                val type = if (INCOME_KEYWORDS.any { raw.lowercase().contains(it) }) "income" else "expense"
                 _uiState.value = _uiState.value.copy(
                     items = parsed.items,
                     merchant = parsed.merchant,
                     ocrText = raw,
+                    type = type,
                     processing = false,
                 )
+                writePendingReceipt(raw, type)
             }.onFailure {
                 _uiState.value = _uiState.value.copy(processing = false, error = it.toUserMessage())
             }
         }
     }
 
-    fun setMerchant(value: String) {
-        _uiState.value = _uiState.value.copy(merchant = value)
-    }
-
-    fun setType(value: String) {
-        _uiState.value = _uiState.value.copy(type = value)
-    }
-
-    fun updateItem(index: Int, item: ReceiptItem) {
-        val items = _uiState.value.items.toMutableList()
-        if (index in items.indices) items[index] = item
-        _uiState.value = _uiState.value.copy(items = items)
-    }
-
-    fun removeItem(index: Int) {
-        val items = _uiState.value.items.toMutableList()
-        if (index in items.indices) items.removeAt(index)
-        _uiState.value = _uiState.value.copy(items = items)
-    }
-
-    fun addItem() {
-        _uiState.value = _uiState.value.copy(
-            items = _uiState.value.items + ReceiptItem(name = "", qty = "1", price = "0"),
+    /** Klasifikasi kategori/akun + simpan hasil OCR untuk form New Transaction. */
+    private fun writePendingReceipt(raw: String, type: String) {
+        val s = _uiState.value
+        val lower = raw.lowercase()
+        val category = s.categories.firstOrNull { lower.contains(it.name.lowercase()) }
+        val account = s.accounts.firstOrNull { lower.contains(it.account_name.lowercase()) }
+        pendingReceipt.value = PendingReceiptData(
+            type = type,
+            merchant = s.merchant,
+            items = s.items.map { TransactionItemCreate(name = it.name, qty = it.qty, price = it.price) },
+            suggestedCategoryId = category?.id,
+            suggestedAccountId = account?.id,
         )
     }
 
@@ -132,59 +141,11 @@ class ReceiptViewModel(private val api: ApiService) : ViewModel() {
         _uiState.value = _uiState.value.copy(error = message)
     }
 
-    val total: BigDecimal
-        get() = _uiState.value.items.fold(BigDecimal.ZERO) { acc, item -> acc + item.lineTotal }
-
-    /**
-     * Simpan SEMUA baris item sebagai SATU transaksi (contoh: nota Mi Gacoan
-     * = satu transaksi dengan banyak line item). Total = jumlah qty×price.
-     */
-    fun save(
-        categoryId: String,
-        accountId: String,
-        note: String?,
-        onDone: (Boolean, String?) -> Unit,
-    ) {
-        if (_uiState.value.saving) return
-        val items = _uiState.value.items.filter {
-            it.name.isNotBlank() && (it.price.toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO
-        }
-        if (items.isEmpty()) {
-            onDone(false, "Tambahkan minimal satu item dengan harga valid")
-            return
-        }
-        val totalAmount = items.fold(BigDecimal.ZERO) { acc, item -> acc + item.lineTotal }
-        if (totalAmount <= BigDecimal.ZERO) {
-            onDone(false, "Total harus lebih dari 0")
-            return
-        }
-        _uiState.value = _uiState.value.copy(saving = true, error = null)
-        viewModelScope.launch {
-            val request = TransactionCreateRequest(
-                type = _uiState.value.type,
-                total_amount = totalAmount.toPlainString(),
-                category_id = categoryId,
-                account_id = accountId,
-                merchant = _uiState.value.merchant.takeIf { it.isNotBlank() },
-                note = note?.takeIf { it.isNotBlank() },
-                transaction_date = java.time.OffsetDateTime.now()
-                    .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                items = items.map {
-                    TransactionItemCreate(name = it.name, qty = it.qty, price = it.price)
-                },
-            )
-            val result = runCatching { api.createTransaction(request) }
-            _uiState.value = _uiState.value.copy(saving = false)
-            result.onSuccess { onDone(true, null) }
-                .onFailure { onDone(false, it.toUserMessage()) }
-        }
-    }
-
     companion object {
         val Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as MyMoneyApp
-                ReceiptViewModel(app.container.api)
+                ReceiptViewModel(app.container.api, app.container.pendingReceipt)
             }
         }
     }
