@@ -10,7 +10,11 @@ import java.util.Locale
 object Formatters {
 
     private val idrFormat: NumberFormat =
-        NumberFormat.getCurrencyInstance(Locale.forLanguageTag("id-ID"))
+        NumberFormat.getCurrencyInstance(Locale.forLanguageTag("id-ID")).apply {
+            // Rupiah tanpa desimal: Rp250.000, bukan Rp250.000,00.
+            maximumFractionDigits = 0
+            minimumFractionDigits = 0
+        }
 
     private val dateFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH)

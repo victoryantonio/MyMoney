@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +78,9 @@ import java.math.BigDecimal
 import kotlin.math.atan2
 import kotlin.math.sqrt
 
+// Nominal pengganti saat mode privasi aktif (ikon mata di card saldo).
+private const val MASKED_AMOUNT = "Rp ••••••"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
@@ -90,6 +95,9 @@ fun DashboardScreen(
 
     // Filter kategori aktif dari tap donut/legend (§8.4) — state lokal, tanpa network call.
     var selectedCategory by remember { mutableStateOf<String?>(null) }
+
+    // Privasi (§8.4): ikon mata coret di card saldo menyembunyikan Total Balance + 3 ringkasan.
+    var amountsHidden by rememberSaveable { mutableStateOf(false) }
     val filteredTransactions = remember(state.recentTransactions, selectedCategory) {
         val nameOf = state.categories.associate { it.id to it.name }
         if (selectedCategory == null) {
@@ -128,7 +136,13 @@ fun DashboardScreen(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    item { BalanceCard(totalBalance = state.totalBalance) }
+                    item {
+                        BalanceCard(
+                            totalBalance = state.totalBalance,
+                            amountsHidden = amountsHidden,
+                            onToggleHidden = { amountsHidden = !amountsHidden },
+                        )
+                    }
                     item {
                         QuickActionRow(
                             onExpense = onAddExpense,
@@ -137,7 +151,7 @@ fun DashboardScreen(
                         )
                     }
                     if (state.summary != null) {
-                        item { SummaryCards(state.summary!!) }
+                        item { SummaryCards(summary = state.summary!!, amountsHidden = amountsHidden) }
                         item {
                             CategoryBreakdownCard(
                                 summary = state.summary!!,
@@ -201,20 +215,39 @@ private fun PeriodSelector(period: ReportPeriod, onSelect: (ReportPeriod) -> Uni
 
 // ── Saldo total (DESIGN.md §8.1) ────────────────────────────────────────────
 @Composable
-private fun BalanceCard(totalBalance: BigDecimal) {
+private fun BalanceCard(
+    totalBalance: BigDecimal,
+    amountsHidden: Boolean,
+    onToggleHidden: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        // §3: card = surface-variant (menghilangkan kesan silau primaryContainer di light mode).
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-            Text(
-                "Total Balance",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Total Balance",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                // Satu ikon mata coret: tap untuk hide/show Total Balance + 3 ringkasan.
+                IconButton(onClick = onToggleHidden) {
+                    Icon(
+                        Icons.Outlined.VisibilityOff,
+                        contentDescription = if (amountsHidden) "Show amounts" else "Hide amounts",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Text(
-                Formatters.idr(totalBalance),
+                if (amountsHidden) MASKED_AMOUNT else Formatters.idr(totalBalance),
                 style = MoneyDisplay,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
@@ -232,8 +265,9 @@ private fun QuickActionRow(
     onHistory: () -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        QuickAction("Expense", Icons.Outlined.ArrowDownward, ExpenseRed, onExpense, Modifier.weight(1f))
+        // Income di paling kiri.
         QuickAction("Income", Icons.Outlined.ArrowUpward, IncomeGreen, onIncome, Modifier.weight(1f))
+        QuickAction("Expense", Icons.Outlined.ArrowDownward, ExpenseRed, onExpense, Modifier.weight(1f))
         QuickAction("History", Icons.Outlined.History, MaterialTheme.colorScheme.primary, onHistory, Modifier.weight(1f))
     }
 }
@@ -274,19 +308,26 @@ private fun QuickAction(
 // menyempit. Nominal IBM Plex Mono maxLines=1 overflow Visible + autoSize:
 // data finansial tidak boleh terpotong (diuji dengan nilai 7 digit).
 @Composable
-private fun SummaryCards(summary: ReportSummaryResponse) {
+private fun SummaryCards(summary: ReportSummaryResponse, amountsHidden: Boolean) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        SummaryCard("Income", summary.income, IncomeGreen, Modifier.weight(1f))
-        SummaryCard("Expense", summary.expense, ExpenseRed, Modifier.weight(1f))
-        SummaryCard("Net", summary.netDecimal, NetBlue, Modifier.weight(1f))
+        SummaryCard("Income", summary.income, IncomeGreen, Modifier.weight(1f), amountsHidden)
+        SummaryCard("Expense", summary.expense, ExpenseRed, Modifier.weight(1f), amountsHidden)
+        SummaryCard("Net", summary.netDecimal, NetBlue, Modifier.weight(1f), amountsHidden)
     }
 }
 
 @Composable
-private fun SummaryCard(label: String, amount: BigDecimal, color: Color, modifier: Modifier = Modifier) {
+private fun SummaryCard(
+    label: String,
+    amount: BigDecimal,
+    color: Color,
+    modifier: Modifier = Modifier,
+    amountsHidden: Boolean = false,
+) {
     Card(
         modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f)),
+        // §3: card = surface-variant — bukan tint warna translusen (sumber silau light mode).
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Text(
@@ -296,7 +337,7 @@ private fun SummaryCard(label: String, amount: BigDecimal, color: Color, modifie
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                Formatters.idr(amount),
+                if (amountsHidden) MASKED_AMOUNT else Formatters.idr(amount),
                 style = MoneyMedium,
                 color = color,
                 textAlign = TextAlign.End,
@@ -404,8 +445,9 @@ private fun DonutChart(
 
     val fractions = cats.map { (it.totalDecimal / total).toFloat() }
     // Palet monokrom turunan token expense — bukan warna random (DESIGN.md §8.4).
+    // Alpha puncak dibatasi 0.85 agar tidak menyilaukan di light mode.
     val palette = List(cats.size) { i ->
-        ExpenseRed.copy(alpha = (1f - 0.18f * i).coerceAtLeast(0.25f))
+        ExpenseRed.copy(alpha = (0.85f - 0.16f * i).coerceAtLeast(0.28f))
     }
 
     Box(contentAlignment = Alignment.Center) {
