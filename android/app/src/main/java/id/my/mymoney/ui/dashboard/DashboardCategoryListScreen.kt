@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,6 +32,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -75,6 +80,8 @@ fun DashboardCategoryListScreen(
         isIncome -> "Income Categories"
         else -> "All Categories"
     }
+    // Sort kategori by nominal (Phase 6): default tertinggi ke terendah (desc).
+    var sortAsc by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -83,6 +90,15 @@ fun DashboardCategoryListScreen(
                 navigationIcon = {
                     IconButton(onClick = { onBack?.invoke() }) {
                         Icon(Icons.Outlined.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { sortAsc = !sortAsc }) {
+                        Icon(
+                            if (sortAsc) Icons.Outlined.ArrowUpward
+                            else Icons.Outlined.ArrowDownward,
+                            contentDescription = if (sortAsc) "Sort ascending" else "Sort descending",
+                        )
                     }
                 },
             )
@@ -96,6 +112,13 @@ fun DashboardCategoryListScreen(
                 val summary = state.summary
                 val cats = summary?.categories
                     ?.filter { it.type == type || type == "all" }
+                    ?.let { list ->
+                        if (sortAsc) {
+                            list.sortedBy { it.totalDecimal }
+                        } else {
+                            list.sortedByDescending { it.totalDecimal }
+                        }
+                    }
                     .orEmpty()
                 LazyColumn(
                     modifier = Modifier

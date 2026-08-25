@@ -259,7 +259,7 @@ private fun AccountCashFlowCard(transactions: List<TransactionResponse>) {
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
-                "Cash flow",
+                "Cash Flow",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )

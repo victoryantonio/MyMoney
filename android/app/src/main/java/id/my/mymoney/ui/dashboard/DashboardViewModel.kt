@@ -12,6 +12,7 @@ import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.data.model.ReportSummaryResponse
 import id.my.mymoney.data.model.ReportTrendResponse
 import id.my.mymoney.data.model.TransactionResponse
+import id.my.mymoney.data.model.TrendPoint
 import id.my.mymoney.data.toUserMessage
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -40,6 +41,10 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
         val accounts: List<AccountResponse> = emptyList(),
         val categories: List<CategoryResponse> = emptyList(),
         val recentTransactions: List<TransactionResponse> = emptyList(),
+        /** Semua halaman transaksi (cursor loop) — dipakai filter akun client-side. */
+        val allTransactions: List<TransactionResponse> = emptyList(),
+        /** Akun terpilih untuk filter. KOSONG = semua akun (default). */
+        val selectedAccountIds: Set<String> = emptySet(),
         val loading: Boolean = false,
         val error: String? = null,
     ) {
@@ -48,6 +53,88 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
             get() = accounts
                 .filter { it.is_active }
                 .fold(BigDecimal.ZERO) { acc, account -> acc + account.currentBalanceDecimal }
+
+        /** null = semua akun; non-null = subset akun yang difilter. */
+        val activeAccountFilter: Set<String>?
+            get() = if (selectedAccountIds.isEmpty()) null else selectedAccountIds
+
+        private fun periodStart(): LocalDate {
+            val today = LocalDate.now()
+            return when (period) {
+                ReportPeriod.TODAY -> today
+                ReportPeriod.WEEK -> today.minusDays((today.dayOfWeek.value - 1).toLong())
+                ReportPeriod.MONTH -> today.withDayOfMonth(1)
+                ReportPeriod.CUSTOM -> customStart ?: today.minusDays(30)
+            }
+        }
+
+        private fun periodEnd(): LocalDate {
+            val today = LocalDate.now()
+            return when (period) {
+                ReportPeriod.TODAY -> today
+                ReportPeriod.WEEK -> today
+                ReportPeriod.MONTH -> today
+                ReportPeriod.CUSTOM -> customEnd ?: today
+            }
+        }
+
+        /** Transaksi pada periode saat ini + akun terpilih (client-side filter). */
+        val filteredTransactions: List<TransactionResponse>
+            get() {
+                val active = activeAccountFilter ?: return emptyList()
+                val start = periodStart()
+                val end = periodEnd()
+                return allTransactions.filter { tx ->
+                    tx.account_id in active && runCatching {
+                        val date = LocalDate.parse(tx.transaction_date.take(10))
+                        !date.isBefore(start) && !date.isAfter(end)
+                    }.getOrDefault(true)
+                }
+            }
+
+        /** Income akun terpilih dalam periode (untuk donut saat filter aktif). */
+        val filteredIncome: BigDecimal
+            get() = filteredTransactions
+                .filter { !it.isExpense }
+                .fold(BigDecimal.ZERO) { acc, tx -> acc + tx.totalAmountDecimal }
+
+        /** Expense akun terpilih dalam periode (untuk donut saat filter aktif). */
+        val filteredExpense: BigDecimal
+            get() = filteredTransactions
+                .filter { it.isExpense }
+                .fold(BigDecimal.ZERO) { acc, tx -> acc + tx.totalAmountDecimal }
+
+        /**
+         * Tren harian client-side saat filter akun aktif: bucket per tanggal
+         * (satu pass agregasi — tanpa N+1), diurutkan naik.
+         */
+        val filteredTrendPoints: List<TrendPoint>
+            get() {
+                val active = activeAccountFilter ?: return emptyList()
+                val start = periodStart()
+                val end = periodEnd()
+                val buckets = LinkedHashMap<LocalDate, Pair<BigDecimal, BigDecimal>>()
+                allTransactions.forEach { tx ->
+                    if (tx.account_id !in active) return@forEach
+                    val date = runCatching {
+                        LocalDate.parse(tx.transaction_date.take(10))
+                    }.getOrNull() ?: return@forEach
+                    if (date.isBefore(start) || date.isAfter(end)) return@forEach
+                    val (inc, exp) = buckets[date] ?: (BigDecimal.ZERO to BigDecimal.ZERO)
+                    if (tx.isExpense) {
+                        buckets[date] = inc to (exp + tx.totalAmountDecimal)
+                    } else {
+                        buckets[date] = (inc + tx.totalAmountDecimal) to exp
+                    }
+                }
+                return buckets.toSortedMap().map { (date, pair) ->
+                    TrendPoint(
+                        date = date.toString(),
+                        income = pair.first.toPlainString(),
+                        expense = pair.second.toPlainString(),
+                    )
+                }
+            }
     }
 
     private val _uiState = MutableStateFlow(UiState())
@@ -76,6 +163,24 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
 
     fun refresh() = load()
 
+    /** Pilih/nonaktifkan satu akun; menutup akun lain mengosongkan set = semua. */
+    fun toggleAccount(accountId: String) {
+        val state = _uiState.value
+        val current = state.selectedAccountIds
+        val updated = when {
+            // Dari "semua" → pilih semua kecuali yang ditoggle (deselect satu).
+            current.isEmpty() -> state.accounts.map { it.id }.toSet() - accountId
+            accountId in current -> current - accountId
+            else -> current + accountId
+        }
+        _uiState.value = state.copy(selectedAccountIds = updated)
+    }
+
+    /** Kembali ke semua akun. */
+    fun selectAllAccounts() {
+        _uiState.value = _uiState.value.copy(selectedAccountIds = emptySet())
+    }
+
     /**
      * Report summary adalah sumber utama — kegagalannya menampilkan error screen.
      * Accounts/categories/transactions bersifat sekunder: gagal = degrade (list kosong),
@@ -96,7 +201,10 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
             }
             val accountsDeferred = async { runCatching { api.accounts() } }
             val categoriesDeferred = async { runCatching { api.categories() } }
-            val txDeferred = async { runCatching { api.transactions() } }
+            // Ambil SEMUA halaman transaksi sekali (cursor loop) — dipakai untuk
+            // filter akun client-side + recent transactions. Bukan N+1: satu loop
+            // berurutan, bukan query per-akun.
+            val txDeferred = async { runCatching { fetchAllTransactions() } }
 
             val summaryRes = summaryDeferred.await()
             val trendRes = trendDeferred.await()
@@ -109,11 +217,24 @@ class DashboardViewModel(private val api: ApiService) : ViewModel() {
                 trend = trendRes.getOrNull(),
                 accounts = accountsRes.getOrDefault(emptyList()),
                 categories = categoriesRes.getOrDefault(emptyList()),
-                recentTransactions = txRes.getOrNull()?.items.orEmpty(),
+                allTransactions = txRes.getOrDefault(emptyList()),
+                recentTransactions = txRes.getOrNull().orEmpty().take(20),
                 loading = false,
                 error = summaryRes.exceptionOrNull()?.toUserMessage(),
             )
         }
+    }
+
+    /** Keyset pagination loop — baca semua halaman transaksi (terbaru → lama). */
+    private suspend fun fetchAllTransactions(): List<TransactionResponse> {
+        val all = mutableListOf<TransactionResponse>()
+        var cursor: String? = null
+        do {
+            val page = api.transactions(cursor = cursor)
+            all += page.items
+            cursor = page.next_cursor
+        } while (cursor != null && all.size < 2000) // guard tak terbatas
+        return all
     }
 
     companion object {

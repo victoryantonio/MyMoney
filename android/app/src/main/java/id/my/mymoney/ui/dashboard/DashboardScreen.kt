@@ -3,6 +3,7 @@ package id.my.mymoney.ui.dashboard
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,20 +23,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -54,12 +62,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.CategoryTotal
 import id.my.mymoney.data.model.ReportSummaryResponse
 import id.my.mymoney.data.model.TransactionResponse
@@ -121,6 +131,14 @@ fun DashboardScreen(
                 onSelect = viewModel::selectPeriod,
                 onCustomRange = viewModel::selectCustomPeriod,
             )
+            // Filter akun (Phase 6): checklist dropdown client-side, tanpa N+1.
+            AccountFilterDropdown(
+                accounts = state.accounts,
+                selectedAccountIds = state.selectedAccountIds,
+                onToggle = viewModel::toggleAccount,
+                onSelectAll = viewModel::selectAllAccounts,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
 
             when {
                 state.loading && state.summary == null && state.accounts.isEmpty() -> LoadingView()
@@ -140,6 +158,9 @@ fun DashboardScreen(
                     }
                     if (state.summary != null) {
                         item {
+                            // Donut: saat filter akun aktif → hitung client-side;
+                            // selain itu pakai summary backend (tanpa perubahan API).
+                            val filterActive = state.activeAccountFilter != null
                             SummaryCards(
                                 summary = state.summary!!,
                                 amountsHidden = amountsHidden,
@@ -147,9 +168,15 @@ fun DashboardScreen(
                             )
                         }
                         // Tren arus kas harian (income hijau / expense merah) —
-                        // TASK 1: data dari GET /api/reports/trend.
+                        // TASK 1: data dari GET /api/reports/trend; saat filter
+                        // akun aktif → seri client-side dari allTransactions.
                         item {
-                            CashFlowTrendCard(points = state.trend?.points.orEmpty())
+                            val points = if (state.activeAccountFilter != null) {
+                                state.filteredTrendPoints
+                            } else {
+                                state.trend?.points.orEmpty()
+                            }
+                            CashFlowTrendCard(points = points)
                         }
                         item {
                             CategoryBreakdownCard(
@@ -160,10 +187,96 @@ fun DashboardScreen(
                                 },
                                 recentTransactions = filteredTransactions,
                                 onTransactionClick = onEditTransaction,
+                                // Donut ikut filter akun (client-side).
+                                donutIncome = if (state.activeAccountFilter != null) {
+                                    state.filteredIncome
+                                } else {
+                                    state.summary!!.income
+                                },
+                                donutExpense = if (state.activeAccountFilter != null) {
+                                    state.filteredExpense
+                                } else {
+                                    state.summary!!.expense
+                                },
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// ── Filter akun (Phase 6): checklist dropdown + Select all (client-side) ────
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AccountFilterDropdown(
+    accounts: List<AccountResponse>,
+    selectedAccountIds: Set<String>,
+    onToggle: (String) -> Unit,
+    onSelectAll: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val allSelected = selectedAccountIds.isEmpty() || selectedAccountIds.size >= accounts.size
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        OutlinedTextField(
+            value = if (allSelected) {
+                "Semua akun (${accounts.size})"
+            } else {
+                "${selectedAccountIds.size} akun terpilih"
+            },
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            // Select all.
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = allSelected,
+                            onCheckedChange = { onSelectAll() },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Select all", fontWeight = FontWeight.SemiBold)
+                    }
+                },
+                onClick = { onSelectAll() },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+            accounts.forEach { account ->
+                val checked = selectedAccountIds.isEmpty() || account.id in selectedAccountIds
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { onToggle(account.id) },
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                account.account_name,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    },
+                    onClick = { onToggle(account.id) },
+                )
             }
         }
     }
@@ -329,7 +442,7 @@ private fun CashFlowTrendCard(points: List<TrendPoint>) {
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
-                "Cash flow",
+                "Cash Flow",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -536,6 +649,8 @@ private fun CategoryBreakdownCard(
     onCategorySelect: (String) -> Unit,
     recentTransactions: List<TransactionResponse>,
     onTransactionClick: (String) -> Unit,
+    donutIncome: BigDecimal,
+    donutExpense: BigDecimal,
 ) {
     // §3: card = surface-variant — kontras terhadap background surface.
     Card(
@@ -544,7 +659,7 @@ private fun CategoryBreakdownCard(
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
-                "By category",
+                "By Category",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -558,10 +673,11 @@ private fun CategoryBreakdownCard(
                 return@Card
             }
 
-            // Donut default: income vs expense (§8.5).
+            // Donut default: income vs expense (§8.5). Saat filter akun aktif,
+            // nilai datang client-side dari DashboardViewModel (bukan summary).
             IncomeExpenseDonut(
-                income = summary.income,
-                expense = summary.expense,
+                income = donutIncome,
+                expense = donutExpense,
                 amountsHidden = false,
             )
             Spacer(Modifier.height(12.dp))
@@ -619,7 +735,8 @@ private fun CategoryBreakdownCard(
     }
 }
 
-/** Donut income vs expense — dua segmen, nilai net di tengah. */
+/** Donut income vs expense — dua segmen, nilai net di tengah. Long-press
+ *  menampilkan detail income & expense (Phase 6). */
 @Composable
 private fun IncomeExpenseDonut(
     income: BigDecimal,
@@ -638,8 +755,21 @@ private fun IncomeExpenseDonut(
     // Baca token warna di konteks composable (draw scope Canvas bukan composable).
     val incomeColor = IncomeGreen
     val expenseColor = ExpenseRed
+    val surfaceColor = MaterialTheme.colorScheme.surfaceVariant
 
-    Box(contentAlignment = Alignment.Center) {
+    var showDetail by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onLongPress = { showDetail = true },
+                    onTap = { showDetail = false },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
         Canvas(modifier = Modifier.size(160.dp)) {
             val stroke = 18.dp.toPx()
             val diameter = minOf(size.width, size.height) - stroke
@@ -666,17 +796,69 @@ private fun IncomeExpenseDonut(
                 style = Stroke(width = stroke),
             )
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                if (amountsHidden) MASKED_AMOUNT else Formatters.idr(net),
-                style = MoneyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                "Net",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        if (showDetail) {
+            // Tooltip long-press: income & expense (sama dengan line chart).
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = surfaceColor,
+                shadowElevation = 3.dp,
+                modifier = Modifier.padding(8.dp),
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Income: ",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            if (amountsHidden) MASKED_AMOUNT else Formatters.idr(income),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = incomeColor,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Expense: ",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            if (amountsHidden) MASKED_AMOUNT else Formatters.idr(expense),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = expenseColor,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Net: ",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            if (amountsHidden) MASKED_AMOUNT else Formatters.idr(net),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = NetBlue,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    if (amountsHidden) MASKED_AMOUNT else Formatters.idr(net),
+                    style = MoneyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Net",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -714,9 +896,9 @@ private fun LegendDot(color: Color) {
 }
 
 /**
- * Baris kategori — struktur Row terstruktur (label weight + progress bar lebar
- * tetap + nominal kanan), bukan Box+offset manual. Nominal overflow Visible
- * agar tidak terpotong (fix BUG 3: lebar label 110dp tetap + clip).
+ * Baris kategori — bar simetris (Phase 6): kolom nama lebar tetap, track bar
+ * mengambil sisa ruang (weight), kolom nominal lebar tetap → SEMUA bar mulai
+ * dari x yang sama dan sejajar; panjang bar proporsional terhadap max.
  */
 @Composable
 private fun CategoryRow(
@@ -739,20 +921,22 @@ private fun CategoryRow(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Kolom nama lebar tetap — semua track bar mulai di x yang sama.
         Text(
             cat.name,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.widthIn(max = 96.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.width(8.dp))
+        // Track bar: weight = sisa ruang → konsisten antar baris.
         Box(
             modifier = Modifier
-                .width(72.dp)
+                .weight(1f)
                 .height(8.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surface),
         ) {
             Box(
                 modifier = Modifier
@@ -762,11 +946,13 @@ private fun CategoryRow(
             )
         }
         Spacer(Modifier.width(8.dp))
+        // Kolom nominal lebar tetap — nominal sejajar kanan antar baris.
         Text(
             Formatters.idr(cat.totalDecimal),
             style = MoneySmall,
             color = color,
             textAlign = TextAlign.End,
+            modifier = Modifier.widthIn(min = 72.dp),
             maxLines = 1,
             overflow = TextOverflow.Visible,
         )
