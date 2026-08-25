@@ -17,6 +17,7 @@ import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.data.model.PendingReceiptData
 import id.my.mymoney.data.model.TransactionItemCreate
 import id.my.mymoney.data.toUserMessage
+import id.my.mymoney.ui.receipt.ReceiptParser
 import java.math.BigDecimal
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -35,7 +36,8 @@ data class ReceiptItem(
 ) {
     val lineTotal: BigDecimal
         get() = runCatching {
-            (qty.toBigDecimalOrNull() ?: BigDecimal.ONE) * (price.toBigDecimalOrNull() ?: BigDecimal.ZERO)
+            (qty.toBigDecimalOrNull() ?: BigDecimal.ONE) *
+                (ReceiptParser.parsePriceToDecimal(price) ?: BigDecimal.ZERO)
         }.getOrDefault(BigDecimal.ZERO)
 }
 
@@ -115,7 +117,7 @@ class ReceiptViewModel(
                     type = type,
                     processing = false,
                 )
-                writePendingReceipt(raw, type)
+                writePendingReceipt(parsed, type)
             }.onFailure {
                 _uiState.value = _uiState.value.copy(processing = false, error = it.toUserMessage())
             }
@@ -123,17 +125,21 @@ class ReceiptViewModel(
     }
 
     /** Klasifikasi kategori/akun + simpan hasil OCR untuk form New Transaction. */
-    private fun writePendingReceipt(raw: String, type: String) {
+    private fun writePendingReceipt(parsed: ParsedReceipt, type: String) {
         val s = _uiState.value
-        val lower = raw.lowercase()
+        val lower = s.ocrText.lowercase()
+        // Kategori: cocokkan nama kategori yang muncul di teks nota; jika tidak
+        // ada, fallback ke kategori "Other" (konsep yang sama dengan Telegram).
         val category = s.categories.firstOrNull { lower.contains(it.name.lowercase()) }
+            ?: s.categories.firstOrNull { it.name.equals("Other", ignoreCase = true) }
         val account = s.accounts.firstOrNull { lower.contains(it.account_name.lowercase()) }
         pendingReceipt.value = PendingReceiptData(
             type = type,
-            merchant = s.merchant,
+            merchant = parsed.merchant,
             items = s.items.map { TransactionItemCreate(name = it.name, qty = it.qty, price = it.price) },
             suggestedCategoryId = category?.id,
             suggestedAccountId = account?.id,
+            transactionDate = parsed.date,
         )
     }
 

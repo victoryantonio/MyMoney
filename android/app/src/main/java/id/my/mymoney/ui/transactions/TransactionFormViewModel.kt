@@ -16,6 +16,7 @@ import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.data.model.TransactionUpdateRequest
 import id.my.mymoney.data.toUserMessage
 import id.my.mymoney.ui.receipt.ReceiptItem
+import id.my.mymoney.ui.receipt.ReceiptParser
 import java.math.BigDecimal
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
@@ -157,7 +158,14 @@ class TransactionFormViewModel(
                 note = note?.takeIf { it.isNotBlank() },
                 transaction_date = transactionDate.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 items = items.map { item ->
-                    TransactionItemCreate(name = item.name, qty = item.qty, price = item.price)
+                    TransactionItemCreate(
+                        name = item.name,
+                        qty = item.qty,
+                        // Backend memakai Decimal — kirim nilai numerik murni
+                        // (strip separator "21.000" → "21000").
+                        price = ReceiptParser.parsePriceToDecimal(item.price)?.toPlainString()
+                            ?: item.price,
+                    )
                 },
             )
             val result = runCatching { api.createTransaction(request) }
@@ -191,7 +199,14 @@ class TransactionFormViewModel(
                 note = note?.takeIf { it.isNotBlank() },
                 transaction_date = transactionDate.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 items = items.map { item ->
-                    TransactionItemCreate(name = item.name, qty = item.qty, price = item.price)
+                    TransactionItemCreate(
+                        name = item.name,
+                        qty = item.qty,
+                        // Backend memakai Decimal — kirim nilai numerik murni
+                        // (strip separator "21.000" → "21000").
+                        price = ReceiptParser.parsePriceToDecimal(item.price)?.toPlainString()
+                            ?: item.price,
+                    )
                 },
             )
             val result = runCatching { api.updateTransaction(tx.id, request) }

@@ -90,4 +90,6 @@ data class PendingReceiptData(
     val items: List<TransactionItemCreate>,
     val suggestedCategoryId: String? = null,
     val suggestedAccountId: String? = null,
+    /** Tanggal dari nota dalam format "dd-MM-yyyy" (null bila tidak tercetak). */
+    val transactionDate: String? = null,
 )

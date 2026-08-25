@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -352,12 +354,21 @@ private fun PhotoPreview(
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
         bitmap?.let {
-            Image(
-                bitmap = it.asImageBitmap(),
-                contentDescription = "Receipt photo",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
-            )
+            // 9:16 full fit: area tampilan rasio 9:16, gambar utuh (letterbox,
+            // tidak di-crop) — konsep yang sama di kamera & preview (Phase 6).
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxHeight()
+                    .aspectRatio(9f / 16f),
+            ) {
+                Image(
+                    bitmap = it.asImageBitmap(),
+                    contentDescription = "Receipt photo",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
         }
         if (processing) {
             Column(

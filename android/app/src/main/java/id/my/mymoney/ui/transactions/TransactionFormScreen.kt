@@ -54,6 +54,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.my.mymoney.data.model.AccountResponse
 import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.ui.receipt.ReceiptItem
+import id.my.mymoney.ui.receipt.ReceiptParser
 import id.my.mymoney.ui.theme.ExpenseRed
 import id.my.mymoney.ui.theme.IncomeGreen
 import id.my.mymoney.ui.theme.MoneyMedium
@@ -64,6 +65,7 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 /**
  * Satu-satunya layar New Transaction (multi-item) — dipakai oleh tombol "+",
@@ -114,6 +116,16 @@ fun TransactionFormScreen(
             viewModel.applyPendingReceipt { pending ->
                 categoryId = pending.suggestedCategoryId
                 accountId = pending.suggestedAccountId
+                // Tanggal dari nota (dd-MM-yyyy) → dateMillis, bila tercetak.
+                pending.transactionDate?.let { raw ->
+                    dateMillis = runCatching {
+                        val date = LocalDate.parse(
+                            raw,
+                            DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+                        )
+                        date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    }.getOrDefault(dateMillis)
+                }
             }
             // Preselect dari quick action (Catat Pengeluaran/Pemasukan).
             if (initialType != null) viewModel.setType(initialType)
@@ -147,7 +159,7 @@ fun TransactionFormScreen(
         if (state.saving) return
         localError = null
         val validItems = state.items.filter {
-            it.name.isNotBlank() && (it.price.toBigDecimalOrNull() ?: BigDecimal.ZERO) > BigDecimal.ZERO
+            it.name.isNotBlank() && (ReceiptParser.parsePriceToDecimal(it.price) ?: BigDecimal.ZERO) > BigDecimal.ZERO
         }
         if (validItems.isEmpty()) {
             localError = "Tambahkan minimal satu item dengan nama dan harga valid"
