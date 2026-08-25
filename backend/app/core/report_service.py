@@ -12,7 +12,7 @@ Period keywords supported by `parse_period_arg` (Indonesian + English):
   - bulan-lalu / last-month / previous-month
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.models.category import Category
 from app.models.transaction import Transaction
-from app.schemas.report import CategoryTotal, ReportSummaryResponse
+from app.schemas.report import CategoryTotal, ReportSummaryResponse, ReportTrendResponse, TrendPoint
 
 # ── Period parsing ────────────────────────────────────────────────────────────
 
@@ -125,4 +125,57 @@ def get_report_summary(
         total_expense=total_expense,
         net=total_income - total_expense,
         categories=categories,
+    )
+
+
+def get_report_trend(
+    db: Session,
+    user_id,
+    *,
+    start_date: datetime,
+    end_date: datetime,
+    tz: ZoneInfo,
+) -> ReportTrendResponse:
+    """
+    Daily income/expense series for the period, bucketed by calendar day in
+    the user's timezone. SQL `GROUP BY date(...)` only (DATABASE.md §3.4).
+
+    Every day in [start_date, end_date) appears in the result — days without
+    transactions are zero-filled so the client can draw a continuous line.
+    """
+    # Convert timestamptz to the user's local wall-clock time, then take the date.
+    day_col = func.date(func.timezone(str(tz), Transaction.transaction_date))
+    rows = db.execute(
+        select(day_col.label("day"), Transaction.type, func.sum(Transaction.total_amount))
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.transaction_date >= start_date,
+            Transaction.transaction_date < end_date,
+        )
+        .group_by(day_col, Transaction.type)
+        .order_by(day_col)
+    ).all()
+
+    by_day: dict[date, dict[str, Decimal]] = {}
+    for day, tx_type, amount in rows:
+        by_day.setdefault(day, {})[tx_type] = Decimal(amount)
+
+    points: list[TrendPoint] = []
+    cursor = start_date.date()
+    end_day = end_date.date()
+    while cursor < end_day:
+        bucket = by_day.get(cursor, {})
+        points.append(
+            TrendPoint(
+                date=cursor,
+                income=bucket.get("income", Decimal("0")),
+                expense=bucket.get("expense", Decimal("0")),
+            )
+        )
+        cursor += timedelta(days=1)
+
+    return ReportTrendResponse(
+        start_date=start_date,
+        end_date=end_date,
+        points=points,
     )

@@ -88,3 +88,43 @@ def test_summary_custom_range_inverted():
         params={"start": "2026-02-01T00:00:00Z", "end": "2026-01-01T00:00:00Z"},
     )
     assert response.status_code == 422
+
+
+# ── /api/reports/trend ───────────────────────────────────────────────────────
+
+
+def test_trend_requires_auth():
+    response = client.get("/api/reports/trend")
+    assert response.status_code == 401
+
+
+def test_trend_default_month_returns_points():
+    headers = _auth_headers()
+    response = client.get("/api/reports/trend", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert set(data) == {"start_date", "end_date", "points"}
+    assert isinstance(data["points"], list)
+    # January defaults to this month → 28..31 points, all zero-filled.
+    assert 28 <= len(data["points"]) <= 31
+    first = data["points"][0]
+    assert set(first) == {"date", "income", "expense"}
+
+
+def test_trend_custom_range_zero_filled():
+    headers = _auth_headers()
+    response = client.get(
+        "/api/reports/trend",
+        headers=headers,
+        params={"start": "2026-01-01T00:00:00Z", "end": "2026-01-05T00:00:00Z"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["points"]) == 4
+    assert all(p["income"] == "0" and p["expense"] == "0" for p in data["points"])
+
+
+def test_trend_invalid_period():
+    headers = _auth_headers()
+    response = client.get("/api/reports/trend?period=year", headers=headers)
+    assert response.status_code == 422

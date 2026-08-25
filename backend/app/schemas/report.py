@@ -2,7 +2,7 @@
 Pydantic schemas for reports (US-11, US-16, US-17).
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -25,3 +25,19 @@ class ReportSummaryResponse(BaseModel):
     total_expense: Decimal = Field(default_factory=Decimal)
     net: Decimal = Field(default_factory=Decimal)
     categories: list[CategoryTotal] = Field(default_factory=list)
+
+
+class TrendPoint(BaseModel):
+    """One day of the cash-flow trend: date + income & expense totals."""
+
+    date: date
+    income: Decimal = Field(default_factory=Decimal)
+    expense: Decimal = Field(default_factory=Decimal)
+
+
+class ReportTrendResponse(BaseModel):
+    """Daily income/expense series for the period (for the line chart)."""
+
+    start_date: datetime
+    end_date: datetime  # exclusive upper bound
+    points: list[TrendPoint] = Field(default_factory=list)
