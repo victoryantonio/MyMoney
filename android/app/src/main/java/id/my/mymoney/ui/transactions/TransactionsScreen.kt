@@ -18,8 +18,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +45,6 @@ import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
-import id.my.mymoney.ui.components.MyMoneyCard
 import id.my.mymoney.ui.theme.ExpenseRed
 import id.my.mymoney.ui.theme.IncomeGreen
 import id.my.mymoney.util.Formatters
@@ -140,7 +139,11 @@ fun TransactionsScreen(
 
 @Composable
 private fun TransactionCard(tx: TransactionResponse, onClick: () -> Unit, onDelete: () -> Unit) {
-    MyMoneyCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+    // §3: card = surface-variant — kontras terhadap background surface.
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,

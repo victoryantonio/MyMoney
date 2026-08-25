@@ -68,7 +68,6 @@ import id.my.mymoney.data.model.TransactionResponse
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
-import id.my.mymoney.ui.components.MyMoneyCard
 import id.my.mymoney.ui.theme.ExpenseRed
 import id.my.mymoney.ui.theme.IncomeGreen
 import id.my.mymoney.ui.theme.MoneyDisplay
@@ -365,8 +364,11 @@ private fun BalanceCard(
     amountsHidden: Boolean,
     onToggleHidden: () -> Unit,
 ) {
-    // §3: card = surface-variant (menghilangkan kesan silau primaryContainer di light mode).
-    MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        // §3: card = surface-variant (menghilangkan kesan silau primaryContainer di light mode).
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -448,10 +450,12 @@ private fun SummaryCard(
     amountsHidden: Boolean = false,
     onClick: () -> Unit,
 ) {
-    // §3: card = surface-variant — bukan tint warna translusen (sumber silau light mode).
-    MyMoneyCard(
-        modifier = modifier,
-        onClick = onClick,
+    Card(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        // §3: card = surface-variant — bukan tint warna translusen (sumber silau light mode).
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
             Row(
@@ -497,7 +501,11 @@ private fun CategoryBreakdownCard(
     recentTransactions: List<TransactionResponse>,
     onTransactionClick: (String) -> Unit,
 ) {
-    MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
+    // §3: card = surface-variant — kontras terhadap background surface.
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Text(
                 "By category",
@@ -511,7 +519,7 @@ private fun CategoryBreakdownCard(
 
             if (expenseCats.isEmpty() && incomeCats.isEmpty()) {
                 EmptyState("No transactions in this period", modifier = Modifier.height(120.dp))
-                return@MyMoneyCard
+                return@Card
             }
 
             // Donut default: income vs expense (§8.5).

@@ -121,7 +121,7 @@ User request /report atau buka dashboard app
 → query PostgreSQL (agregasi per kategori/waktu)
 → return data terstruktur → render chart (app) / teks+gambar (Telegram)
 
-### 4.4 Nonaktifkan  Akun
+### 4.4 Nonaktifkan Akun
 User nonaktifkan akun → account_service.deactivate_account(source_id, target_id)
   → hitung saldo tersisa akun source (query computed balance)
   → jika saldo != 0: buat transaksi penyeimbang (expense di source, income di target)

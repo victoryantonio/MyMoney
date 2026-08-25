@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -46,7 +47,6 @@ import id.my.mymoney.data.model.CategoryResponse
 import id.my.mymoney.ui.components.EmptyState
 import id.my.mymoney.ui.components.ErrorView
 import id.my.mymoney.ui.components.LoadingView
-import id.my.mymoney.ui.components.MyMoneyCard
 import id.my.mymoney.ui.theme.ExpenseRed
 import id.my.mymoney.ui.theme.IncomeGreen
 
@@ -142,7 +142,11 @@ fun CategoriesScreen(viewModel: CategoriesViewModel = viewModel(factory = Catego
 
 @Composable
 private fun CategoryRow(cat: CategoryResponse, onEdit: () -> Unit, onDelete: () -> Unit) {
-    MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
+    // §3: card = surface-variant — kontras terhadap background surface.
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,

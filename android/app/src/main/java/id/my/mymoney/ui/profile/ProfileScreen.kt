@@ -46,7 +46,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.my.mymoney.data.ThemeMode
 import id.my.mymoney.data.model.UserResponse
 import id.my.mymoney.ui.components.ConfirmDialog
-import id.my.mymoney.ui.components.MyMoneyCard
 
 /**
  * Menu Profile (DESIGN.md §8.5): pengaturan tema, kelola kategori & akun,
@@ -117,7 +116,12 @@ fun ProfileScreen(
             }
 
             // ── Pengaturan tampilan: tema ──
-            MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(
                         "Appearance",
@@ -136,7 +140,12 @@ fun ProfileScreen(
             }
 
             // ── Manajemen ──
-            MyMoneyCard(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                ),
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                     ProfileMenuItem(
                         icon = Icons.Outlined.Category,
@@ -159,9 +168,12 @@ fun ProfileScreen(
 
             // ── Logout ──
             var showConfirm by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-            MyMoneyCard(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { showConfirm = true },
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable { showConfirm = true },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
