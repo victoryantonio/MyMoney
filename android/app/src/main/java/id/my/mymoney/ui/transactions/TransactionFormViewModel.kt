@@ -46,7 +46,9 @@ class TransactionFormViewModel(private val api: ApiService) : ViewModel() {
             }.onSuccess {
                 _uiState.value = _uiState.value.copy(
                     categories = it.first.filter { c -> c.is_active },
-                    accounts = it.second.filter { a -> a.is_active },
+                    // 4.4: dropdown akun = is_active saja, urut alfabetis konsisten.
+                    accounts = it.second.filter { a -> a.is_active }
+                        .sortedBy { a -> a.account_name.lowercase() },
                     loading = false,
                 )
                 onLoaded?.invoke()
