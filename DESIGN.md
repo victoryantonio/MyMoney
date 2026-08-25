@@ -131,13 +131,26 @@ Prinsip: **langsung, informatif, tanpa basa-basi motivasional.** Anda mencatat u
 - Setelah parsing (teks/foto), tampilkan hasil sebagai **form editable**, bukan read-only — setiap field (nominal, kategori, akun, item) bisa dikoreksi langsung sebelum tap "Simpan".
 - Confidence rendah (dari OCR) ditandai dengan badge warna `expense` (rust) kecil di dekat field terkait, bukan alert besar mengganggu.
 
-### 8.3 Riwayat Transaksi
-- List dengan grouping per tanggal, nominal rata kanan pakai monospace agar sejajar.
-- Warna nominal: `income` (sage) untuk pemasukan, `expense` (rust) untuk pengeluaran — bukan hijau/merah terang standar.
+### 8.3 Riwayat Transaksi (revisi)
+- Grouping per tanggal relatif ("Hari Ini", "Kemarin", lalu tanggal eksplisit
+  untuk >2 hari), bukan flat list tanpa header.
+- Setiap grup: garis vertikal tipis (`outline` token, 2dp) di sisi kiri,
+  dengan titik (dot, 8dp) di tiap item — warna dot mengikuti `income`/`expense`
+  token, BUKAN warna generik hijau/merah terang.
+- Card item: nama transaksi (Manrope Medium) + sumber/akun (caption,
+  on-surface-variant) di kiri; nominal (IBM Plex Mono, rata kanan) di kanan.
+- Tap item = expand inline (bukan navigasi ke halaman baru) menampilkan detail
+  item/nota jika ada — interaksi ringan, bukan modal berat untuk aksi baca.
 
-### 8.4 Report/Dashboard
-- Chart kategori (donut/bar sederhana, bukan chart 3D atau gradient-heavy).
-- Palet chart mengambil dari token warna kategori yang konsisten, bukan warna random per kategori.
+### 8.4 Report/Dashboard (revisi)
+- Chart donut kategori: tap slice = filter list transaksi di bawahnya ke
+  kategori tsb (state lokal, tidak perlu network call baru).
+- Toggle periode (Today/Week/Month/Custom) sebagai segmented control dengan
+  lebar tetap per opsi (lihat perbaikan bug §4 di bawah) — bukan Row bebas
+  yang bisa wrap.
+- Angka Income/Expense/Net: tetap IBM Plex Mono, WAJIB uji dengan nominal
+  7 digit (Rp1.000.00) agar tidak terpotong di card sempit — ini root
+  cause bug yang terlihat di build sekarang.
 
 ### 8.5 Manajemen Akun
 - List akun dengan saldo computed real-time.
@@ -175,3 +188,24 @@ data class MyMoneyExtendedColors(
 ```
 
 Font di-load via `FontFamily` custom (Manrope + IBM Plex Mono dari Google Fonts), diterapkan lewat `Typography` custom di `MaterialTheme`, bukan default MD3 typography.
+
+## 10. Prinsip Eksekusi Desain (Manual — Copilot-Compatible)
+
+Setiap kali membuat/mengubah komponen UI, Copilot WAJIB mengikuti urutan ini,
+bukan langsung menulis kode dari deskripsi visual:
+
+1. **Fungsi dulu, bentuk kemudian.** Sebelum menulis Composable, jawab: data apa
+   yang ditampilkan, aksi apa yang tersedia, urutan baca apa yang paling penting?
+   Baru petakan ke layout. Dilarang mulai dari "buatkan card yang bagus".
+2. **Reuse token sebelum membuat nilai baru.** Semua warna/spacing/radius WAJIB
+   ambil dari `MyMoneyLightColorScheme`/`DarkColorScheme` dan skala spacing 4dp
+   (§5). Nilai hex/dp baru hanya boleh ditambah lewat perubahan token resmi,
+   bukan ditulis inline di Composable.
+3. **Audit anti-slop sebelum PR** — jalankan checklist §2 sebagai self-review,
+   bukan setelah reviewer menegur.
+4. **Aksesibilitas bukan opsional**: kontras warna teks minimum WCAG AA
+   (4.5:1 body text), target sentuh minimum 48dp, `contentDescription` wajib
+   di semua icon interaktif non-dekoratif.
+5. **Setiap elemen interaktif baru butuh justifikasi tertulis** (komentar kode
+   singkat) kenapa ia ada — mencegah penambahan animasi/dekorasi tanpa fungsi
+   (lihat §2 soal glassmorphism/shadow tanpa alasan).
