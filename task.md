@@ -28,7 +28,7 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ## Done
 
-### Fase 4 — Flutter App (Android + iOS + Web) ✅ (2026-08-27, commit `a0c6a12`)
+### Fase 4 — Flutter App (Android + iOS + Web) ✅ (2026-08-27, commit `41e3693`)
 - [x] **Line chart tap-detail, TANPA long-press**: `TrendChart` (fl_chart 1.1.0) memakai `LineTouchData(enabled, handleBuiltInTouches: false)` + handler **hanya** `FlTapUpEvent` → ketuk titik langsung tampil detail hari itu di panel bawah; long-press & drag diabaikan total
 - [x] Dashboard: kartu ringkasan (Net/Pemasukan/Pengeluaran), selector periode (7 hari / Bulan ini), `RefreshIndicator`, `_ErrorView` + retry, logout; `_DetailPanel` tampilkan tanggal + pemasukan/pengeluaran/net saat titik diketuk
 - [x] Format utils (`lib/core/format.dart`): `formatRupiah` (IDR, ribuan pakai titik), `formatRupiahSigned`, `formatDateShort` ("12 Agu"), `formatAxisLabel`, `formatDateDetail` ("Rab, 12 Agu") — `format_test.dart` 4 test
