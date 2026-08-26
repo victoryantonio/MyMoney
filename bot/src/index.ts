@@ -1,14 +1,18 @@
 /**
- * MyMoney Telegram bot (Node/Telegraf) — thin client.
+ * MyMoney Telegram bot (Node/Telegraf) — thin proxy (Fase 2).
  *
- * Fase 0: scaffold webhook server (verifikasi secret + forward ke backend).
- * Fase 2: implementasi penuh (commands + NL parsing via backend REST).
+ * Pola v2 (ARCHITECTURE §3.2): bot TIDAK memproses apa pun sendiri — semua
+ * logic ada di backend FastAPI (telegram_service.py: /start, /logout, /undo,
+ * /edit, /report, NL parsing, foto OCR). Bot hanya:
  *
- * Pola v2 (ARCHITECTURE §3.2): bot TIDAK query Supabase / memanggil LLM
- * sendiri — semua logic di backend FastAPI. Bot menerima update dari
- * Telegram, meneruskannya ke `/api/telegram/webhook` backend dengan header
- * `X-Bot-Token` (BOT_SERVICE_TOKEN), lalu mengirim balasan yang dikembalikan
- * backend.
+ *   1. Menerima update dari Telegram via webhook (memverifikasi secret).
+ *   2. Meneruskannya ke `${BACKEND_URL}/api/telegram/webhook` dengan header
+ *      `X-Bot-Token` (BOT_SERVICE_TOKEN).
+ *   3. Tidak membalas sendiri — backend yang membalas via Bot API
+ *      (sendMessage), sehingga tidak terjadi double reply.
+ *
+ * Fallback: jika backend tidak merespons 200 (mati / rate limit), bot
+ * mengirim satu pesan singkat agar user tidak dibiarkan diam.
  */
 
 import http from "node:http";
@@ -22,23 +26,18 @@ const BACKEND_URL = (process.env.APP_BASE_URL ?? "http://localhost:8000").replac
 const BOT_SERVICE_TOKEN = process.env.BOT_SERVICE_TOKEN ?? "";
 const WEBHOOK_PATH = "/webhook";
 
-if (!BOT_TOKEN || !WEBHOOK_SECRET) {
-  console.error("TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET must be filled in the .env file");
+if (!BOT_TOKEN || !WEBHOOK_SECRET || !BOT_SERVICE_TOKEN) {
+  console.error(
+    "TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET / BOT_SERVICE_TOKEN must be set in the .env file",
+  );
   process.exit(1);
 }
 
 const bot = new Telegraf(BOT_TOKEN);
 
-bot.command("start", (ctx) =>
-  ctx.reply("MyMoney bot is active 🪙\nUse /help to see the list of commands."),
-);
-bot.command("help", (ctx) =>
-  ctx.reply(
-    "Commands: /start, /logout, /report, /undo, /edit — or send natural-language text (e.g., 'Beli kangkung 5k Cash').",
-  ),
-);
-
-// Semua update lain diteruskan ke backend (Fase 2: parsing + reply)
+// Semua update (termasuk /start, /help, teks natural-language, foto)
+// diteruskan ke backend. Backend memproses dan membalas via Bot API —
+// handler ini TIDAK mengirim balasan sendiri.
 bot.on("message", async (ctx) => {
   try {
     const res = await fetch(`${BACKEND_URL}/api/telegram/webhook`, {
@@ -49,17 +48,19 @@ bot.on("message", async (ctx) => {
       },
       body: JSON.stringify(ctx.update),
     });
-    if (res.ok) {
-      const data = (await res.json()) as { reply?: string };
-      if (data.reply) await ctx.reply(data.reply);
-    } else {
+    if (!res.ok) {
       console.error(`backend ${res.status}: ${await res.text()}`);
+      await ctx.reply("⚠️ Layanan sedang sibuk. Coba lagi sebentar lagi ya.");
     }
   } catch (err) {
-    console.error("Failed forward to backend:", err);
+    console.error("Failed to forward update to backend:", err);
+    await ctx.reply("⚠️ Gagal terhubung ke layanan. Coba lagi sebentar lagi ya.").catch(() => {});
   }
 });
 
+// ── HTTP server: webhook endpoint (Telegraf) ─────────────────────────────────
+// Telegram memanggil `${BOT_PUBLIC_URL}/webhook` dengan header
+// `X-Telegram-Bot-Api-Secret-Token`; kita tolak selain itu.
 const server = http.createServer((req, res) => {
   if (req.headers["x-telegram-bot-api-secret-token"] !== WEBHOOK_SECRET) {
     res.writeHead(403);

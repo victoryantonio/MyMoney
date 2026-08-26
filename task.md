@@ -1,20 +1,14 @@
 # task.md — MyMoney To-Do List
 
 > Phased execution checklist — **v2 stack** (Supabase + FastAPI + Flutter + Node bot).
-> Update status as you work. Current phase: **Fase 2**.
+> Update status as you work. Current phase: **Fase 3**.
 > Saat fase selesai, pindahkan item ke `## Done` dan unmute fase berikut.
 
 Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ---
 
-## Fase 2 — Telegram Bot Node + Parsing Teks (current)
-- [ ] `bot/` webhook Telegraf → REST backend (`BOT_SERVICE_TOKEN`)
-- [ ] Command `/start`, `/logout`, NL text, `/report`, `/undo`, `/edit`
-- [ ] `nlu_parser` via `call_llm()` (env-driven); kategori locked list
-- [ ] Cutover webhook ke `bot/`; archive bot Python → `_archive/bot-python-v1/`
-
-## Fase 3 — Report Dasar
+## Fase 3 — Report Dasar (current)
 - [ ] `report_service` SQL aggregation + `/api/reports/summary` + `/report`
 
 ## Fase 3.5 — Accounts CRUD
@@ -39,6 +33,16 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 ---
 
 ## Done
+
+### Fase 2 — Telegram Bot Node + Parsing Teks ✅ (2026-08-26)
+- [x] `bot/` pure proxy: webhook Telegraf verifikasi secret → forward ke backend dengan `X-Bot-Token` (BOT_SERVICE_TOKEN) — handler `/start` lokal yang men-shadow backend dihapus
+- [x] Backend webhook: verifikasi `X-Bot-Token` ATAU `X-Telegram-Bot-Api-Secret-Token`; `register-webhook` → `BOT_PUBLIC_URL/webhook`; `config.py` + `.env.example` + `BOT_PUBLIC_URL`
+- [x] Endpoint linking dibangun ulang: `GET /api/telegram/link` (HTML + OTP Supabase) + `POST /api/telegram/link/confirm` (JWKS + upsert telegram_links, relink semantics)
+- [x] Command `/start`, `/logout`, NL text, `/report`, `/undo`, `/edit` — semua diproses backend `telegram_service.py` (sudah lengkap dari Fase 0-1, tanpa perubahan)
+- [x] `nlu_parser` via `call_llm()` env-driven; kategori locked list → "Other" (sudah aktif)
+- [x] Test: webhook API (403/200 X-Bot-Token/secret) + linking API (7 test) — `pytest` 130 hijau; bot typecheck/lint/build bersih; E2E live: curl → bot :3000 → backend → reply (chat not found, wajar)
+- [x] Archive bot Python: **NO-OP** — bot Python tidak pernah ada di repo ini (hanya `bot/src/index.ts` Node dari awal); tercatat jujur
+- [x] Cutover webhook penuh ditunda ke Fase 6 (butuh URL publik bot; `BOT_PUBLIC_URL` default localhost:3000)
 
 ### Fase 1.5 — Auth Recovery: Reset Password ✅ (2026-08-26)
 - [x] Migration `0007`: hapus kolom `role` + constraint `ck_profiles_role` dari `profiles` (terverifikasi via `information_schema`)

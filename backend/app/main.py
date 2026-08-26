@@ -64,11 +64,13 @@ from app.api import (  # noqa: E402
     accounts,
     categories,
     reports,
+    telegram_linking,
     telegram_webhook,
     transactions,
 )
 
 app.include_router(telegram_webhook.router)
+app.include_router(telegram_linking.router)
 app.include_router(categories.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)

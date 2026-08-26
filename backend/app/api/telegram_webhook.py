@@ -1,6 +1,14 @@
 """
 Telegram Webhook API endpoint.
-Receives POST requests from Telegram, validates the secret token, and triggers business logic.
+
+Two accepted auth paths (either is sufficient):
+  1. Service-to-service (primary, production): the Node bot forwards updates
+     with header `X-Bot-Token` == `BOT_SERVICE_TOKEN`.
+  2. Direct Telegram → backend (dev fallback): header
+     `X-Telegram-Bot-Api-Secret-Token` == `TELEGRAM_WEBHOOK_SECRET`.
+
+Either way we must answer 200 OK fast; business logic runs in the background
+(LLM/OCR can take seconds) and replies are sent via the Bot API.
 """
 
 import httpx
@@ -49,16 +57,28 @@ async def background_process_update(update: dict, db: Session) -> None:
 async def telegram_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
+    x_bot_token: str | None = Header(default=None),
     x_telegram_bot_api_secret_token: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
     """
     Telegram webhook endpoint.
+
+    Auth: accepts `X-Bot-Token` (service-to-service from the Node bot) OR the
+    Telegram `X-Telegram-Bot-Api-Secret-Token` (direct fallback). Both must
+    match their configured secret, otherwise 403.
+
     Must return 200 OK fast. The actual processing happens in the background.
     Rate-limited to 20/min per IP (CODING_RULES §2.10).
     """
-    if x_telegram_bot_api_secret_token != settings.telegram_webhook_secret:
-        log.warning("telegram_webhook_invalid_secret")
+    bot_ok = x_bot_token == settings.bot_service_token
+    secret_ok = x_telegram_bot_api_secret_token == settings.telegram_webhook_secret
+    if not (bot_ok or secret_ok):
+        log.warning(
+            "telegram_webhook_invalid_auth",
+            has_bot_token=x_bot_token is not None,
+            has_telegram_secret=x_telegram_bot_api_secret_token is not None,
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid secret")
 
     update = await request.json()
@@ -73,14 +93,17 @@ async def telegram_webhook(
 @router.post("/register-webhook", include_in_schema=False)
 async def register_webhook(x_admin_token: str | None = Header(default=None)) -> dict:
     """
-    Utility endpoint to register the current app_base_url with Telegram API.
-    Used during startup or deployment.
+    Utility endpoint to register the Node bot's public URL with Telegram API.
+
+    The bot (thin client) is the webhook target; it verifies the Telegram
+    secret, then forwards updates to this backend with `X-Bot-Token`.
+    Used during deployment (Fase 2 cutover).
     """
     if x_admin_token != settings.telegram_webhook_secret:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook"
-    webhook_url = f"{settings.app_base_url}/api/telegram/webhook"
+    webhook_url = f"{settings.bot_public_url}/webhook"
 
     payload = {
         "url": webhook_url,

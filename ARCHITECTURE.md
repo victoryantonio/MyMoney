@@ -99,11 +99,41 @@ Flutter (client) maupun Telegraf bot (Node) — keduanya thin client murni.
 - Service terpisah, deploy di Railway/Render (bukan numpang di app utama).
 - **Memanggil REST API backend Python yang sama** (bukan query Supabase
   langsung) — menjaga single source of truth logic bisnis.
-- Autentikasi bot ke backend: service-to-service token (bukan Supabase JWT
-  user, karena bot bertindak atas nama sistem, dengan `telegram_id` di-map
-  ke `user_id` internal via tabel `telegram_links` seperti desain awal).
+- Autentikasi bot ke backend: service-to-service token (`X-Bot-Token` =
+  `BOT_SERVICE_TOKEN`), bukan Supabase JWT user, karena bot bertindak atas
+  nama sistem, dengan `telegram_id` di-map ke `user_id` internal via tabel
+  `telegram_links` seperti desain awal.
 - Alasan dipisah dari backend utama: mudah dimatikan/diganti independen,
   tidak mengotori deployment backend utama kalau bot bermasalah.
+
+**Arsitektur rute update (Fase 2, terverifikasi live 2026-08-26):**
+```
+Telegram ──webhook──▶ bot/ (Node, port 3000, verifikasi secret)
+                          │  forward update + header X-Bot-Token
+                          ▼
+                     backend POST /api/telegram/webhook
+                     (X-Bot-Token ATAU X-Telegram-Bot-Api-Secret-Token)
+                          │  background process (LLM/OCR tidak memblokir reply)
+                          ▼
+                     reply via Bot API sendMessage (backend yang membalas —
+                     bot TIDAK double-reply)
+```
+- `bot/src/index.ts` = thin proxy murni: tidak ada command handler lokal
+  (sebelumnya `/start` lokal men-shadow logic linking backend — dihapus).
+- `POST /api/telegram/register-webhook` (backend) mendaftarkan
+  `BOT_PUBLIC_URL/webhook` ke Telegram `setWebhook`.
+
+**Telegram account linking (v2, dibangun ulang di Fase 2):**
+1. `/start` → backend membuat JWT pendek (10 menit, type `telegram_link`) →
+   user dikirim link `GET /api/telegram/link?token=...`.
+2. Halaman HTML (DESIGN.md tokens) meminta email → mengirim OTP via Supabase
+   Auth (`/auth/v1/otp`) langsung dari browser (anon key aman di client).
+3. User masukkan kode → browser tukar dengan Supabase (`/auth/v1/verify`)
+   → `POST /api/telegram/link/confirm {link_token, access_token}`.
+4. Backend verifikasi Supabase JWT (JWKS) + decode link token → upsert
+   `telegram_links` (relink semantics: satu telegram_id ↔ satu profile).
+- Tidak ada form email/password v1 — kredensial sepenuhnya milik Supabase
+  Auth (keputusan 2026-08-26).
 
 ### 3.3 Flutter App (Android + iOS + Web, satu codebase) — REVISI TOTAL
 Menggantikan rencana native Kotlin/Jetpack Compose sepenuhnya.

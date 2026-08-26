@@ -39,10 +39,11 @@ transaksi via Postman dengan token Supabase asli.
 - [x] Verifikasi live flow reset password Supabase (`/auth/v1/recover` + `otp`)
 - [x] Dokumentasi flow di DATABASE.md §8 + REQUIREMENTS.md US-02a
 
-### Fase 2 — Telegram Bot + Parsing Teks (Target: 1-1.5 minggu, TIDAK BERUBAH)
-- [ ] Bot Node/Telegraf: webhook handler, panggil backend API
-- [ ] `telegram_links`: map telegram_id ke profile
-- [ ] `nlu_parser` (Python, backend) — TIDAK BERUBAH dari desain awal
+### Fase 2 — Telegram Bot + Parsing Teks ✅ (2026-08-26, TIDAK BERUBAH)
+- [x] Bot Node/Telegraf: pure proxy — verifikasi secret → forward ke backend dengan `X-Bot-Token`; handler lokal `/start`/`/help` dihapus (men-shadow logic linking backend)
+- [x] `telegram_links`: map telegram_id ke profile — endpoint linking dibangun ulang v2 (OTP Supabase): `GET /api/telegram/link` + `POST /api/telegram/link/confirm` (JWKS + upsert relink semantics)
+- [x] `nlu_parser` (Python, backend) — env-driven via `call_llm()` + kategori locked list → "Other" (sudah aktif sejak Fase 0)
+- [x] Cutover webhook penuh → Fase 6 (butuh URL publik bot); archive bot Python = NO-OP (tidak pernah ada di repo)
 
 ### Fase 3 — Report Dasar (Target: 3-5 hari, TIDAK BERUBAH)
 

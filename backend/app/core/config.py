@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     telegram_bot_token: str
     telegram_webhook_secret: str
 
+    # Public URL of the Node bot service (setWebhook target). Default is the
+    # local dev URL; in production set it to the bot's deployed URL
+    # (Railway/Render/etc.), e.g. https://mymoney-bot.up.railway.app.
+    bot_public_url: str = "http://localhost:3000"
+
     # ── Service-to-service (bot → backend) ────────────────────────────────────
     bot_service_token: str = ""
 

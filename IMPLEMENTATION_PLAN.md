@@ -5,7 +5,7 @@
 > edited so the "Current Phase" points at the active one and completed phases
 > move under `## Completed Phases`.
 
-**Current Phase: Fase 2 — Telegram Bot Node + Parsing Teks**
+**Current Phase: Fase 3 — Report Dasar**
 
 ---
 
@@ -56,24 +56,9 @@ menunggu review user.
 
 ---
 
-## Fase 2 — Telegram Bot Node + Parsing Teks (target 1-1.5 minggu)
+## Fase 2 — Telegram Bot Node + Parsing Teks ✅ DONE (2026-08-26)
 
-**Goal:** bot Node/Telegraf (`bot/`) menggantikan bot Python; forward ke REST backend (service-to-service token); `nlu_parser` Python tetap di backend.
-
-**Keputusan & alasan (chain of thought):**
-- Bot = thin client murni: tidak query Supabase langsung, tidak parsing LLM sendiri (ARCHITECTURE §3.2, CODING_RULES §2.2) — semua logic di backend.
-- Service-to-service auth: header `X-Bot-Token` / Bearer `BOT_SERVICE_TOKEN` diverifikasi middleware backend (bukan Supabase JWT user).
-- `telegram_links` tetap di backend (map telegram_id → profiles).
-- Bot Python lama di-archive → `_archive/bot-python-v1/` setelah cutover.
-- LLM env-driven: `call_llm()` memakai OPENROUTER (default) atau DEEPSEEK; model dari `LLM_TEXT_MODEL`/`LLM_VISION_MODEL` + fallback chain.
-
-**Task:**
-- [ ] `bot/`: webhook Telegraf + verifikasi secret + forward ke backend
-- [ ] Command: `/start` (link), `/logout`, NL text, `/report`, `/undo`, `/edit` (fungsi sama seperti v1, dipanggil lewat REST)
-- [ ] Backend: endpoint bot proxy + verifikasi `BOT_SERVICE_TOKEN`
-- [ ] `nlu_parser` via `call_llm()` env-driven; kategori locked list → "Other"
-- [ ] Cutover: set webhook Telegram ke `bot/`; matikan bot Python
-- [ ] Archive bot Python → `_archive/bot-python-v1/`
+> Selesai & terverifikasi live — detail hasil di **Completed Phases → Fase 2**.
 
 ---
 
@@ -159,6 +144,27 @@ menunggu review user.
 
 ## Completed Phases
 
+### Fase 2 — Telegram Bot Node + Parsing Teks ✅ (2026-08-26)
+
+**Goal:** bot Node/Telegraf (`bot/`) jadi thin proxy ke REST backend (service-to-service token); endpoint linking dibangun ulang untuk v2; `nlu_parser` env-driven; cutover webhook.
+
+**Keputusan implementasi (chain of thought):**
+- Bot = **pure proxy**: tidak ada command handler lokal. Backend `telegram_service.py` sudah menangani semua command — handler `/start` lokal di `bot/src/index.ts` justru men-shadow logic linking backend → **dihapus**. Bot forward semua update → backend, backend membalas via Bot API (tidak ada double-reply).
+- Webhook backend menerima **dua jalur auth**: `X-Bot-Token` (service-to-service, produksi) ATAU `X-Telegram-Bot-Api-Secret-Token` (fallback langsung Telegram→backend, dipakai saat dev sebelum bot di-deploy).
+- Linking v2: form email/password v1 TIDAK mungkin (kredensial milik Supabase Auth, tanpa verifikasi lokal). Ganti dengan **OTP Supabase**: halaman HTML minta email → kirim OTP via `/auth/v1/otp` (anon key, aman di client) → user masukkan kode → `/auth/v1/verify` → `POST /api/telegram/link/confirm` (JWKS + upsert relink semantics).
+- `nlu_parser` sudah env-driven via `call_llm()` sejak Fase 0; kategori locked list → "Other" sudah aktif — tidak ada perubahan.
+- Archive bot Python: **NO-OP** — bot Python tidak pernah ada di repo (bot selalu Node dari Fase 0); tercatat jujur.
+- Cutover webhook penuh = Fase 6 (butuh URL publik bot; `BOT_PUBLIC_URL` baru ditambahkan, default localhost:3000).
+
+**Hasil (terverifikasi):**
+- [x] `bot/src/index.ts` di-rewrite jadi pure proxy (typecheck + lint + build bersih).
+- [x] `telegram_webhook.py`: verifikasi `X-Bot-Token` ATAU secret Telegram (403 tanpa keduanya); `register-webhook` → `BOT_PUBLIC_URL/webhook`.
+- [x] `config.py` + `.env.example`: field `bot_public_url` / `BOT_PUBLIC_URL`.
+- [x] `telegram_linking.py` baru: `GET /api/telegram/link` (HTML OTP, DESIGN.md tokens, /static/icon.png) + `POST /api/telegram/link/confirm` (decode link token → JWKS → upsert, relink semantics); terdaftar di `main.py`.
+- [x] Test baru: `test_telegram_webhook_api.py` (403/200 dua jalur) + `test_telegram_linking_api.py` (7 test: form valid/invalid, confirm sukses/idempoten/not-found/401/relink). **pytest 130 passed**; `ruff`/`black` bersih.
+- [x] E2E live: curl → bot :3000 (secret valid) → forward `X-Bot-Token` → backend webhook 200 → `/start` diproses → `sendMessage` ke chat acak gagal 400 "chat not found" (ekspektasi, membuktikan reply flow aktif).
+- [x] `models/profile.py`: tambah `TYPE_CHECKING` imports — warning Pylance `reportUndefinedVariable` hilang.
+
 ### Fase 1.5 — Auth Recovery: Reset Password ✅ (2026-08-26)
 
 **Goal:** tidak ada role admin (semua user self-register); hapus kolom `role`; pastikan sistem reset password via OTP/link ke email terdaftar (Supabase Auth) terverifikasi & terdokumentasi.
@@ -179,7 +185,7 @@ menunggu review user.
 - [x] Model `Profile` (1:1 `auth.users`, trigger `on_auth_user_created`); semua model ORM (account/category/transaction/telegram_link/pending_transaction/audit_log) ber-FK `profiles.id`; `models/user.py` dihapus.
 - [x] `verify_supabase_jwt()` di `core/security.py`: fetch JWKS (cache TTL 300 s), dukung **RS256 + ES256** (proyek ini ternyata ES256 P-256 — dibuktikan live), fallback HS256 bila `SUPABASE_JWT_SECRET` diisi; return `sub`.
 - [x] `api/deps.py`: `get_current_user` (Bearer → verify → `db.get(Profile)` → 401), `require_active_user` (403).
-- [x] Auth custom v1 dihapus: `api/auth.py`, `api/telegram_linking.py`, `schemas/auth.py`, `models/user.py`; `main.py` 23 route.
+- [x] Auth custom v1 dihapus: `api/auth.py`, `api/telegram_linking.py`, `schemas/auth.py`, `models/user.py`; `main.py` 23 route (25 setelah linking dibangun ulang di Fase 2).
 - [x] Test suite v2: conftest (mimic `auth.users`, fixture `profile` + `supabase_factory` auto-skip tanpa kredensial); service layer + API tests memakai Supabase JWT asli. **118 passed**; `ruff check`/`black --check` bersih.
 - [x] E2E live: tanpa token → 401; token asli → 200; CRUD akun/transaksi + report summary/trend sukses.
 

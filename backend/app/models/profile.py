@@ -7,6 +7,7 @@ id sama dengan auth.users.id; row dibuat otomatis oleh trigger
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -22,6 +23,14 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.account import Account
+    from app.models.audit_log import AuditLog
+    from app.models.category import Category
+    from app.models.pending_transaction import PendingTransaction
+    from app.models.telegram_link import TelegramLink
+    from app.models.transaction import Transaction
 
 # auth.users hidup di skema `auth` milik Supabase (di luar ORM app). Table
 # ringan ini hanya agar metadata SQLAlchemy bisa me-resolve FK
@@ -55,13 +64,11 @@ class Profile(Base):
     )
 
     # Relationships (nama sama dengan v1 User — back_populates tidak berubah)
-    telegram_link: Mapped["TelegramLink | None"] = relationship(  # noqa: F821
+    telegram_link: Mapped["TelegramLink | None"] = relationship(
         back_populates="user", uselist=False
     )
-    categories: Mapped[list["Category"]] = relationship(back_populates="user")  # noqa: F821
-    accounts: Mapped[list["Account"]] = relationship(back_populates="user")  # noqa: F821
-    transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")  # noqa: F821
-    pending_transactions: Mapped[list["PendingTransaction"]] = relationship(  # noqa: F821
-        back_populates="user"
-    )
-    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")  # noqa: F821
+    categories: Mapped[list["Category"]] = relationship(back_populates="user")
+    accounts: Mapped[list["Account"]] = relationship(back_populates="user")
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
+    pending_transactions: Mapped[list["PendingTransaction"]] = relationship(back_populates="user")
+    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")

@@ -1,7 +1,7 @@
 # walkthrough.md — MyMoney v2 Execution Guide
 
 > ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
-> Panduan aktif: **Fase 1.5** di bawah. Fase 0 & 1 selesai (rekam di bagian bawah).
+> Panduan aktif: **Fase 3** di bawah. Fase 0, 1, 1.5, 2 selesai (rekam di bagian bawah).
 > Guide fase berikutnya diisi saat fase dimulai (placeholder di bawah).
 > Rekam historis v1 ada di git history + `_archive/`.
 
@@ -29,6 +29,39 @@
 
 ---
 
+## Fase 2 — Telegram Bot Node + Parsing Teks ✅ DONE (2026-08-26)
+
+**Tujuan:** bot Node jadi thin proxy ke backend (service-to-service token); endpoint linking v2 (OTP Supabase); `nlu_parser` env-driven; cutover webhook.
+**Hasil:** bot pure proxy + webhook dual-auth + linking OTP dibangun & diuji; `pytest` 130 hijau; bot typecheck/lint/build bersih; E2E live terverifikasi.
+
+### Step 1 — Backend webhook: dual auth + register ke bot
+- `POST /api/telegram/webhook`: terima `X-Bot-Token` (service-to-service, produksi) **ATAU** `X-Telegram-Bot-Api-Secret-Token` (fallback langsung Telegram→backend) — 403 tanpa keduanya.
+- `POST /api/telegram/register-webhook` → `setWebhook` ke `{BOT_PUBLIC_URL}/webhook` (bukan lagi ke backend).
+- `config.py` + `.env.example`: `BOT_PUBLIC_URL` (default `http://localhost:3000`).
+
+### Step 2 — Rebuild endpoint linking (v2, OTP Supabase)
+1. `/start` di backend `telegram_service.py` → JWT `telegram_link` (10 menit) → link `GET /api/telegram/link?token=...` (URL ini sempat 404 karena endpoint dihapus di Fase 1 — dibangun ulang).
+2. `GET /api/telegram/link`: validasi token → halaman HTML (DESIGN.md tokens, `/static/icon.png`) minta email → kirim OTP via Supabase `/auth/v1/otp` (anon key, `create_user:false`).
+3. `POST /api/telegram/link/confirm {link_token, access_token}`: decode token → verifikasi Supabase JWT (JWKS) → upsert `telegram_links` dengan relink semantics (satu telegram_id ↔ satu profile).
+4. Alasan: form email/password v1 tidak mungkin — kredensial milik Supabase Auth, backend tak punya verifikasi password lokal.
+
+### Step 3 — Bot = pure proxy (fix shadowing)
+- Handler lokal `bot.command("start")` / `bot.command("help")` dihapus — dulu membalas pesan generik sehingga link linking dari backend tidak pernah sampai ke user.
+- `bot.on("message")`: forward `ctx.update` → `${BACKEND_URL}/api/telegram/webhook` dengan `X-Bot-Token`; **tidak membalas sendiri** (backend yang membalas via Bot API → tidak ada double-reply); fallback 1 pesan bila backend gagal.
+
+### Step 4 — Test & verifikasi
+- `test_telegram_webhook_api.py`: 403 tanpa header/token salah; 200 `X-Bot-Token`; 200 secret Telegram (background dipatch — LLM/OCR tidak jalan di unit test).
+- `test_telegram_linking_api.py`: form valid/invalid, confirm sukses/idempoten/not-found/401/relink (JWKS dipatch).
+- `models/profile.py`: `TYPE_CHECKING` imports → warning Pylance hilang.
+- `pytest` **130 passed** (naik 12); `ruff`/`black` bersih; bot `typecheck`/`lint`/`build` bersih.
+- **E2E live**: curl update `/start` → bot :3000 (secret valid) → forward → backend webhook 200 → diproses → `sendMessage` ke chat acak gagal 400 "chat not found" (ekspektasi — membuktikan seluruh chain jalan).
+
+### Step 5 — Cutover & arsip
+- Archive bot Python: **NO-OP** — bot Python tidak pernah ada di repo ini (bot selalu Node/Telegraf sejak Fase 0); dicatat jujur.
+- Cutover webhook penuh ke URL publik bot → **Fase 6** (deploy). Dev saat ini: bot lokal + backend lokal.
+
+---
+
 ## Fase 1 — Backend Inti + Auth Supabase ✅ DONE (2026-08-27)
 
 **Tujuan:** REST API v2 di atas Supabase — auth = Supabase JWT (JWKS), profile auto-create via trigger, CRUD transaksi service layer, unit test.
@@ -50,7 +83,7 @@
 - `telegram_service.py` + semua router API (accounts/categories/reports/transactions) → `Profile`.
 
 ### Step 4 — Hapus endpoint auth custom
-- `api/auth.py`, `api/telegram_linking.py`, `schemas/auth.py`, `models/user.py` dihapus. `main.py`: 23 route (telegram_webhook tetap — bot webhook tak butuh profile auth; linking dibangun ulang di Fase 2).
+- `api/auth.py`, `api/telegram_linking.py`, `schemas/auth.py`, `models/user.py` dihapus. `main.py`: 23 route (telegram_webhook tetap — bot webhook tak butuh profile auth; linking dibangun ulang di Fase 2 → 25 route).
 
 ### Step 5 — Unit test
 - `conftest.py`: mimic `auth.users` lokal (CI), fixture `profile`, `supabase_factory` (skip otomatis tanpa kredensial), `limiter.enabled=False`.
@@ -151,7 +184,6 @@
 
 ---
 
-## Fase 2 — Telegram Bot Node + Parsing Teks (placeholder)
 ## Fase 3 — Report Dasar (placeholder)
 ## Fase 3.5 — Accounts CRUD (placeholder)
 ## Fase 4 — Flutter App (placeholder)
