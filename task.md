@@ -1,17 +1,14 @@
 # task.md — MyMoney To-Do List
 
 > Phased execution checklist — **v2 stack** (Supabase + FastAPI + Flutter + Node bot).
-> Update status as you work. Current phase: **Fase 3.5**.
+> Update status as you work. Current phase: **Fase 4**.
 > Saat fase selesai, pindahkan item ke `## Done` dan unmute fase berikut.
 
 Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ---
 
-## Fase 3.5 — Accounts CRUD (current)
-- [ ] CRUD akun, soft-delete, saldo computed; kategori Transfer/Penyesuaian
-
-## Fase 4 — Flutter App (Android + iOS + Web)
+## Fase 4 — Flutter App (Android + iOS + Web) (current)
 - [ ] Scaffold + layar kritis (Auth, Dashboard, Transaksi, Kategori, Akun)
 - [ ] Charts; widget/golden test 5 layar; CI iOS + TestFlight
 - [ ] Checkpoint: Android device OK; iOS CI hijau + tester eksternal ≥1x
@@ -20,16 +17,25 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 - [ ] `receipt_ocr` vision (env-driven) + Supabase Storage (signed URL)
 - [ ] UI Flutter capture/konfirmasi + bot foto
 
-## Fase 7 — UI/UX Polish (paralel)
+## Fase 6 — UI/UX Polish (paralel)
 - [ ] Konsistensi DESIGN.md + anti-slop checklist
 
-## Fase 6 — Deploy Produksi
+## Fase 7 — Deploy Produksi
 - [ ] Railway/Render backend & bot; Supabase production
 - [ ] Flutter Web → Vercel/Netlify; review keamanan RLS
 
 ---
 
 ## Done
+
+### Fase 3.5 — Accounts CRUD ✅ (2026-08-26)
+- [x] CRUD akun: `POST /api/accounts` (201), `GET /api/accounts` (aktif default, `?include_inactive=true`), `GET /api/accounts/{id}`, `PUT /api/accounts/{id}` — semua sudah ada sejak Fase 0-1 (verifikasi, tanpa perubahan)
+- [x] **Soft-delete, TANPA hard delete**: `POST /api/accounts/{id}/deactivate` (is_active=False); route DELETE → **405** (terbukti di test)
+- [x] Saldo computed: `_compute_balance` satu query agregasi (initial + Σ income − Σ expense); `current_balance` & `net_balance` dinormalisasi 2 desimal (fix `quantize` — SUM melebarkan skala ke 4 desimal)
+- [x] Deactivate dengan saldo ≠ 0 → wajib `target_account_id` (400 tanpa target, 400 target = source, 404 target tak ditemukan); buat 2 transaksi Transfer (expense+income) atomik + audit
+- [x] Kategori Transfer (expense + income) global seeded di migration `0001`; deactivate reuse via `get_or_create_category` — tidak ada duplikat per-user
+- [x] CODING_RULES §2.8 aktif: akun nonaktif ditolak di transaksi baru (**422**), tapi tetap muncul penuh di riwayat/laporan historis
+- [x] Test: `test_accounts_api.py` **15 test** (CRUD, validasi, auth, no-delete 405, deactivate balancing, §2.8) — `pytest` **145 passed** (130 + 15); `ruff`/`black` bersih
 
 ### Fase 3 — Report Dasar ✅ (2026-08-26)
 - [x] `report_service.py` SQL aggregation (`SUM`/`GROUP BY`): `parse_period_arg` (hari-ini/minggu-ini/bulan-ini/bulan-lalu) + `get_report_summary` + `get_report_trend` (zero-filled daily, timezone user)

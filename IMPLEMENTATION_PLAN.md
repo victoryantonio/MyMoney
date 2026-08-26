@@ -5,7 +5,7 @@
 > edited so the "Current Phase" points at the active one and completed phases
 > move under `## Completed Phases`.
 
-**Current Phase: Fase 3.5 — Accounts Management CRUD**
+**Current Phase: Fase 4 — Flutter App: Android + iOS + Web**
 
 ---
 
@@ -68,10 +68,9 @@ menunggu review user.
 
 ---
 
-## Fase 3.5 — Accounts Management CRUD (target 1 minggu)
+## Fase 3.5 — Accounts Management CRUD ✅ DONE (2026-08-26)
 
-- [ ] CRUD akun, soft-delete (`is_active`), saldo computed — reuse v1
-- [ ] Kategori sistem baru: Transfer/Penyesuaian Akun (DATABASE.md §2.4)
+> Selesai & terverifikasi — detail hasil di **Completed Phases → Fase 3.5**.
 
 ---
 
@@ -141,6 +140,21 @@ menunggu review user.
 ---
 
 ## Completed Phases
+
+### Fase 3.5 — Accounts Management CRUD ✅ (2026-08-26)
+
+**Goal:** CRUD akun + soft-delete (bukan hard delete) + saldo computed + balancing Transfer saat nonaktifkan akun berisi saldo.
+
+**Keputusan implementasi (chain of thought):**
+- Seluruh API akun sudah ada sejak Fase 0-1 (reuse v1): `POST /api/accounts` (201), `GET /api/accounts` (aktif default; `?include_inactive=true`), `GET /api/accounts/{id}`, `PUT /api/accounts/{id}`, `POST /api/accounts/{id}/deactivate`. **TIDAK ada route DELETE** — hard delete dilarang (CODING_RULES §2.8).
+- `_compute_balance` = satu query agregasi SQL: `initial_balance + SUM(CASE type='income' THEN +amount ELSE -amount)` dengan `func.cast(case(...), Transaction.total_amount.type)` + `func.coalesce(..., Decimal("0.00"))`.
+- **Fix nyata (1)**: SUM atas `Numeric(14,2) * cast` melebarkan skala → `80000.0000`; dinormalisasi `quantize(Decimal("0.01"))` agar API konsisten 2 desimal.
+- Deactivate dengan saldo ≠ 0 → wajib `target_account_id` (400/400/404 untuk tanpa target / sama dengan source / tak ditemukan); buat 2 transaksi Transfer atomik (expense di source + income di target) + audit; kategori Transfer = seed global migration `0001` (reuse `get_or_create_category`, tanpa duplikat per-user).
+- §2.8 aktif: akun nonaktif ditolak transaksi baru (`_verify_category_and_account` → 422), tetap muncul penuh di riwayat/laporan historis.
+
+**Hasil (terverifikasi):**
+- [x] `test_accounts_api.py` **15 test**: auth 401, create + validasi, list aktif default / `include_inactive`, update, get/update nonaktif → 404, **no-delete 405**, deactivate saldo 0, deactivate butuh target (400/400/404), transfer balancing (saldo pindah + 2 tx ber-note "Saldo dipindah" + kategori Transfer global), §2.8 422.
+- [x] `pytest` **145 passed** (130 baseline + 15); `ruff`/`black` bersih.
 
 ### Fase 3 — Report Dasar ✅ (2026-08-26)
 

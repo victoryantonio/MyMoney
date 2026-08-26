@@ -71,7 +71,10 @@ def _compute_balance(account: Account, db: Session) -> tuple[Decimal, Decimal]:
     ).scalar()
 
     delta = result or Decimal("0.00")
-    return account.initial_balance + delta, delta
+    # SUM over (Numeric(14,2) * cast) can widen the scale (e.g. 80000.0000).
+    # Normalize to 2 decimals so API balances are consistent with NUMERIC(14,2).
+    delta = delta.quantize(Decimal("0.01"))
+    return (account.initial_balance + delta).quantize(Decimal("0.01")), delta
 
 
 def _to_response(account: Account, db: Session) -> AccountResponse:

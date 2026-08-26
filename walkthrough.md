@@ -1,7 +1,7 @@
 # walkthrough.md — MyMoney v2 Execution Guide
 
 > ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
-> Panduan aktif: **Fase 3.5** di bawah. Fase 0, 1, 1.5, 2, 3 selesai (rekam di bagian bawah).
+> Panduan aktif: **Fase 4** di bawah. Fase 0, 1, 1.5, 2, 3, 3.5 selesai (rekam di bagian bawah).
 > Guide fase berikutnya diisi saat fase dimulai (placeholder di bawah).
 > Rekam historis v1 ada di git history + `_archive/`.
 
@@ -208,8 +208,35 @@
 
 ---
 
-## Fase 3.5 — Accounts CRUD (current)
-## Fase 4 — Flutter App (placeholder)
+## Fase 3.5 — Accounts CRUD ✅ (2026-08-26)
+
+> Fase verifikasi: semua kode akun sudah ada sejak Fase 0-1 — fase ini = audit + test API + fix kecil.
+
+### Step 1 — Audit kode (sudah ada, tidak diubah)
+- `backend/app/api/accounts.py`: CRUD penuh + `POST /api/accounts/{id}/deactivate`. **TIDAK ada route DELETE** (terbukti 405 di test).
+- `_compute_balance(account, db)` → `(current_balance, net_balance)` via SATU query agregasi: `initial_balance + SUM(CASE type='income' THEN +amount ELSE -amount)` dengan `func.cast(case(...), Transaction.total_amount.type)` + `func.coalesce(..., Decimal("0.00"))`.
+- Model `Account` (soft-delete `is_active`), schema `AccountResponse` dengan `current_balance`/`net_balance` computed.
+
+### Step 2 — Fix nyata (1)
+- **Bug**: SUM atas `Numeric(14,2) * cast` melebarkan skala → `current_balance` bernilai 4 desimal (mis. `80000.0000`).
+- **Fix**: `delta.quantize(Decimal("0.01"))` di `_compute_balance` — API konsisten 2 desimal dengan schema NUMERIC(14,2).
+
+### Step 3 — Deactivate & balancing
+- Saldo = 0 → langsung nonaktif (tanpa target).
+- Saldo ≠ 0 → WAJIB `target_account_id`: 400 tanpa target; 400 target = source; 404 target tak ditemukan/terhubung.
+- Balance ≠ 0: buat 2 transaksi Transfer atomik (expense di source + income di target, jumlah = saldo, note "Saldo dipindah dari X ke Y") + audit; kategori Transfer = seed global migration `0001` (reuse via `get_or_create_category`, tanpa duplikat per-user).
+
+### Step 4 — CODING_RULES §2.8
+- Akun nonaktif **ditolak** di transaksi baru: `_verify_category_and_account` → **422** "Account not found or not accessible".
+- Akun nonaktif tetap muncul penuh di riwayat/laporan historis (tidak dihapus).
+
+### Step 5 — Test & verifikasi
+- `test_accounts_api.py` **15 test**: auth 401, create + validasi, list aktif default / `include_inactive`, update, get/update akun nonaktif → 404, **no-delete 405**, deactivate saldo 0, deactivate butuh target (400/400/404), transfer balancing (saldo pindah + 2 tx ber-note + kategori Transfer global), §2.8 422.
+- `pytest` **145 passed** (130 baseline + 15); `ruff`/`black` bersih.
+
+---
+
+## Fase 4 — Flutter App (current)
 ## Fase 5 — OCR Foto Nota (placeholder)
 ## Fase 7 — UI/UX Polish (placeholder)
 ## Fase 6 — Deploy Produksi (placeholder)

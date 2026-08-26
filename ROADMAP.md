@@ -51,7 +51,10 @@ transaksi via Postman dengan token Supabase asli.
 - [x] Telegram `/report` (US-17) — `_format_report` ringkas, timezone user
 - [x] Test service + API 24 test; `pytest` 130 hijau; `ruff`/`black` bersih; route terverifikasi live (401 tanpa token)
 
-### Fase 3.5 — Accounts Management CRUD (Target: 1 minggu, TIDAK BERUBAH)
+### Fase 3.5 — Accounts Management CRUD ✅ (2026-08-26, SELESAI)
+- [x] CRUD akun (create/list/get/update) + **soft-delete via deactivate** — hard delete TIDAK ADA (route DELETE → 405, terbukti di test); akun nonaktif tidak muncul di pilihan transaksi baru tapi tetap penuh di riwayat/laporan historis (CODING_RULES §2.8)
+- [x] Saldo computed dari transaksi (satu query agregasi; dinormalisasi 2 desimal); deactivate akun bersaldo → Transfer otomatis ke target (wajib `target_account_id`), 2 transaksi atomik + audit
+- [x] Kategori Transfer (expense+income) global seeded (migration `0001`); `test_accounts_api.py` **15 test** — `pytest` **145 passed**, `ruff`/`black` bersih
 
 ### Fase 4 — Flutter App: Android + iOS + Web (Target: 3-3.5 minggu)
 [...langkah sebelumnya tidak berubah...]
