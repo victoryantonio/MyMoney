@@ -156,38 +156,89 @@ Prinsip: **langsung, informatif, tanpa basa-basi motivasional.** Anda mencatat u
 - List akun dengan saldo computed real-time.
 - Toggle nonaktifkan akun memicu alur pemindahan saldo (sesuai `REQUIREMENTS.md` US-22) — tampilkan sebagai bottom sheet konfirmasi, bukan dialog kecil yang mudah ter-skip tanpa dibaca.
 
-## 9. Implementasi Teknis (Jetpack Compose)
+## 9. Implementasi Teknis (REVISI — Flutter, menggantikan Jetpack Compose)
 
-```kotlin
-// Contoh definisi color scheme custom, bukan default MD3
-val MyMoneyLightColorScheme = lightColorScheme(
-    primary = Color(0xFFB4552F),
-    primaryContainer = Color(0xFFF4DCC9),
-    surface = Color(0xFFFBF7F2),
-    surfaceVariant = Color(0xFFF0E9E0),
-    onSurface = Color(0xFF2B2622),
-    onSurfaceVariant = Color(0xFF6B6259),
-    outline = Color(0xFFDCD2C4)
-)
+Token warna, tipografi, spacing, radius — **NILAI-NILAINYA TIDAK BERUBAH**
+dari §3-5 (dusty blue/slate blue tetap dipertahankan sesuai keputusan
+sebelumnya), hanya sintaks implementasi yang berubah ke Flutter ThemeData.
 
-val MyMoneyDarkColorScheme = darkColorScheme(
-    primary = Color(0xFFE08A5C),
-    primaryContainer = Color(0xFF5C3620),
-    surface = Color(0xFF1E1B18),
-    surfaceVariant = Color(0xFF2A2521),
-    onSurface = Color(0xFFEDE6DD),
-    onSurfaceVariant = Color(0xFFB5AA9C),
-    outline = Color(0xFF443E37)
-)
+```dart
+// lib/theme/app_theme.dart
 
-// Warna income/expense sebagai custom token terpisah (MD3 tidak punya token bawaan untuk ini)
-data class MyMoneyExtendedColors(
-    val income: Color,
-    val expense: Color
-)
+class AppColors {
+  // Light Mode
+  static const surface = Color(0xFFF5F7FA);
+  static const surfaceVariant = Color(0xFFE8EDF5);
+  static const onSurface = Color(0xFF1A2233);
+  static const onSurfaceVariant = Color(0xFF556070);
+  static const primary = Color(0xFF3B5B8C);
+  static const primaryContainer = Color(0xFFD0DCF0);
+  static const income = Color(0xFF3D7A5F);
+  static const expense = Color(0xFFA8503C);
+  static const outline = Color(0xFFD0D8E8);
+
+  // Dark Mode
+  static const surfaceDark = Color(0xFF131B27);
+  static const surfaceVariantDark = Color(0xFF1C2738);
+  static const onSurfaceDark = Color(0xFFE2E8F5);
+  static const onSurfaceVariantDark = Color(0xFFA0ABBE);
+  static const primaryDark = Color(0xFF7B9ED4);
+  static const primaryContainerDark = Color(0xFF243554);
+  static const incomeDark = Color(0xFF6AAF8E);
+  static const expenseDark = Color(0xFFD18871);
+  static const outlineDark = Color(0xFF2C3D57);
+}
+
+final lightTheme = ThemeData(
+  colorScheme: ColorScheme.light(
+    primary: AppColors.primary,
+    primaryContainer: AppColors.primaryContainer,
+    surface: AppColors.surface,
+    surfaceContainerHighest: AppColors.surfaceVariant,
+    onSurface: AppColors.onSurface,
+    onSurfaceVariant: AppColors.onSurfaceVariant,
+    outline: AppColors.outline,
+  ),
+  textTheme: TextTheme(
+    displayLarge: GoogleFonts.manrope(fontSize: 32, fontWeight: FontWeight.w600),
+    headlineMedium: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w600),
+    titleMedium: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w500),
+    bodyMedium: GoogleFonts.manrope(fontSize: 14),
+  ),
+  cardTheme: CardThemeData(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    elevation: 1,
+  ),
+);
+
+// Nominal uang: widget terpisah, selalu pakai IBM Plex Mono
+class MoneyText extends StatelessWidget {
+  final double amount;
+  final double fontSize;
+  const MoneyText({required this.amount, this.fontSize = 14, super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      formatRupiah(amount),
+      style: GoogleFonts.ibmPlexMono(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+}
 ```
 
-Font di-load via `FontFamily` custom (Manrope + IBM Plex Mono dari Google Fonts), diterapkan lewat `Typography` custom di `MaterialTheme`, bukan default MD3 typography.
+Package Flutter yang dipakai: `google_fonts` (Manrope + IBM Plex Mono,
+menggantikan manual font loading Kotlin), `flutter_riverpod`, `dio`,
+`supabase_flutter`, `fl_chart` (chart donut/bar untuk report).
+
+Prinsip §1-2 (checklist anti-slop), §3-4 (warna/tipografi), §5 (elevation/
+spacing), §6 (iconography — Material Symbols tetap dipakai via
+`material_symbols_icons` package Flutter), §7 (voice/microcopy), §8
+(konsep layar) — **SEMUA TIDAK BERUBAH**, hanya §9 implementasi teknis
+yang diganti dari Kotlin ke Dart.
 
 ## 10. Prinsip Eksekusi Desain (Manual — Copilot-Compatible)
 

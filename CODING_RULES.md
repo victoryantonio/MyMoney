@@ -65,7 +65,7 @@ services:
 - Nonaktifkan akun dengan saldo tersisa WAJIB membuat transaksi penyeimbang (bukan mengubah data historis) — jaga prinsip saldo selalu computed dari transaksi, bukan field yang diedit langsung.
 - Akun nonaktif tidak muncul di pilihan input transaksi baru, tapi tetap muncul penuh di riwayat/laporan historis.
 
-### 2.9 Keamanan — Wajib, Tidak Boleh Diabaikan
+### 2.9 Keamanan — Wajib, Tidak Boleh Diabaikan (REVISI untuk Supabase)
 
 Sistem ini menyimpan data finansial personal dan expose endpoint publik (REST API + Telegram webhook).
 Setiap kategori ancaman di bawah WAJIB dimitigasi, bukan "nanti saja".
@@ -228,6 +228,34 @@ services:
 - Maksimum panjang teks input ke LLM: **500 karakter** — cegah prompt injection
   panjang yang berusaha "menenggelamkan" system prompt.
 
+### G. Verifikasi Supabase JWT (menggantikan JWT generation custom)
+
+```python
+# core/auth_service.py
+from jose import jwt
+import httpx
+
+SUPABASE_JWKS_URL = f"{settings.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+
+async def verify_supabase_token(token: str) -> dict:
+    jwks = await fetch_jwks_cached(SUPABASE_JWKS_URL)  # cache, jangan fetch tiap request
+    try:
+        payload = jwt.decode(token, jwks, algorithms=["ES256"], audience="authenticated")
+        return payload  # payload["sub"] = user_id
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+```
+
+Backend TIDAK PERNAH generate token sendiri lagi — hanya verifikasi token
+yang diterbitkan Supabase Auth di setiap request masuk (kecuali endpoint
+webhook Telegram yang pakai skema auth service-to-service terpisah).
+
+### H. Service Role Key — Aturan Ketat
+`SUPABASE_SERVICE_ROLE_KEY` (bypass semua RLS) HANYA dipakai backend Python
+untuk koneksi database. TIDAK PERNAH dikirim ke Flutter/bot Telegram.
+Kalau bocor, setara kebocoran akses root database — rotasi segera via
+Supabase dashboard kalau ada indikasi kebocoran.
+
 ## 3. Android (Kotlin / Jetpack Compose)
 
 ### 3.1 Style & Linting
@@ -324,3 +352,46 @@ Catatan: action ini masih versi `v0`, disarankan pin ke commit SHA spesifik (buk
 - Docstring wajib untuk fungsi di service layer (`core/`) yang punya logic non-trivial — jelaskan **kenapa**, bukan sekadar apa (kode sudah menjelaskan "apa").
 - README per folder (`backend/`, `android/`) berisi cara setup lokal minimal (install dependency, jalankan migration, run server).
 - Tidak perlu dokumentasi exhaustive di level fungsi kecil/trivial — hindari komentar yang sekadar mengulang nama fungsi.
+
+## 9. Flutter (Dart) — BAGIAN BARU, menggantikan §3 Android/Kotlin lama
+
+### 9.1 Style & Linting
+- Formatter: `dart format` (built-in).
+- Linter: `flutter_lints` package (official).
+- Jalankan `dart analyze` sebelum commit.
+
+### 9.2 Arsitektur
+- State management: **Riverpod** — provider per-fitur (`transactionsProvider`,
+  `accountsProvider`, dst), tidak ada global mutable state.
+- **Dilarang** panggil Supabase SDK langsung dari Widget untuk write
+  operation kompleks (transaksi, parsing) — SELALU lewat repository layer
+  yang panggil backend REST API.
+- Supabase SDK (`supabase_flutter`) HANYA dipakai untuk: auth (login/
+  register/session), realtime subscription (opsional), dan read-only
+  query sederhana yang tidak butuh business logic (kalau ada).
+- Struktur folder per-fitur (`features/transactions/`, `features/accounts/`),
+  bukan per-layer global, agar mudah di-maintain solo dev.
+
+### 9.3 Testing (REVISI — WAJIB, bukan opsional, karena keterbatasan device iOS)
+- Unit test untuk Riverpod providers & repository logic — WAJIB (TIDAK BERUBAH).
+- **Widget test WAJIB untuk 5 layar kritis** (Dashboard, Login, Transaction
+  List, Add/Edit Transaction, Accounts Management) — ini pengganti parsial
+  manual testing yang tidak bisa dilakukan developer sendiri untuk iOS.
+- **Golden test WAJIB** untuk layar yang sama — screenshot baseline
+  di-commit ke repo, CI compare setiap build, gagal kalau ada perubahan
+  visual tak terduga (indikasi awal bug platform-specific).
+- Level ini lebih tinggi dari "menengah" yang jadi filosofi umum proyek
+  (CODING_RULES.md §1) — pengecualian sadar khusus untuk Flutter karena
+  device iOS tidak tersedia untuk verifikasi manual.
+
+## 10. Node.js Telegram Bot — BAGIAN BARU
+
+### 10.1 Style & Linting
+- ESLint + Prettier, config standar TypeScript.
+- TypeScript wajib (bukan plain JS) — type safety untuk payload API.
+
+### 10.2 Arsitektur
+- Handler Telegraf HANYA parsing input & panggil backend API — DILARANG
+  ada business logic (validasi transaksi, kalkulasi saldo) ditulis di bot.
+- `backend_client.ts`: satu module terpusat untuk semua HTTP call ke
+  backend, dengan retry logic & error handling konsisten.

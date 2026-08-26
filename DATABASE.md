@@ -1,38 +1,63 @@
 # DATABASE.md — MyMoney
 
-## 1. Ringkasan
+## 1. Ringkasan (REVISI)
 
-PostgreSQL sebagai satu-satunya sumber data, dijalankan via Docker di VPS (Ubuntu 26.04 LTS, 8GB RAM, 4 vCPU). Skema dirancang untuk skala puluhan user di v1, dengan struktur yang tidak menutup jalan ke ratusan/ribuan user maupun fitur shared/household di fase mendatang.
+**Supabase (Postgres terkelola)** sebagai satu-satunya sumber data,
+menggantikan self-hosted Postgres di VPS. Skema dasar TIDAK BERUBAH secara
+struktural, TAPI ada penyesuaian penting terkait integrasi Supabase Auth
+dan Row Level Security (RLS).
 
-## 2. Skema Tabel
+## 2.1 `users` → DIGANTI: `public.profiles` (REVISI STRUKTURAL)
 
-### 2.1 `users`
+Supabase menyediakan `auth.users` bawaan (dikelola penuh oleh Supabase Auth
+— email, password hash, OAuth provider info — TIDAK ANDA KELOLA LANGSUNG).
+Anda buat tabel `public.profiles` untuk data tambahan aplikasi, relasi 1:1
+via `id` yang sama dengan `auth.users.id`.
 
 | Kolom | Tipe | Constraint | Keterangan |
 |---|---|---|---|
-| id | UUID | PK, default `gen_random_uuid()` | |
-| email | VARCHAR(255) | UNIQUE, NOT NULL | |
-| password_hash | VARCHAR(255) | NOT NULL | argon2, tidak pernah plaintext |
+| id | UUID | PK, FK → `auth.users(id)` ON DELETE CASCADE | SAMA PERSIS dengan id di auth.users, bukan UUID baru |
 | display_name | VARCHAR(100) | NOT NULL | |
-| timezone | VARCHAR(50) | NOT NULL, default `'Asia/Jakarta'` | Untuk akurasi tanggal report harian/bulanan per zona waktu user |
-| is_active | BOOLEAN | NOT NULL, default TRUE | Untuk soft-disable akun tanpa hapus data |
+| role | VARCHAR(10) | NOT NULL, default `'user'`, CHECK (`role IN ('user','admin')`) | Sesuai keputusan admin CRUD user sebelumnya |
+| timezone | VARCHAR(50) | NOT NULL, default `'Asia/Jakarta'` | |
+| is_active | BOOLEAN | NOT NULL, default TRUE | |
 | created_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
 | updated_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
 
-**Index:**
-- `UNIQUE INDEX idx_users_email ON users(email)` — otomatis dari constraint UNIQUE, dipakai untuk login lookup.
+**Trigger wajib**: buat trigger Postgres `on_auth_user_created` yang
+otomatis insert row `profiles` baru setiap kali ada row baru di
+`auth.users` (via Supabase Database Trigger/Function) — supaya setiap
+user yang register otomatis punya profile, tanpa backend perlu insert
+manual di dua tempat.
 
-### 2.2 `telegram_links`
+```sql
+-- Contoh trigger (dijalankan via Supabase SQL Editor atau migration)
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, display_name)
+  VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'display_name', 'User'));
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-| Kolom | Tipe | Constraint | Keterangan |
-|---|---|---|---|
-| id | UUID | PK, default `gen_random_uuid()` | |
-| user_id | UUID | FK → users(id), NOT NULL, UNIQUE | Satu user maksimal satu akun Telegram terhubung |
-| telegram_id | BIGINT | UNIQUE, NOT NULL | ID numerik dari Telegram (bukan username, karena bisa berubah) |
-| linked_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+```
 
-**Index:**
-- `UNIQUE INDEX idx_telegram_links_telegram_id ON telegram_links(telegram_id)` — lookup cepat saat webhook masuk, ini query yang dieksekusi di **setiap** pesan Telegram sehingga wajib ter-index.
+**Admin pertama**: setelah trigger jalan dan admin register normal via
+Supabase Auth, jalankan SQL manual sekali untuk update `role='admin'` di
+`profiles` — bukan lewat UI (konsisten dengan keputusan sebelumnya bahwa
+admin pertama di-seed manual).
+
+## 2.2 `telegram_links` — TIDAK BERUBAH strukturnya
+FK `user_id` sekarang merujuk ke `profiles.id` (yang sama dengan `auth.users.id`).
+
+## 2.3 - 2.9 (categories, transactions, transaction_items, audit_logs,
+accounts, pending_transactions) — TIDAK BERUBAH secara struktur kolom.
+Semua FK `user_id` sekarang merujuk `profiles(id)` bukan tabel `users`
+custom lama.
 
 ### 2.3 `categories`
 
@@ -253,9 +278,13 @@ services:
 
 ## 5. Migration Strategy
 
-- **Alembic** untuk semua perubahan skema — tidak ada perubahan manual langsung ke database production.
-- Setiap migration harus reversible (`upgrade()` dan `downgrade()` keduanya ditulis).
-- Migration dijalankan otomatis sebagai bagian dari CI/CD deploy step (lihat `CODING_RULES.md`), bukan manual di server.
+Alembic tetap dipakai untuk migration skema (TIDAK BERUBAH), TAPI target
+koneksi sekarang connection string Supabase (dari project settings →
+Database → Connection string). RLS policy sebaiknya **dipisah** dari
+migration Alembic biasa — taruh di folder terpisah `backend/supabase_policies/`
+sebagai file SQL murni, dijalankan manual via Supabase SQL Editor atau
+Supabase CLI (`supabase db push`), karena Alembic tidak native mengerti
+sintaks RLS Supabase dengan baik.
 
 ## 6. Extensibility — Hook untuk Skala Lebih Besar (Tidak Diimplementasi di v1)
 
@@ -277,3 +306,53 @@ Kategori default (`user_id = NULL`, `is_default = TRUE`) diisi lewat migration a
 **Transfer/Penyesuaian Akun:** Transfer (expense) dan Transfer (income) — `is_default = TRUE`, ditambahkan untuk balancing saat akun dinonaktifkan (lihat catatan §2.4).
 
 Keunikan `(owner, name, type)` dijamin index `idx_categories_user_name_type` (§2.3) — kategori global memakai sentinel `00000000-0000-0000-0000-000000000000` sebagai owner. Aplikasi (REST/Android) menampilkan daftar gabungan: global default + kategori custom milik user.
+
+## 10. Row Level Security (RLS) — BAGIAN BARU, WAJIB
+
+Setiap tabel yang berisi data spesifik-user WAJIB diaktifkan RLS dan diberi
+policy eksplisit. Ini lapis keamanan tambahan di level database, independen
+dari validasi backend Python.
+
+```sql
+-- Aktifkan RLS di semua tabel data user
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transaction_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pending_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- Contoh policy: user hanya bisa lihat/edit transaksi miliknya sendiri
+CREATE POLICY "Users can view own transactions"
+  ON public.transactions FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own transactions"
+  ON public.transactions FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- transaction_items: cek lewat parent transaction
+CREATE POLICY "Users can view own transaction items"
+  ON public.transaction_items FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.transactions t
+      WHERE t.id = transaction_id AND t.user_id = auth.uid()
+    )
+  );
+
+-- categories: user lihat kategori miliknya + kategori global (user_id NULL)
+CREATE POLICY "Users can view own or global categories"
+  ON public.categories FOR SELECT
+  USING (user_id = auth.uid() OR user_id IS NULL);
+
+-- Backend service (pakai service_role key) BYPASS semua RLS di atas —
+-- ini yang membuat backend Python tetap bisa insert/update apa pun sesuai
+-- validasi bisnisnya sendiri, RLS hanya membatasi akses LANGSUNG dari client.
+```
+
+**Prinsip penting**: RLS adalah lapis pertahanan TAMBAHAN, bukan pengganti
+validasi service layer Python. Backend tetap wajib validasi `user_id`
+secara eksplisit di setiap query (CODING_RULES.md), RLS mencegah kebocoran
+kalau validasi backend ternyata ada bug.

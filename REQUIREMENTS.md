@@ -8,10 +8,10 @@ Dokumen ini mendefinisikan kebutuhan fungsional dan non-fungsional untuk MyMoney
 
 | Aktor | Deskripsi |
 |---|---|
-| **User** | Pengguna terdaftar, berinteraksi lewat Telegram bot dan/atau Android app |
-| **Telegram Bot System** | Antarmuka pasif yang meneruskan pesan/foto user ke backend |
-| **GLM 5.2** | Sistem eksternal, parsing teks jadi transaksi terstruktur |
-| **Gemini 3.5 Flash-Lite** | Sistem eksternal, parsing foto nota jadi transaksi terstruktur |
+| **User** | Terdaftar via Supabase Auth (email/password, magic link, atau OAuth Google/Apple), berinteraksi lewat Telegram bot dan/atau Flutter app (Android/iOS/Web) |
+| **Telegram Bot System** | Node.js + Telegraf, meneruskan pesan ke backend API (BUKAN akses Supabase langsung) |
+| **Deepseek V4 Flash** | Sistem eksternal, parsing teks jadi transaksi terstruktur |
+| **Deepseek V4 Flash Vision Model Exp** | Sistem eksternal, parsing foto nota jadi transaksi terstruktur |
 
 ## 3. Use Case Diagram
 
@@ -58,13 +58,17 @@ graph TD
 
 ## 4. Functional Requirements (User Stories)
 
-### 4.1 Autentikasi & Akun
+## 4.1 Autentikasi & Akun (REVISI)
 
-**US-01** — Sebagai user baru, saya ingin registrasi dengan email & password, agar data keuangan saya terisolasi dan aman.
-- Password di-hash (argon2), tidak pernah disimpan plaintext.
-- Validasi email unik.
+**US-01 (REVISI)** — Sebagai user baru, saya ingin registrasi via email/
+password ATAU magic link ATAU OAuth Google, agar saya bisa pilih metode
+yang paling nyaman tanpa sistem auth custom yang rawan bug.
+- Ditangani penuh oleh Supabase Auth — password hashing, email verification
+  bawaan, TIDAK PERLU implementasi custom.
 
-**US-02** — Sebagai user, saya ingin login dan mendapat access token + refresh token (JWT), agar bisa akses API dari Android app secara aman.
+**US-02 (REVISI)** — Sebagai user, saya ingin login dan session saya
+dikelola otomatis (refresh token otomatis oleh Supabase SDK), agar saya
+tidak perlu login ulang setiap token kadaluarsa.
 
 **US-03** — Sebagai user, saya ingin menghubungkan akun Telegram saya ke akun MyMoney lewat command `/start`, agar bot mengenali saya tanpa login ulang tiap chat.
 
@@ -80,7 +84,7 @@ graph TD
 
 ### 4.3 Pencatatan Transaksi — Foto Nota (OCR)
 
-**US-07** — Sebagai user, saya ingin memfoto nota belanja lewat Telegram atau Android app, agar sistem otomatis mengekstrak merchant, tanggal, total, dan rincian per item.
+**US-07 (REVISI)** — Sebagai user, saya ingin memfoto nota belanja lewat Telegram atau Android app, agar sistem otomatis mengekstrak merchant, tanggal, total, dan rincian per item. Gambar nota disimpan di Supabase Storage (bucket privat), diakses via signed URL berumur pendek dari Flutter app, bukan local storage VPS.
 - Sistem memanggil Gemini 3.5 Flash-Lite untuk vision parsing.
 - Hasil mencakup level `confidence` (high/medium/low).
 
@@ -120,26 +124,20 @@ graph TD
 
 **US-22** — Sebagai user, saya ingin menonaktifkan akun yang sudah tidak dipakai (bukan menghapus permanen); jika masih ada saldo tersisa, sistem meminta saya pilih akun tujuan dan otomatis membuat transaksi penyeimbang agar saldo tersisa berpindah tanpa mengubah riwayat transaksi lama.
 
-## 5. Non-Functional Requirements
+## 5. Non-Functional Requirements (REVISI)
 
-| Kategori | Requirement |
+| Kategori | Requirement (REVISI) |
 |---|---|
-| **Keamanan** | Password di-hash (argon2); JWT untuk auth API; secrets (API key, DB credential) tidak pernah di-commit ke repo publik, disimpan di `.env`/vault |
-| **Availability** | Backend target uptime tinggi selama laptop menyala 24/7; auto-restart container (`restart: unless-stopped`) jika crash |
-| **Performance** | Response parsing teks (GLM 5.2) dan foto (Gemini 3.5 Flash-Lite) idealnya < 5 detik agar tidak terasa lambat di chat |
-| **Data integrity** | Semua output LLM divalidasi sebelum commit ke database; tidak ada auto-commit tanpa konfirmasi user |
-| **Portability** | Backend REST API bersifat client-agnostic, agar bisa diperluas ke client baru (misal iOS di v2) tanpa perubahan arsitektur |
-| **Maintainability** | Kode mengikuti konvensi di `CODING_RULES.md`; CI/CD (GitHub Actions) menjalankan lint & test otomatis di setiap push |
-| **Auditability** | Kolom `source` (telegram/app) dicatat di tiap transaksi untuk keperluan audit asal data |
-| **Cost control** | Model routing dipilih berdasarkan biaya (GLM 5.2 & Gemini 3.5 Flash-Lite dipilih karena murah untuk volume personal, bukan model flagship mahal) |
-| **Auditability** | Setiap aksi create/edit/delete transaksi dan login tercatat permanen di `audit_logs` (siapa, apa, kapan, dari kanal mana), terpisah dari log aplikasi operasional |
-| **Data integrity** | Transaksi tidak boleh menjadi orphan (`account_id` tanpa akun valid) — penghapusan akun dengan riwayat transaksi wajib melalui alur reassignment atomik |
-| **LLM Reliability** | Sistem wajib punya fallback model di OpenRouter — kegagalan model primary (rate limit, model dihapus) tidak boleh menghentikan fungsi inti pencatatan transaksi |
+| **Keamanan** | Password dikelola Supabase Auth (tidak pernah Anda pegang hash-nya); RLS aktif di semua tabel data user sebagai lapis kedua; service_role key hanya di backend, tidak pernah di client |
+| **Portability** | Flutter app: satu codebase untuk Android/iOS/Web — REST API backend tetap client-agnostic |
+| **Cost control** | REVISI: tambah pertimbangan biaya platform (Supabase/Railway/Render free tier limit), bukan hanya biaya model LLM |
 
-## 6. Out of Scope (v1)
+## 6. Out of Scope (v1) — REVISI
 
-- Multi-currency (hanya IDR).
-- Shared/household data antar user (isolated per-user; extensible untuk masa depan).
-- Enkripsi at-rest untuk data transaksi (hanya password yang di-hash).
-- Aplikasi iOS (dicatat sebagai kandidat v2 di `ROADMAP.md`).
-- Integrasi agent framework/orchestration pihak ketiga (n8n, Hermes Agent).
+- Multi-currency — TIDAK BERUBAH.
+- Shared/household data — TIDAK BERUBAH.
+- ~~Aplikasi iOS~~ **DIHAPUS dari Out of Scope** — otomatis in-scope via Flutter.
+- Publikasi resmi ke Play Store/App Store — **DITAMBAHKAN sebagai Out of
+  Scope v1** (build APK/testing manual cukup untuk v1, publikasi store
+  adalah effort terpisah: developer account, review process, dsb).
+- Integrasi agent framework pihak ketiga — TIDAK BERUBAH.

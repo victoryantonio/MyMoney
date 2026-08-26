@@ -6,74 +6,124 @@
 - **Timeline: 1-2 bulan, fokus penuh.** Target agresif ini hanya realistis kalau scope tidak melebar di tengah jalan (lihat riwayat revisi di §5 sebagai pengingat pola yang harus dihindari).
 - Setiap fase diakhiri dengan checkpoint yang bisa dites nyata (bukan "selesai di kepala"), agar kalau timeline meleset, Anda tetap punya sistem yang jalan di titik manapun berhenti.
 
-## 2. Fase Pengerjaan
+## 2. Fase Pengerjaan (REVISI TOTAL — Stack Baru)
 
-### Fase 0 — Setup Fondasi (Target: 2-3 hari)
-- [ ] Inisialisasi monorepo (struktur sesuai `ARCHITECTURE.md` §7)
-- [ ] Setup Docker Compose: FastAPI + PostgreSQL, jalan lokal
-- [ ] Setup Alembic, migration awal (tabel `users`, `telegram_links`, `categories`, `transactions`, `transaction_items` sesuai `DATABASE.md`)
-- [ ] Seed data kategori default
-- [ ] Setup GitHub repo (public), `.gitignore`, `.env.example`
-- [ ] Setup pre-commit hook (black, ruff)
-- [ ] Setup GitHub Actions dasar (lint + test, belum deploy)
+### Fase 0 — Setup Fondasi Baru (Target: 3-4 hari, +1 hari dari sebelumnya)
+- [ ] Buat project Supabase, setup Auth providers (email, Google OAuth minimal)
+- [ ] Setup RLS policies dasar (profiles, transactions, accounts, categories)
+- [ ] Setup backend FastAPI, koneksi ke Supabase Postgres via SQLAlchemy
+- [ ] Setup Alembic migration target Supabase
+- [ ] Init Flutter project (Riverpod, supabase_flutter, dio terpasang)
+- [ ] Init Telegram bot project (Node/Telegraf/TypeScript)
+- [ ] GitHub Actions dasar: lint 3 ekosistem (ruff/black, dart analyze, eslint)
 
-**Checkpoint**: `docker-compose up` jalan lokal, migration sukses, endpoint `/health` merespons.
+**Checkpoint**: Backend jalan lokal terhubung Supabase, Flutter bisa
+register/login via Supabase Auth, migration sukses.
 
-### Fase 1 — Backend Inti + Autentikasi (Target: 1 minggu)
-- [ ] `auth_service`: registrasi, login, JWT (access + refresh token)
-- [ ] Password hashing (bcrypt/argon2)
-- [ ] `transaction_service`: create/read/update/delete transaksi (manual, tanpa LLM dulu)
-- [ ] Endpoint REST dasar untuk transaksi & kategori (dengan pagination cursor-based sejak awal, sesuai `CODING_RULES.md`)
+### Fase 1 — Backend Inti + Integrasi Auth Supabase (Target: 1 minggu,
+TIDAK BERUBAH dari estimasi awal meski approach beda)
+- [ ] Middleware verifikasi Supabase JWT (bukan generate JWT sendiri —
+      lebih cepat dari rencana awal karena tidak perlu implementasi
+      refresh token custom)
+- [ ] `transaction_service`: CRUD transaksi
+- [ ] Trigger Postgres auto-create `profiles` saat user register
 - [ ] Unit test service layer
 
-**Checkpoint**: Bisa registrasi, login, dan CRUD transaksi lewat Postman/curl — tanpa UI apapun.
+**Checkpoint**: Register via Supabase Auth otomatis buat profile, CRUD
+transaksi via Postman dengan token Supabase asli.
 
-### Fase 2 — Integrasi Telegram + Parsing Teks (Target: 1-1.5 minggu)
-- [ ] Setup Telegram bot, webhook endpoint
-- [ ] `/start` — linking `telegram_id` ke `user_id`
-- [ ] `nlu_parser`: integrasi GLM 5.2, structured output (JSON schema)
-- [ ] Implementasi Direct Save (LLM parsing langsung commit ke database tanpa state pending)
-- [ ] Command `/undo`, `/edit`
+### Fase 1.5 — RBAC Admin (Target: 2 hari, lebih cepat dari estimasi awal
+karena role tinggal kolom di `profiles`, tidak perlu bangun auth admin
+terpisah)
+- [ ] Migration: kolom `role` di `profiles`
+- [ ] Endpoint `/admin/users/*` dengan middleware `require_role("admin")`
+- [ ] Seed admin pertama manual
 
-**Checkpoint**: Bisa chat "beli kangkung 5k Cash" ke bot Telegram, dapat balasan konfirmasi, transaksi tersimpan setelah konfirmasi.
+### Fase 2 — Telegram Bot + Parsing Teks (Target: 1-1.5 minggu, TIDAK BERUBAH)
+- [ ] Bot Node/Telegraf: webhook handler, panggil backend API
+- [ ] `telegram_links`: map telegram_id ke profile
+- [ ] `nlu_parser` (Python, backend) — TIDAK BERUBAH dari desain awal
 
-### Fase 3 — Report Dasar (Target: 3-5 hari)
-- [ ] `report_service`: agregasi per kategori/periode (query database, bukan hitung di Python — sesuai `DATABASE.md` §3.4)
-- [ ] Command `/report` di Telegram (ringkasan teks)
-- [ ] Endpoint REST report untuk konsumsi Android nanti
+### Fase 3 — Report Dasar (Target: 3-5 hari, TIDAK BERUBAH)
 
-**Checkpoint**: `/report bulan-ini` di Telegram menampilkan ringkasan pemasukan/pengeluaran per kategori.
+### Fase 3.5 — Accounts Management CRUD (Target: 1 minggu, TIDAK BERUBAH)
 
-### Fase 4 — Android App (Target: 2-2.5 minggu)
-- [ ] Setup project Kotlin + Jetpack Compose, arsitektur MVVM
-- [ ] Auth screen (login/register), simpan JWT (refresh otomatis)
-- [ ] Input transaksi manual (form)
-- [ ] List transaksi (pagination, sesuai API yang sudah ada)
-- [ ] Edit/hapus transaksi
-- [ ] Manajemen kategori custom (tambah/edit)
-- [ ] Dashboard report (chart via Vico/MPAndroidChart)
+### Fase 4 — Flutter App: Android + iOS + Web (Target: 3-3.5 minggu)
+[...langkah sebelumnya tidak berubah...]
+- [ ] Setup GitHub Actions macOS runner untuk build iOS otomatis (gratis,
+      repo publik) — trigger di setiap push ke `main`
+- [ ] Setup Apple Developer Program ($99/tahun) — WAJIB untuk TestFlight,
+      bukan opsional kalau iOS masuk v1 tanpa Mac fisik
+- [ ] Widget test + golden test untuk minimal 5 layar kritis (Dashboard,
+      Login, Transaction List, Add Transaction, Accounts) — baseline
+      screenshot dicek di CI setiap build, supaya regresi visual iOS
+      terdeteksi otomatis tanpa Anda lihat langsung
+- [ ] Upload build iOS ke TestFlight setiap milestone besar (bukan setiap
+      commit — terlalu sering akan menghabiskan kuota build)
+- [ ] Cari MINIMAL 1 orang dengan iPhone (teman/keluarga) sebagai tester
+      manual berkala — dokumentasikan siapa & jadwal testing di README,
+      jangan andalkan diri sendiri karena Anda tidak punya device untuk itu
 
-**Checkpoint**: App Android bisa login, catat transaksi manual, lihat list & report — berjalan di atas backend yang sama dengan Telegram.
+**Checkpoint (REVISI)**: Android teruji langsung di device Anda. iOS lolos
+CI build + golden test otomatis, DAN sudah di-testing manual minimal 1x
+oleh tester eksternal via TestFlight sebelum dianggap "selesai" — CI hijau
+saja TIDAK CUKUP untuk klaim iOS siap.
 
-### Fase 5 — OCR Foto Nota (Target: 1.5-2 minggu)
-- [ ] `receipt_service`: integrasi Gemini 3.5 Flash-Lite (vision)
-- [ ] Structured output multi-item (`merchant`, `date`, `total`, `items[]`, `confidence`)
-- [ ] Endpoint upload foto (Telegram & Android)
-- [ ] UI konfirmasi/edit per-item sebelum commit (Android — ini bagian paling kompleks di UI, sudah ditandai sejak `REQUIREMENTS.md`)
-- [ ] Penanganan `confidence: low` — tandai perlu review manual
-- [ ] Simpan gambar nota asli (local storage di VPS, path di `receipt_image_url`)
+**Risiko yang diterima secara sadar**: bug UI/UX spesifik-iOS (gesture,
+safe area, keyboard behavior) berpotensi baru ketahuan setelah tester
+eksternal mencoba, bukan saat development. Ini trade-off yang sudah
+disetujui — mitigasi di atas mengurangi risiko, bukan menghilangkannya.
 
-**Checkpoint**: Foto nota belanja dari Telegram atau app menghasilkan transaksi multi-item yang bisa dikoreksi sebelum tersimpan.
+**Checkpoint**: App jalan di Android emulator/device, Web browser, dan
+idealnya iOS simulator — backend & Supabase yang sama untuk ketiganya.
 
-### Fase 6 — Deploy Produksi & Hardening (Target: 3-5 hari)
-- [ ] Provisioning VPS (Ubuntu 26.04 LTS, 8GB/4vCPU sesuai `ARCHITECTURE.md`)
-- [ ] Setup Nginx reverse proxy + Let's Encrypt
-- [ ] Konfigurasi resource limit Docker (sesuai `DATABASE.md` §4)
-- [ ] GitHub Actions: tambah step deploy otomatis ke VPS
-- [ ] Setup monitoring dasar (health check + uptime alert)
-- [ ] Review keamanan akhir: pastikan tidak ada credential ter-commit, cek `.env` di server
+### Fase 5 — OCR Foto Nota (Target: 1.5-2 minggu, TIDAK BERUBAH secara
+logic, tambahan: Supabase Storage integration untuk gambar nota)
 
-**Checkpoint**: Sistem berjalan penuh di VPS produksi, bisa diakses dari Telegram & Android dari mana saja.
+### Fase 7 — UI/UX Polish (Target: 1-1.5 minggu, paralel Fase 4-5,
+sedikit lebih ringan dari estimasi sebelumnya karena Flutter theme
+lebih mudah dikonsistenkan lintas platform dibanding native Kotlin)
+
+### Fase 6 — Deploy Produksi (Target: 2-3 hari, LEBIH CEPAT dari VPS
+manual — Railway/Render deploy otomatis dari GitHub push, tidak perlu
+script SSH manual)
+- [ ] Setup Railway/Render project untuk backend & bot
+- [ ] Setup Supabase production project (terpisah dari dev)
+- [ ] Environment variables production (service role key, OpenRouter key)
+- [ ] Deploy Flutter Web ke Vercel/Netlify
+- [ ] Review keamanan: RLS policy production, tidak ada key ter-commit
+
+## 3. Ringkasan Timeline Revisi
+
+| Fase | Estimasi | Kumulatif |
+|---|---|---|
+| Fase 0 — Setup Fondasi Baru | 3-4 hari | ~4 hari |
+| Fase 1 — Backend + Auth Supabase | 1 minggu | ~1.5 minggu |
+| Fase 1.5 — RBAC Admin | 2 hari | ~1.8 minggu |
+| Fase 2 — Telegram + Parsing | 1-1.5 minggu | ~3.3 minggu |
+| Fase 3 — Report Dasar | 3-5 hari | ~3.8 minggu |
+| Fase 3.5 — Accounts CRUD | 1 minggu | ~4.8 minggu |
+| Fase 4 — Flutter (3 platform) | 3-3.5 minggu | ~8.2 minggu |
+| Fase 5 — OCR Foto Nota | 1.5-2 minggu | ~9.9 minggu |
+| Fase 7 — UI/UX Polish (paralel) | 1-1.5 minggu | tidak menambah kumulatif |
+| Fase 6 — Deploy Produksi | 2-3 hari | **~10.3 minggu** |
+
+**Realitas timeline**: total **~10-11 minggu (2.5 bulan)** — mirip dengan
+estimasi stack lama meski approach sangat berbeda, karena penghematan di
+auth/deployment (Supabase, Railway/Render) kurang lebih seimbang dengan
+tambahan waktu belajar Flutter/Dart (bahasa baru) dan setup RLS (konsep
+baru). **Klaim "lebih sederhana" untuk solo dev valid dalam hal maintenance
+jangka panjang (auth tidak perlu di-maintain sendiri), tapi TIDAK
+otomatis mempercepat waktu pengerjaan v1 awal** — ini penting Anda sadari
+supaya ekspektasi timeline tidak meleset.
+
+## 4. Catatan Disiplin Scope (REVISI)
+
+Perubahan stack ini SENDIRI adalah bentuk scope change besar yang harus
+dicatat resmi (sesuai prinsip §5 sebelumnya) — bukan hanya "revisi
+markdown". Setelah dokumen ini final, JANGAN ada pivot stack lagi di
+tengah jalan — evaluasi hasil keputusan ini setelah Fase 1 selesai
+(~1.8 minggu), bukan di tengah Fase 4/5 kalau mulai terasa "ribet lagi".
 
 ## 3. Ringkasan Timeline
 

@@ -1,162 +1,115 @@
-# walkthrough.md — MyMoney Phase 5 Execution Guide
+# walkthrough.md — MyMoney v2 Execution Guide
 
-> ✅ **Phase 4 (Android App) is COMPLETE (2026-08-25).** Results: 23 unit tests
-> green, `lintDebug` clean, `assembleDebug` clean (`app-debug.apk`), launcher
-> icons generated in-repo from `./icon.png`, pushed to `main`.
->
-> Phase 4's step-by-step guide below is kept as the record of how the app was
-> built. The current phase is **Phase 5 — OCR Foto Nota** (see the new guide at
-> the bottom of this file).
-
-Phase 4 = **Android App** — Kotlin + Jetpack Compose, MVVM, JWT auth with
-auto-refresh, manual transaction CRUD, custom category management, and a report
-dashboard with charts. **The app launcher icon is `./icon.png`** (1254×1254 RGB
-PNG at the repo root) — all Android icon resources are generated from it
-in-repo (no Android Studio / new design needed).
+> ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
+> 6 dokumen inti sudah ditulis ulang; `android/` v1 di `_archive/android-kotlin-v1/`.
+> Panduan di bawah adalah cara mengeksekusi **Fase 0** (fase berjalan).
+> Guide fase berikutnya diisi saat fase itu dimulai (placeholder di bawah).
+> Rekam historis v1 ada di git history + `_archive/`.
 
 ---
 
-## Step 0 — Decision gate (before writing code)
+## Fase 0 — Setup Fondasi Baru (current)
 
-Read `IMPLEMENTATION_PLAN.md §2/§3`. Resolved decisions:
+**Tujuan:** fondasi terhubung — Supabase sebagai sumber data, backend FastAPI
+terhubung, Flutter & bot Node ter-init, CI lint 3 ekosistem.
+**Checkpoint (DoD):** backend lokal ↔ Supabase OK; Flutter register/login via
+Supabase Auth; `alembic upgrade head` sukses.
 
-1. **App icon.** Use `./icon.png` (repo root, 1254×1254 RGB PNG) as the launcher
-   icon. Generate resources in-repo with a committed script:
-   - `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`
-     (48 / 72 / 96 / 144 / 192 px) + `ic_launcher_round.png` twins
-   - `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` +
-     `ic_launcher_round.xml` (adaptive: foreground = icon scaled ~66%, background
-     = solid color sampled from the icon edge)
-2. **Architecture.** MVVM: Repository (Retrofit + OkHttp) → ViewModel (UiState)
-   → Compose screens. JWT pair stored in DataStore, silent refresh via OkHttp
-   `Authenticator`.
-3. **Chart library.** Vico (Compose-native) — ROADMAP lists "Vico/MPAndroidChart";
-   pick Vico unless review objects.
-4. **Min SDK.** API 26 (Android 8.0) — adaptive icons need 26; legacy PNGs
-   cover anything below.
+### Step 0 — Decision gate
+1. **LLM env-driven** (keputusan final 2026-08-26): `LLM_PROVIDER=auto` dengan
+   `OPENROUTER_API_KEY` (default, free tier) dan/atau `DEEPSEEK_API_KEY`;
+   model via `LLM_TEXT_MODEL`/`LLM_VISION_MODEL` (+fallback chain). Satu gateway
+   `call_llm()` tetap — tidak ada panggilan LLM di luar `core/llm_client.py`.
+2. **Folder v2 (untuk review user)**: `backend/` (FastAPI, dimigrasi),
+   `bot/` (Node), `app/` (Flutter), `_archive/` (v1).
+3. **Commit pivot**: belum — menunggu review user.
 
----
+### Step 1 — Buat project Supabase (user yang buat di dashboard — panduan)
+1. Buka https://supabase.com → **New project** (pilih org, region terdekat,
+   password DB kuat — simpan aman).
+2. Setelah jadi, dari **Project Settings → API** salin:
+   - `Project URL` → `SUPABASE_URL` (contoh `https://abcxyz.supabase.co`)
+   - `anon public` → `SUPABASE_ANON_KEY` (aman untuk client)
+   - `service_role` → `SUPABASE_SERVICE_ROLE_KEY` (**RAHASIA** — backend only,
+     jangan pernah di Flutter/bot client)
+3. **Authentication → Providers**: aktifkan Email (default). Google OAuth:
+   buat OAuth Client ID di Google Cloud Console, redirect URI
+   `https://<project-ref>.supabase.co/auth/v1/callback`, isi di provider settings.
+4. **Project Settings → Database → Connection string**:
+   - `Transaction pooler` (port 6543) → `DATABASE_URL` runtime
+   - `Session pooler`/direct (port 5432) → untuk migration `alembic`
 
-## Step 1 — Project scaffold (`android/`) + app icon
+### Step 2 — `.env` lokal
+- Salin `.env.example` → `.env`; isi `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, LLM keys, `TELEGRAM_BOT_TOKEN`.
+- JANGAN pernah commit `.env` (sudah di `.gitignore`).
 
-### 1.1 Scaffold
-- Create `android/` Gradle project: `settings.gradle.kts`, root
-  `build.gradle.kts` (AGP + Kotlin + Compose BOM via version catalog
-  `gradle/libs.versions.toml`), `app/` module with `build.gradle.kts`.
-- Package `id.my.mymoney`; `MainActivity` (Compose), Material 3 theme,
-  NavHost (Auth → Main).
-- Manifest: internet permission, `android:icon="@mipmap/ic_launcher"`,
-  `roundIcon="@mipmap/ic_launcher_round"`.
-- `cd android && ./gradlew :app:assembleDebug` must build.
+### Step 3 — Backend: koneksi Supabase + migration
+1. `backend/app/core/config.py`: tambah settings Supabase (pydantic-settings)
+   — `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` (opsional),
+   `DATABASE_URL` Supabase.
+2. `backend/alembic/env.py`: baca `DATABASE_URL` dari settings (bukan hardcode).
+3. Migration baru `alembic/versions/0002_supabase_profiles.py`:
+   - Tabel `profiles` (DATABASE.md §2.1): `id UUID PK FK auth.users(id)`,
+     `display_name`, `role` (default 'user', CHECK), `timezone` (default
+     'Asia/Jakarta'), `is_active`, `created_at`, `updated_at`.
+   - Trigger `handle_new_user` (SQL DATABASE.md §2.1) — SECURITY DEFINER.
+   - RLS: enable + policy `profiles` (select/update own), `transactions`,
+     `accounts`, `categories` (user_id = auth.uid(); kategori global NULL
+     user_id bisa dibaca semua user terautentikasi).
+4. Jalankan: `alembic upgrade head` → verifikasi tabel & trigger di Supabase
+   Table Editor / SQL Editor.
+5. `/health` backend lokal → 200 (DB Supabase).
 
-### 1.2 App icon from `./icon.png`
-- Commit `android/tools/gen_icons.py` (Python/Pillow or ImageMagick) that reads
-  `./icon.png` (1254×1254, repo root) and writes:
-  - `app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`
-    (48 / 72 / 96 / 144 / 192 px) + `ic_launcher_round.png` twins
-  - `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` +
-    `ic_launcher_round.xml` (adaptive icon)
-  - `values/ic_launcher_background.xml` color sampled from the icon edge
-- Adaptive XML:
-  ```xml
-  <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-      <background android:drawable="@color/ic_launcher_background"/>
-      <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
-  </adaptive-icon>
-  ```
-- Verify in emulator launcher: no stretch, no alpha bleed, round OK.
+### Step 4 — Flutter init (`app/`)
+1. Install Flutter SDK (https://docs.flutter.dev/get-started/install/linux),
+   lalu `flutter doctor` (Android toolchain untuk build APK).
+2. `flutter create app --org id.my.mymoney --platforms android,ios,web`
+3. Deps: `flutter pub add flutter_riverpod supabase_flutter dio`.
+4. `lib/main.dart`: `await Supabase.initialize(url: ..., anonKey: ...)`
+   (pakai `--dart-define` build-time, bukan hardcode).
+5. Layar Auth minimal (email login/register) — cukup untuk verifikasi checkpoint.
 
----
+### Step 5 — Bot Node init (`bot/`)
+1. Install Node LTS (nvm): `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash` lalu `nvm install --lts`.
+2. `mkdir -p bot && cd bot && npm init -y && npm i telegraf dotenv && npm i -D typescript tsx @types/node`.
+3. Scaffold minimal `src/index.ts`: webhook endpoint + cek
+   `X-Telegram-Bot-Api-Secret-Token` + forward update ke backend
+   (URL dari `APP_BASE_URL`, auth `BOT_SERVICE_TOKEN`) — implementasi penuh Fase 2.
+4. `tsc --noEmit` clean.
 
-## Step 2 — Networking + auth
+### Step 6 — GitHub Actions (lint 3 ekosistem)
+- `.github/workflows/lint.yml`:
+  - backend: `pip install -e .[dev] && ruff check . && black --check .`
+  - app: `flutter pub get && flutter analyze`
+  - bot: `npm ci && npx eslint src && tsc --noEmit`
 
-- `data/remote/` — Retrofit service mirroring the backend: `POST
-  /api/auth/login|register|refresh`, transactions CRUD, accounts, categories,
-  `GET /api/reports/summary`.
-- OkHttp `AuthInterceptor` adds `Authorization: Bearer <access>`;
-  `TokenAuthenticator` silently refreshes via `/api/auth/refresh` on 401.
-- `data/local/` — DataStore for the access/refresh token pair (async).
-- `AuthRepository` — login/register/refresh/logout; expose auth UiState.
-
----
-
-## Step 3 — Screens (Compose, MVVM)
-
-- **Auth screen** — email/password form; login + register; on success → Main.
-- **Transactions list** — paging from the cursor API (`?cursor=&limit=`),
-  swipe-to-refresh, next page on scroll end; income/expense rows with category
-  chip; edit/delete actions.
-- **Transaction form** — amount, type toggle, category dropdown (custom),
-  account, date, merchant; create + edit + delete confirm dialog.
-- **Categories management** — list global + user categories, add/edit/soft-delete.
-- **Dashboard** — total income / expense / net cards + per-category chart
-  (Vico) from `GET /api/reports/summary?period=...`; period selector
-  today/week/month/last-month mirroring backend keywords.
-
----
-
-## Step 4 — Tests
-
-- Unit: `AuthRepository` + ViewModels with fake repositories / MockWebServer
-  (loading / error / success states).
-- API-contract check: app DTOs match backend responses — especially
-  `/api/reports/summary` shape and the transaction create payload (from the
-  Phase-3 E2E notes).
-- Instrumented smoke test (emulator, optional): login → list → report.
-- No backend changes expected; if a gap appears, record it and add a minimal
-  backend follow-up before Phase 5.
+### Step 7 — Checkpoint verification (DoD Fase 0)
+- [ ] `backend`: `/health` 200; `alembic upgrade head` sukses di Supabase
+- [ ] Supabase: `profiles` + trigger + RLS terpasang
+- [ ] `app`: `flutter analyze` clean; register/login via Supabase Auth →
+      row `profiles` otomatis muncul
+- [ ] `bot`: `tsc --noEmit` clean; webhook endpoint hidup
 
 ---
 
-## Step 5 — Verification (checkpoint)
+## Fase 1 — Backend Inti + Auth Supabase (placeholder)
+> Goal & task: lihat `IMPLEMENTATION_PLAN.md` Fase 1. Diisi langkah detail saat
+> fase dimulai (pola sama seperti Fase 0 di atas).
 
-```bash
-cd android
-./gradlew :app:assembleDebug      # builds clean
-./gradlew :app:lintDebug          # lint clean
-./gradlew :app:testDebugUnitTest  # unit tests pass
-```
-
-### Manual E2E (emulator/device + live docker backend)
-- Login/register against the live backend → transactions list loads (paging).
-- Add / edit / delete a transaction → list reflects change (backend audit rows).
-- Create a custom category → appears in the form dropdown.
-- Dashboard chart matches `/api/reports/summary` numbers for each period.
-- Launcher icon: adaptive + round render correctly (from `./icon.png`).
-
-### Negative cases
-- Wrong credentials → inline error, no crash.
-- Expired token → silent refresh; refresh fails → back to login.
+## Fase 1.5 — RBAC Admin (placeholder)
+## Fase 2 — Telegram Bot Node + Parsing Teks (placeholder)
+## Fase 3 — Report Dasar (placeholder)
+## Fase 3.5 — Accounts CRUD (placeholder)
+## Fase 4 — Flutter App (placeholder)
+## Fase 5 — OCR Foto Nota (placeholder)
+## Fase 7 — UI/UX Polish (placeholder)
+## Fase 6 — Deploy Produksi (placeholder)
 
 ---
 
-## Phase 5 — OCR Foto Nota (next)
+## v1 — Rekam historis (COMPLETE ✅, 2026-08-25)
 
-> **Status: not started.** Placeholder — fill in the concrete steps while
-> working Phase 5 (see ROADMAP Fase 5).
-
-> **Telegram UX revision (2026-08-25, already shipped):** Telegram now saves
-> NL text + `/edit` directly (no `/confirm`), adds `/logout`, and the linking
-> pages use the DESIGN.md palette + `./icon.png` logo + auto-close. See
-> `task.md` → Done and commit `7aeed35`.
-
-**Goal:** user uploads a receipt photo from the Android app / Telegram; the
-vision LLM (`call_llm()` with `VISION_MODELS`) extracts items, amounts, and a
-category suggestion with confidence; the user confirms/edits before the
-transaction is created; receipt images are stored and referenced.
-
-Planned touch points:
-1. Backend: `receipt_service` + `POST /api/receipts` (multipart upload),
-   multi-item schema, confidence fields, image storage + serving.
-2. Android: receipt capture/upload UI + confirm screen wired to the new API.
-3. Telegram: forward a photo → same extraction + confirm flow.
-4. Tests for the extraction/validation logic; E2E with a sample receipt.
-
----
-
-## Phase 4 — Android App (COMPLETE ✅, 2026-08-25)
-
-> This is the concrete, step-by-step "how to actually do Phase 4" companion to
-> `task.md`. Every step names the real file to touch and what to change. Run
-> verification tasks at each checkpoint. **Work was grounded in the repo state
-> at the end of Phase 3 (all 88 tests green, pushed `cce9c12`).**
+> Stack lama (Kotlin + FastAPI + Postgres self-hosted + bot Python) selesai &
+> ter-deploy. Kode di `_archive/android-kotlin-v1/`; detail per-fase ada di
+> git history. Panduan eksekusi v1 dihapus dari file ini saat pivot v2.

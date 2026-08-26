@@ -61,6 +61,59 @@ jobs:
         run: pytest tests/ -v
         working-directory: backend
 
+  app:
+    name: Lint & Test (Flutter app)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: app
+
+      - name: Analyze
+        run: flutter analyze
+        working-directory: app
+
+      - name: Test
+        run: flutter test
+        working-directory: app
+
+  bot:
+    name: Lint & Typecheck (Telegram bot)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: bot/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: bot
+
+      - name: Lint — eslint
+        run: npm run lint
+        working-directory: bot
+
+      - name: Typecheck — tsc
+        run: npm run typecheck
+        working-directory: bot
+
   build:
     name: Build Docker Image
     runs-on: ubuntu-latest
