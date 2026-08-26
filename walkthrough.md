@@ -7,9 +7,25 @@
 
 ---
 
-## Fase 1.5 — RBAC Admin (current)
+## Fase 1.5 — Auth Recovery: Reset Password ✅ DONE (2026-08-26)
 
-**Tujuan:** endpoint admin (list/lock/delete user) + `require_role("admin")` (kolom `role` sudah ada di `profiles`, CHECK user|admin).
+**Tujuan:** tidak ada role admin (semua user self-register); hapus kolom `role`; pastikan ada sistem reset password via OTP/link ke email terdaftar — ditangani Supabase Auth, diverifikasi live.
+**Hasil:** migration `0007` di-run; `pytest` hijau; flow reset password terverifikasi live.
+
+### Step 1 — Hapus kolom `role` (keputusan: tidak ada admin)
+- Migration `0007_drop_profile_role.py`: drop constraint `ck_profiles_role` → drop kolom `role`; `alembic upgrade head` sukses.
+- Verifikasi `information_schema`: kolom `profiles` = id, display_name, timezone, is_active, created_at, updated_at (tanpa role/constraint).
+- Model `Profile` tanpa field `role`; `require_role` dihapus dari `deps.py`.
+
+### Step 2 — Verifikasi live reset password (Supabase Auth)
+- `POST /auth/v1/recover` (email terdaftar) → `200 {}` — email reset masuk antrian Supabase.
+- `POST /auth/v1/otp` → `429 over_email_send_rate_limit` — endpoint nyata, rate-limit email anti-spam aktif.
+- `POST /auth/v1/recover` (email tak dikenal) → `200 {}` — anti-enumeration, status email tidak bocor.
+- Login password lama setelah recover → `200` — recover tidak mengubah password.
+
+### Step 3 — Dokumentasi
+- DATABASE.md §8: flow recover → verify → set password baru; flow OTP murni; catatan verifikasi.
+- REQUIREMENTS.md US-02a; referensi role/admin dibersihkan dari ARCHITECTURE.md, ROADMAP.md, task.md, IMPLEMENTATION_PLAN.md.
 
 ---
 
@@ -30,7 +46,7 @@
 - Terverifikasi live: token asli → PASS; token korup/diubah → ditolak.
 
 ### Step 3 — deps: `require_active_user` → `profiles`
-- `api/deps.py`: `get_current_user` (HTTPBearer → verify → `db.get(Profile, sub)` → 401), `require_active_user` (403 bila nonaktif), `require_role(*roles)` (403).
+- `api/deps.py`: `get_current_user` (HTTPBearer → verify → `db.get(Profile, sub)` → 401), `require_active_user` (403 bila nonaktif).
 - `telegram_service.py` + semua router API (accounts/categories/reports/transactions) → `Profile`.
 
 ### Step 4 — Hapus endpoint auth custom
@@ -55,7 +71,7 @@
 > item checkpoint sudah terverifikasi: backend `/health` 200 + Supabase pooler
 > (Tokyo); `alembic upgrade head` 0001–0005 sukses; `profiles` + trigger + RLS
 > terpasang; Flutter analyze bersih + test 2/2; bot typecheck/lint bersih; CI
-> job `app` + `bot`; signup → profile auto-terisi (role=user, tz=Asia/Jakarta).
+> job `app` + `bot`; signup → profile auto-terisi (tz=Asia/Jakarta).
 
 ### Step 0 — Decision gate
 1. **LLM env-driven** (keputusan final 2026-08-26): `LLM_PROVIDER=auto` dengan
@@ -93,8 +109,8 @@
 2. `backend/alembic/env.py`: baca `DATABASE_URL` dari settings (bukan hardcode).
 3. Migration baru `alembic/versions/0002_supabase_profiles.py`:
    - Tabel `profiles` (DATABASE.md §2.1): `id UUID PK FK auth.users(id)`,
-     `display_name`, `role` (default 'user', CHECK), `timezone` (default
-     'Asia/Jakarta'), `is_active`, `created_at`, `updated_at`.
+     `display_name`, `timezone` (default 'Asia/Jakarta'), `is_active`,
+     `created_at`, `updated_at`.
    - Trigger `handle_new_user` (SQL DATABASE.md §2.1) — SECURITY DEFINER.
    - RLS: enable + policy `profiles` (select/update own), `transactions`,
      `accounts`, `categories` (user_id = auth.uid(); kategori global NULL
@@ -135,7 +151,6 @@
 
 ---
 
-## Fase 1.5 — RBAC Admin (placeholder)
 ## Fase 2 — Telegram Bot Node + Parsing Teks (placeholder)
 ## Fase 3 — Report Dasar (placeholder)
 ## Fase 3.5 — Accounts CRUD (placeholder)

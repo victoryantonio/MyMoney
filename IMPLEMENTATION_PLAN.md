@@ -5,7 +5,7 @@
 > edited so the "Current Phase" points at the active one and completed phases
 > move under `## Completed Phases`.
 
-**Current Phase: Fase 1.5 — RBAC Admin**
+**Current Phase: Fase 2 — Telegram Bot Node + Parsing Teks**
 
 ---
 
@@ -50,18 +50,9 @@ menunggu review user.
 
 ---
 
-## Fase 1.5 — RBAC Admin (current, target 2 hari)
+## Fase 1.5 — Auth Recovery: Reset Password ✅ DONE (2026-08-26)
 
-**Goal:** endpoint admin (list/lock/delete user) + `require_role("admin")`.
-
-**Keputusan & alasan (chain of thought):**
-- Kolom `role` (CHECK user|admin) sudah ada di `profiles` sejak migration 0005 — tinggal pakai.
-- `require_role` sudah dibuat di `deps.py` (Fase 1) — endpoint admin tinggal menempelkannya.
-- Admin pertama di-seed manual SQL (`UPDATE profiles SET role='admin' WHERE id='<uid>'`).
-
-**Task:**
-- [ ] `/admin/users/*` + `require_role("admin")`
-- [ ] Seed admin pertama (SQL manual)
+> Detail hasil di **Completed Phases → Fase 1.5**.
 
 ---
 
@@ -153,7 +144,7 @@ menunggu review user.
 |---|---|---|
 | Fase 0 — Setup Fondasi Baru | 3-4 hari | ~4 hari |
 | Fase 1 — Backend + Auth Supabase | 1 minggu | ~1.5 minggu |
-| Fase 1.5 — RBAC Admin | 2 hari | ~1.8 minggu |
+| Fase 1.5 — Auth Recovery (reset password) | 1-2 hari | ~1.8 minggu |
 | Fase 2 — Telegram + Parsing | 1-1.5 minggu | ~3.3 minggu |
 | Fase 3 — Report Dasar | 3-5 hari | ~3.8 minggu |
 | Fase 3.5 — Accounts CRUD | 1 minggu | ~4.8 minggu |
@@ -168,6 +159,17 @@ menunggu review user.
 
 ## Completed Phases
 
+### Fase 1.5 — Auth Recovery: Reset Password ✅ (2026-08-26)
+
+**Goal:** tidak ada role admin (semua user self-register); hapus kolom `role`; pastikan sistem reset password via OTP/link ke email terdaftar (Supabase Auth) terverifikasi & terdokumentasi.
+
+**Hasil (terverifikasi):**
+- [x] Migration `0007_drop_profile_role.py` (di-run): drop constraint `ck_profiles_role` → drop kolom `role`. Verifikasi `information_schema`: kolom `profiles` = id, display_name, timezone, is_active, created_at, updated_at (tanpa role/constraint).
+- [x] Model `Profile` tanpa field `role`; `require_role` dihapus dari `api/deps.py` (tidak ada admin — semua user self-register).
+- [x] Verifikasi live reset password: `POST /auth/v1/recover` → `200`; anti-enumeration (email tak dikenal juga `200`); rate-limit email (`over_email_send_rate_limit`); password lama tetap valid setelah recover (login `200`).
+- [x] Dokumentasi: DATABASE.md §8 (flow recover + OTP + catatan), REQUIREMENTS.md US-02a; referensi role/admin dibersihkan dari ARCHITECTURE/ROADMAP/task/walkthrough.
+- [x] `pytest` hijau; `ruff check`/`black --check` bersih.
+
 ### Fase 1 — Backend Inti + Auth Supabase ✅ (2026-08-27)
 
 **Goal:** REST API v2 di atas Supabase — auth = Supabase JWT; profile auto-create via trigger; CRUD transaksi (service layer); unit test.
@@ -176,7 +178,7 @@ menunggu review user.
 - [x] Migration `0006_fk_profiles.py` (di-run): drop 6 FK `*_user_id_fkey` → drop tabel `users` → re-create FK ke `profiles.id` (CASCADE). Verifikasi `information_schema`: tabel `users` hilang, semua FK → `profiles`.
 - [x] Model `Profile` (1:1 `auth.users`, trigger `on_auth_user_created`); semua model ORM (account/category/transaction/telegram_link/pending_transaction/audit_log) ber-FK `profiles.id`; `models/user.py` dihapus.
 - [x] `verify_supabase_jwt()` di `core/security.py`: fetch JWKS (cache TTL 300 s), dukung **RS256 + ES256** (proyek ini ternyata ES256 P-256 — dibuktikan live), fallback HS256 bila `SUPABASE_JWT_SECRET` diisi; return `sub`.
-- [x] `api/deps.py`: `get_current_user` (Bearer → verify → `db.get(Profile)` → 401), `require_active_user` (403), `require_role(*roles)` (403).
+- [x] `api/deps.py`: `get_current_user` (Bearer → verify → `db.get(Profile)` → 401), `require_active_user` (403).
 - [x] Auth custom v1 dihapus: `api/auth.py`, `api/telegram_linking.py`, `schemas/auth.py`, `models/user.py`; `main.py` 23 route.
 - [x] Test suite v2: conftest (mimic `auth.users`, fixture `profile` + `supabase_factory` auto-skip tanpa kredensial); service layer + API tests memakai Supabase JWT asli. **118 passed**; `ruff check`/`black --check` bersih.
 - [x] E2E live: tanpa token → 401; token asli → 200; CRUD akun/transaksi + report summary/trend sukses.
@@ -193,7 +195,7 @@ menunggu review user.
 - [x] Init `bot/` Node/Telegraf/TypeScript — typecheck + lint bersih
 - [x] GitHub Actions: job `app` (flutter) + `bot` (node) ditambah ke `ci.yml`
 - [x] `.env` lokal terisi (Supabase keys, LLM deepseek, Telegram, bot token)
-- [x] Checkpoint end-to-end: signup Supabase Auth → `profiles` auto-terisi trigger (role=user, tz=Asia/Jakarta)
+- [x] Checkpoint end-to-end: signup Supabase Auth → `profiles` auto-terisi trigger (tz=Asia/Jakarta)
 
 ### v1 — Stack lama (archived, selesai 2026-08-25)
 

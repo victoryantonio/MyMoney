@@ -18,7 +18,6 @@ via `id` yang sama dengan `auth.users.id`.
 |---|---|---|---|
 | id | UUID | PK, FK → `auth.users(id)` ON DELETE CASCADE | SAMA PERSIS dengan id di auth.users, bukan UUID baru |
 | display_name | VARCHAR(100) | NOT NULL | |
-| role | VARCHAR(10) | NOT NULL, default `'user'`, CHECK (`role IN ('user','admin')`) | Sesuai keputusan admin CRUD user sebelumnya |
 | timezone | VARCHAR(50) | NOT NULL, default `'Asia/Jakarta'` | |
 | is_active | BOOLEAN | NOT NULL, default TRUE | |
 | created_at | TIMESTAMPTZ | NOT NULL, default `now()` | |
@@ -46,10 +45,9 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 ```
 
-**Admin pertama**: setelah trigger jalan dan admin register normal via
-Supabase Auth, jalankan SQL manual sekali untuk update `role='admin'` di
-`profiles` — bukan lewat UI (konsisten dengan keputusan sebelumnya bahwa
-admin pertama di-seed manual).
+**Tidak ada role admin (keputusan 2026-08-26)**: semua user self-register via
+Supabase Auth — tidak ada konsep admin/user di aplikasi. Kolom `role` sudah
+dihapus (migration `0007`). Lupa password ditangani Supabase Auth — lihat §8.
 
 ## 2.2 `telegram_links` — TIDAK BERUBAH strukturnya
 FK `user_id` sekarang merujuk ke `profiles.id` (yang sama dengan `auth.users.id`).
@@ -306,6 +304,41 @@ Kategori default (`user_id = NULL`, `is_default = TRUE`) diisi lewat migration a
 **Transfer/Penyesuaian Akun:** Transfer (expense) dan Transfer (income) — `is_default = TRUE`, ditambahkan untuk balancing saat akun dinonaktifkan (lihat catatan §2.4).
 
 Keunikan `(owner, name, type)` dijamin index `idx_categories_user_name_type` (§2.3) — kategori global memakai sentinel `00000000-0000-0000-0000-000000000000` sebagai owner. Aplikasi (REST/Android) menampilkan daftar gabungan: global default + kategori custom milik user.
+
+## 8. Reset Password & Recovery (Supabase Auth) — BAGIAN BARU
+
+Sistem ini TIDAK punya role admin (semua user self-register). Reset password
+sepenuhnya ditangani **Supabase Auth** terhadap email terdaftar — backend
+Python tidak menyimpan token reset apa pun; client (Flutter/bot) cukup
+memanggil endpoint Supabase langsung.
+
+**Flow lupa password (magic link / OTP di email):**
+1. `POST {SUPABASE_URL}/auth/v1/recover` body `{"email": "<email>"}`, header
+   `apikey: <anon key>` → Supabase mengirim email berisi link reset (atau
+   kode OTP 6 digit, sesuai template email project).
+2. User membuka link / memasukkan OTP → client verifikasi:
+   `POST {SUPABASE_URL}/auth/v1/verify` body
+   `{"type": "recovery", "email": "<email>", "token": "<otp/link token>"}` →
+   respons berisi session sementara.
+3. Client set password baru: `PUT {SUPABASE_URL}/auth/v1/user` body
+   `{"password": "<password-baru>"}` dengan header
+   `Authorization: Bearer <access_token sementara>`.
+
+**Flow OTP murni (tanpa link):**
+- `POST {SUPABASE_URL}/auth/v1/otp` body `{"email": "<email>", "create_user": false}`
+  → OTP dikirim ke email → verifikasi via `/auth/v1/verify` dengan
+  `{"type": "email", ...}`.
+
+**Catatan (dibuktikan live 2026-08-26):**
+- `recover`/`otp` selalu balas `200 {}` meski email tidak dikenal — anti user
+  enumeration (identitas email tidak dibocorkan).
+- Pengiriman email di-rate-limit per email (error `over_email_send_rate_limit`
+  saat 2 email dikirim beruntun ke alamat sama) — proteksi anti-spam bawaan
+  Supabase.
+- `recover` TIDAK mengubah password: login dengan password lama tetap sukses
+  setelah request recover.
+- Konfigurasi template email (subject/isi link/OTP) di Dashboard Supabase →
+  Authentication → Email Templates.
 
 ## 10. Row Level Security (RLS) — BAGIAN BARU, WAJIB
 

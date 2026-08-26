@@ -10,7 +10,6 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
-    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -38,13 +37,11 @@ _auth_users_table = Table(
 
 class Profile(Base):
     __tablename__ = "profiles"
-    __table_args__ = (CheckConstraint("role IN ('user', 'admin')", name="ck_profiles_role"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("auth.users.id", ondelete="CASCADE"), primary_key=True
     )
     display_name: Mapped[str] = mapped_column(String(100), nullable=False, default="User")
-    role: Mapped[str] = mapped_column(String(10), nullable=False, server_default="user")
     timezone: Mapped[str] = mapped_column(String(50), nullable=False, server_default="Asia/Jakarta")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(

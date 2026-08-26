@@ -32,12 +32,12 @@ TIDAK BERUBAH dari estimasi awal meski approach beda)
 **Checkpoint**: Register via Supabase Auth otomatis buat profile, CRUD
 transaksi via Postman dengan token Supabase asli.
 
-### Fase 1.5 — RBAC Admin (Target: 2 hari, lebih cepat dari estimasi awal
-karena role tinggal kolom di `profiles`, tidak perlu bangun auth admin
-terpisah)
-- [ ] Migration: kolom `role` di `profiles`
-- [ ] Endpoint `/admin/users/*` dengan middleware `require_role("admin")`
-- [ ] Seed admin pertama manual
+### Fase 1.5 — Auth Recovery: Reset Password (Target: 1-2 hari, REVISI
+2026-08-26 — keputusan: TIDAK ada role admin, semua user self-register)
+- [x] Migration 0007: hapus kolom `role` + constraint dari `profiles`
+- [x] Hapus `require_role` dari `deps.py` + field `role` dari model `Profile`
+- [x] Verifikasi live flow reset password Supabase (`/auth/v1/recover` + `otp`)
+- [x] Dokumentasi flow di DATABASE.md §8 + REQUIREMENTS.md US-02a
 
 ### Fase 2 — Telegram Bot + Parsing Teks (Target: 1-1.5 minggu, TIDAK BERUBAH)
 - [ ] Bot Node/Telegraf: webhook handler, panggil backend API
@@ -99,7 +99,7 @@ script SSH manual)
 |---|---|---|
 | Fase 0 — Setup Fondasi Baru | 3-4 hari | ~4 hari |
 | Fase 1 — Backend + Auth Supabase | 1 minggu | ~1.5 minggu |
-| Fase 1.5 — RBAC Admin | 2 hari | ~1.8 minggu |
+| Fase 1.5 — Auth Recovery (reset password) | 1-2 hari | ~1.8 minggu |
 | Fase 2 — Telegram + Parsing | 1-1.5 minggu | ~3.3 minggu |
 | Fase 3 — Report Dasar | 3-5 hari | ~3.8 minggu |
 | Fase 3.5 — Accounts CRUD | 1 minggu | ~4.8 minggu |

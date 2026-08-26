@@ -11,7 +11,9 @@ Key dependencies:
   - get_db            : yields a SQLAlchemy session per request
   - get_current_user  : verifies the Supabase Bearer JWT → Profile ORM object
   - require_active_user : same + rejects deactivated profiles (403)
-  - require_role(...) : same + rejects profiles whose role doesn't match (403)
+
+Note (keputusan 2026-08-26): tidak ada role admin di sistem ini — semua user
+self-register. `require_role` dihapus bersama kolom `profiles.role` (migration 0007).
 """
 
 import uuid
@@ -75,21 +77,3 @@ def require_active_user(current_user: Profile = Depends(get_current_user)) -> Pr
             detail="Account is deactivated",
         )
     return current_user
-
-
-def require_role(*roles: str):
-    """
-    Factory: dependency that requires the authenticated profile to have one of
-    the given roles (e.g. require_role("admin")). Builds on require_active_user
-    so deactivated accounts are rejected first.
-    """
-
-    def _checker(current_user: Profile = Depends(require_active_user)) -> Profile:
-        if current_user.role not in roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions",
-            )
-        return current_user
-
-    return _checker

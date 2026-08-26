@@ -70,6 +70,12 @@ yang paling nyaman tanpa sistem auth custom yang rawan bug.
 dikelola otomatis (refresh token otomatis oleh Supabase SDK), agar saya
 tidak perlu login ulang setiap token kadaluarsa.
 
+**US-02a (BARU, 2026-08-26)** — Sebagai user, saya ingin reset password
+lewat OTP/link yang dikirim ke email terdaftar, agar saya bisa kembali
+masuk kalau lupa password.
+- Ditangani penuh Supabase Auth (`/auth/v1/recover` → `/auth/v1/verify` →
+  `PUT /auth/v1/user`); flow terdokumentasi di DATABASE.md §8.
+
 **US-03** — Sebagai user, saya ingin menghubungkan akun Telegram saya ke akun MyMoney lewat command `/start`, agar bot mengenali saya tanpa login ulang tiap chat.
 
 ### 4.2 Pencatatan Transaksi — Teks

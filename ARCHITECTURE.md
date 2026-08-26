@@ -166,7 +166,7 @@ lagi — `receipt_image_url` sekarang berisi path Supabase Storage.
 **Perubahan struktural dari desain awal:**
 - Tabel `users` sekarang REFERENSI ke `auth.users` bawaan Supabase, bukan
   tabel custom penuh. Buat tabel `public.profiles` (1:1 dengan `auth.users`)
-  untuk data tambahan (display_name, timezone, role, is_active) yang tidak
+  untuk data tambahan (display_name, timezone, is_active) yang tidak
   ada di skema `auth.users` bawaan Supabase.
 - `password_hash` DIHAPUS dari skema Anda — Supabase Auth yang kelola
   password hashing sepenuhnya, Anda tidak pegang/lihat hash-nya sama sekali.

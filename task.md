@@ -1,18 +1,14 @@
 # task.md — MyMoney To-Do List
 
 > Phased execution checklist — **v2 stack** (Supabase + FastAPI + Flutter + Node bot).
-> Update status as you work. Current phase: **Fase 1.5**.
+> Update status as you work. Current phase: **Fase 2**.
 > Saat fase selesai, pindahkan item ke `## Done` dan unmute fase berikut.
 
 Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ---
 
-## Fase 1.5 — RBAC Admin (current)
-- [ ] `/admin/users/*` + `require_role("admin")`
-- [ ] Seed admin pertama (SQL manual)
-
-## Fase 2 — Telegram Bot Node + Parsing Teks
+## Fase 2 — Telegram Bot Node + Parsing Teks (current)
 - [ ] `bot/` webhook Telegraf → REST backend (`BOT_SERVICE_TOKEN`)
 - [ ] Command `/start`, `/logout`, NL text, `/report`, `/undo`, `/edit`
 - [ ] `nlu_parser` via `call_llm()` (env-driven); kategori locked list
@@ -44,11 +40,17 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ## Done
 
+### Fase 1.5 — Auth Recovery: Reset Password ✅ (2026-08-26)
+- [x] Migration `0007`: hapus kolom `role` + constraint `ck_profiles_role` dari `profiles` (terverifikasi via `information_schema`)
+- [x] Hapus `require_role` (`deps.py`) + field `role` (`Profile` model)
+- [x] Verifikasi live reset password Supabase: `recover` 200, anti-enumeration, rate-limit email, login tetap jalan
+- [x] Dokumentasi: DATABASE.md §8 + REQUIREMENTS.md US-02a; `pytest` hijau, `ruff`/`black` bersih
+
 ### Fase 1 — Backend Inti + Auth Supabase ✅ (2026-08-27)
 - [x] Migration `0006`: drop `users` → FK semua tabel → `profiles.id` (CASCADE)
 - [x] Model `Profile` (1:1 `auth.users`); semua model ORM ber-FK `profiles`
 - [x] `verify_supabase_jwt()` (JWKS RS256 **+ ES256**, cache TTL) — terverifikasi live
-- [x] `api/deps.py`: `get_current_user`/`require_active_user`/`require_role` (Profile)
+- [x] `api/deps.py`: `get_current_user`/`require_active_user` (Profile)
 - [x] Auth custom v1 dihapus (`auth.py`, `telegram_linking.py`, `schemas/auth.py`, `models/user.py`)
 - [x] Test suite v2: service layer + API (Supabase live) — `pytest` 118 hijau, `ruff`/`black` bersih
 

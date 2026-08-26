@@ -107,10 +107,10 @@ def list_accounts(
             .where(
                 Account.user_id == current_user.id,
                 (
-                    Account.is_active == True
+                    Account.is_active.is_(True)
                     if not include_inactive
                     else Account.is_active.in_([True, False])
-                ),  # noqa: E712
+                ),
             )
             .order_by(Account.is_active.desc(), Account.created_at)
         )
