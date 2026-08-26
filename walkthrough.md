@@ -1,7 +1,7 @@
 # walkthrough.md — MyMoney v2 Execution Guide
 
 > ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
-> Panduan aktif: **Fase 4** di bawah. Fase 0, 1, 1.5, 2, 3, 3.5 selesai (rekam di bagian bawah).
+> Panduan aktif: **Fase 4 (selesai 2026-08-27)** di bawah. Fase 0, 1, 1.5, 2, 3, 3.5 selesai (rekam di bagian bawah).
 > Guide fase berikutnya diisi saat fase dimulai (placeholder di bawah).
 > Rekam historis v1 ada di git history + `_archive/`.
 
@@ -236,7 +236,42 @@
 
 ---
 
-## Fase 4 — Flutter App (current)
+## Fase 4 — Flutter App (current) ✅ (2026-08-27)
+
+### Step 1 — Line chart: tap → detail, hilangkan long-press
+- `app/pubspec.yaml` + `fl_chart ^1.1.0`; `flutter pub get`.
+- `lib/widgets/trend_chart.dart`: `TrendChart(points, selectedIndex, onPointTap)`.
+  - `LineTouchData(enabled: true, handleBuiltInTouches: false, touchCallback: ...)` — handler **hanya** `FlTapUpEvent`; long-press/drag **tidak punya handler sama sekali** sehingga diabaikan.
+  - Ketuk → `onPointTap(x.round())` → panel detail di bawah chart.
+  - Titik terpilih menonjol (`getDotPainter` radius 5 vs 2.5, stroke putih) + garis putus-putus vertikal (`ExtraLinesData` dashArray [4,4]).
+  - Garis pemasukan hijau `0xFF2E7D32`, pengeluaran merah `0xFFC62828`, area bawah hanya untuk income (alpha 0.08).
+  - Label sumbu X rapat otomatis: `_bottomInterval` 1 (≤7 titik) / 2 (≤15) / 4; `_compact` ("5rb", "1,2jt").
+  - Catatan fl_chart 1.1: `barData.color` nullable → fallback `Color(0xFF555555)`.
+
+### Step 2 — Dashboard + format
+- `lib/screens/dashboard_screen.dart`: `ConsumerStatefulWidget(supabase)`; `SegmentedButton` periode ('week' = 7 hari, 'month' = Bulan ini); kartu Net/Pemasukan/Pengeluaran; `_TrendCard` = chart + `_DetailPanel`; `_ErrorView` + retry; `RefreshIndicator`; tombol logout.
+- `_DetailPanel`: hint "Ketuk titik pada grafik untuk melihat detail hari itu" saat belum ada pilihan; setelah ketuk → tanggal (`formatDateDetail`), Pemasukan/Pengeluaran/Net berwarna.
+- `lib/core/format.dart`: `formatRupiah` ("Rp40.000"), `formatRupiahSigned`, `formatDateShort` ("12 Agu"), `formatAxisLabel`, `formatDateDetail` ("Rab, 12 Agu").
+- `lib/main.dart`: AuthGate → `DashboardScreen` saat session ada.
+- `flutter analyze` bersih; `flutter test` **10 passed** (`format_test.dart` 4 + `widget_test.dart` 6).
+
+### Step 3 — Kredensial demo + seed data
+- `scripts/seed_demo.py` (idempotent, baca `.env` tanpa mencetak secret): buat user demo via Supabase admin API, login, buat akun "Cash" (saldo awal 500.000), seed 14 hari transaksi (Makan siang, Gojek, Shopping, Bills, Salary, Bonus) — **37 transaksi**.
+- Kredensial demo: **`demo@mymoney.dev` / `Demo1234!`**.
+- Verifikasi live: login 200 → `GET /api/accounts` 200 → `GET /api/reports/summary?period=month` = income 7.000.000 / expense 1.162.055 / net 5.837.945.
+- **Pelajaran**: 401 padahal JWT valid = container backend jalan dengan env lama (DB lokal). Solusi: `docker compose build backend && docker compose up -d --force-recreate backend`.
+
+### Step 4 — APK demo
+- Build release dengan config ter-embed:
+  ```bash
+  cd app && flutter build apk --release \
+    --dart-define=SUPABASE_URL=https://fqjkqcigjeyooejcgbrk.supabase.co \
+    --dart-define=SUPABASE_ANON_KEY=<anon dari .env> \
+    --dart-define=APP_BASE_URL=http://103.27.206.22:8000
+  ```
+- Hasil: `app/build/app/outputs/flutter-apk/app-release.apk` (52.8MB) — config terverifikasi ada di dalam APK (`strings libapp.so`). Tanda tangan: debug cert (default Flutter; cukup untuk demo).
+- **Pelajaran**: daemon Gradle `-Xmx8G` → OOM-kill di mesin 7.8Gi RAM saat build release; turunkan ke `-Xmx2G` + `kotlin.daemon.jvmargs=-Xmx1536M` di `android/gradle.properties`. `.gitignore` root `lib/` (konvensi Python) meng-ignore `app/lib/` → tambah `!app/lib/` + `!app/lib/**`.
+
 ## Fase 5 — OCR Foto Nota (placeholder)
 ## Fase 7 — UI/UX Polish (placeholder)
 ## Fase 6 — Deploy Produksi (placeholder)

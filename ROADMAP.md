@@ -56,23 +56,25 @@ transaksi via Postman dengan token Supabase asli.
 - [x] Saldo computed dari transaksi (satu query agregasi; dinormalisasi 2 desimal); deactivate akun bersaldo → Transfer otomatis ke target (wajib `target_account_id`), 2 transaksi atomik + audit
 - [x] Kategori Transfer (expense+income) global seeded (migration `0001`); `test_accounts_api.py` **15 test** — `pytest` **145 passed**, `ruff`/`black` bersih
 
-### Fase 4 — Flutter App: Android + iOS + Web (Target: 3-3.5 minggu)
-[...langkah sebelumnya tidak berubah...]
+### Fase 4 — Flutter App: Android + iOS + Web ✅ (2026-08-27, target 3-3.5 minggu)
+- [x] Scaffold `app/` Flutter: Auth (Supabase Auth UI) + **Dashboard** (ringkasan Net/Pemasukan/Pengeluaran, selector periode 7 hari / Bulan ini, refresh, logout) — Riverpod + dio, config via `--dart-define`
+- [x] **Line chart tap-detail**: `fl_chart` 1.1.0, `LineTouchData(handleBuiltInTouches: false)` + handler hanya `FlTapUpEvent` → ketuk titik langsung tampil detail hari (pemasukan/pengeluaran/net + tanggal); **long-press dihapus total**
+- [x] Format util + test: `formatRupiah`/`formatDateShort`/`formatDateDetail` dkk; `flutter analyze` bersih + `flutter test` **10 passed**
+- [x] APK demo: `app/build/app/outputs/flutter-apk/app-release.apk` (52.8MB, config Supabase+backend ter-embed, debug cert) — cara build & install ada di walkthrough.md Fase 4
+- [x] Kredensial demo: **demo@mymoney.dev / Demo1234!** (`scripts/seed_demo.py`, 37 transaksi 14 hari) — terverifikasi live (login 200 → accounts 200 → summary month 7.000.000/1.162.055/5.837.945)
+- [ ] Widget + golden test 5 layar kritis (Dashboard, Login, Transaction List, Add Transaction, Accounts) — sementara 10 test (format 4 + widget 6)
 - [ ] Setup GitHub Actions macOS runner untuk build iOS otomatis (gratis,
       repo publik) — trigger di setiap push ke `main`
 - [ ] Setup Apple Developer Program ($99/tahun) — WAJIB untuk TestFlight,
       bukan opsional kalau iOS masuk v1 tanpa Mac fisik
-- [ ] Widget test + golden test untuk minimal 5 layar kritis (Dashboard,
-      Login, Transaction List, Add Transaction, Accounts) — baseline
-      screenshot dicek di CI setiap build, supaya regresi visual iOS
-      terdeteksi otomatis tanpa Anda lihat langsung
 - [ ] Upload build iOS ke TestFlight setiap milestone besar (bukan setiap
       commit — terlalu sering akan menghabiskan kuota build)
 - [ ] Cari MINIMAL 1 orang dengan iPhone (teman/keluarga) sebagai tester
       manual berkala — dokumentasikan siapa & jadwal testing di README,
       jangan andalkan diri sendiri karena Anda tidak punya device untuk itu
 
-**Checkpoint (REVISI)**: Android teruji langsung di device Anda. iOS lolos
+**Checkpoint (REVISI)**: Android teruji langsung di device Anda (APK demo
+siap install — config terverifikasi via `strings libapp.so`). iOS lolos
 CI build + golden test otomatis, DAN sudah di-testing manual minimal 1x
 oleh tester eksternal via TestFlight sebelum dianggap "selesai" — CI hijau
 saja TIDAK CUKUP untuk klaim iOS siap.
@@ -81,6 +83,11 @@ saja TIDAK CUKUP untuk klaim iOS siap.
 safe area, keyboard behavior) berpotensi baru ketahuan setelah tester
 eksternal mencoba, bukan saat development. Ini trade-off yang sudah
 disetujui — mitigasi di atas mengurangi risiko, bukan menghilangkannya.
+
+**Catatan proses**: daemon Gradle `-Xmx8G` OOM-kill di mesin 7.8Gi RAM saat
+build release → turunkan `-Xmx2G` + `kotlin.daemon.jvmargs=-Xmx1536M` di
+`android/gradle.properties`. `.gitignore` root `lib/` (Python) sempat
+meng-ignore `app/lib/` → tambah `!app/lib/` + `!app/lib/**`.
 
 **Checkpoint**: App jalan di Android emulator/device, Web browser, dan
 idealnya iOS simulator — backend & Supabase yang sama untuk ketiganya.

@@ -12,6 +12,9 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Flutter app source (lib/ di atas adalah konvensi Python; jangan ignore app/lib)
+!app/lib/
+!app/lib/**
 parts/
 sdist/
 var/

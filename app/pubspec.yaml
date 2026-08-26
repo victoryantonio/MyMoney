@@ -37,6 +37,7 @@ dependencies:
   flutter_riverpod: ^3.4.2
   supabase_flutter: ^2.17.2
   dio: ^5.11.0
+  fl_chart: ^1.1.0
 
 dev_dependencies:
   flutter_test:

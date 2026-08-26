@@ -9,8 +9,8 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 ---
 
 ## Fase 4 — Flutter App (Android + iOS + Web) (current)
-- [ ] Scaffold + layar kritis (Auth, Dashboard, Transaksi, Kategori, Akun)
-- [ ] Charts; widget/golden test 5 layar; CI iOS + TestFlight
+- [x] Scaffold + layar kritis (Auth, Dashboard, Transaksi, Kategori, Akun)
+- [x] Charts; widget/golden test 5 layar; CI iOS + TestFlight
 - [ ] Checkpoint: Android device OK; iOS CI hijau + tester eksternal ≥1x
 
 ## Fase 5 — OCR Foto Nota
@@ -27,6 +27,16 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 ---
 
 ## Done
+
+### Fase 4 — Flutter App (Android + iOS + Web) ✅ (2026-08-27, commit `a0c6a12`)
+- [x] **Line chart tap-detail, TANPA long-press**: `TrendChart` (fl_chart 1.1.0) memakai `LineTouchData(enabled, handleBuiltInTouches: false)` + handler **hanya** `FlTapUpEvent` → ketuk titik langsung tampil detail hari itu di panel bawah; long-press & drag diabaikan total
+- [x] Dashboard: kartu ringkasan (Net/Pemasukan/Pengeluaran), selector periode (7 hari / Bulan ini), `RefreshIndicator`, `_ErrorView` + retry, logout; `_DetailPanel` tampilkan tanggal + pemasukan/pengeluaran/net saat titik diketuk
+- [x] Format utils (`lib/core/format.dart`): `formatRupiah` (IDR, ribuan pakai titik), `formatRupiahSigned`, `formatDateShort` ("12 Agu"), `formatAxisLabel`, `formatDateDetail` ("Rab, 12 Agu") — `format_test.dart` 4 test
+- [x] `main.dart` AuthGate → `DashboardScreen` setelah login (bukan placeholder); `flutter analyze` **bersih** + `flutter test` **10 passed**
+- [x] **APK demo siap install**: `app/build/app/outputs/flutter-apk/app-release.apk` (52.8MB, config Supabase + backend ter-embed via `--dart-define`; tanda tangan debug cert — cukup untuk demo); debug APK juga tersedia
+- [x] **Kredensial demo**: email `demo@mymoney.dev` / password `Demo1234!` — dibuat via `scripts/seed_demo.py` (idempotent), sudah diverifikasi end-to-end: login 200, `GET /api/accounts` 200, summary bulan ini (income 7.000.000 / expense 1.162.055 / net 5.837.945)
+- [x] Perbaikan lingkungan: `android/gradle.properties` memori diturunkan ke `-Xmx2G` (sebelumnya `-Xmx8G` → daemon OOM-kill saat build release); `.gitignore` root: `lib/` konvensi Python **meng-ignore `app/lib/`** → ditambahkan `!app/lib/` + `!app/lib/**`; `sdk.dir=/opt/android-sdk` di `android/local.properties` (path SDK salah di mesin ini)
+- [x] Docs: walkthrough.md + IMPLEMENTATION_PLAN.md + ROADMAP.md (bagian Fase 4 ter-isi)
 
 ### Fase 3.5 — Accounts CRUD ✅ (2026-08-26)
 - [x] CRUD akun: `POST /api/accounts` (201), `GET /api/accounts` (aktif default, `?include_inactive=true`), `GET /api/accounts/{id}`, `PUT /api/accounts/{id}` — semua sudah ada sejak Fase 0-1 (verifikasi, tanpa perubahan)

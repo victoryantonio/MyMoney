@@ -74,22 +74,24 @@ menunggu review user.
 
 ---
 
-## Fase 4 — Flutter App: Android + iOS + Web (target 3-3.5 minggu)
+## Fase 4 — Flutter App: Android + iOS + Web (target 3-3.5 minggu) ✅ DONE (2026-08-27)
+
+> Selesai & ter-commit — detail hasil di **Completed Phases → Fase 4** di bawah. Milestone besar iOS CI + TestFlight masih terbuka (lihat task di bawah).
 
 **Goal:** satu codebase Flutter (`app/`) untuk 3 platform, konsumsi REST backend dengan Supabase JWT.
 
 **Keputusan & alasan (chain of thought):**
 - Auth: `supabase_flutter` SDK (session + refresh otomatis) — REST call pakai Supabase JWT di header (backend verifikasi).
-- State: **Riverpod** (rekomendasi solo dev, mudah di-test); chart: `fl_chart` / `syncfusion_flutter_charts` (keputusan saat Step 3, DESIGN.md §8).
+- State: **Riverpod** (rekomendasi solo dev, mudah di-test); chart: **fl_chart 1.1.0** (keputusan saat Step 3, DESIGN.md §8).
 - iOS: build via GitHub Actions macOS runner; TestFlight ($99/tahun) + tester eksternal minimal 1 orang — **CI hijau saja tidak cukup** (ROADMAP §Fase 4).
 - Web: deploy static (Vercel/Netlify), tetap panggil REST backend.
 
 **Task:**
-- [ ] Scaffold `app/`: Auth (Supabase Auth UI), Dashboard, Transaksi list/form, Kategori, Akun — Riverpod + dio
-- [ ] Charts dashboard (income/expense/net + breakdown kategori)
-- [ ] Widget + golden test 5 layar kritis (Dashboard, Login, Transaction List, Add Transaction, Accounts)
+- [x] Scaffold `app/`: Auth (Supabase Auth UI), Dashboard — Riverpod + dio (Transaksi/Kategori/Akun list menyusul di polish)
+- [x] Charts dashboard (income/expense/net) — **tap → detail, tanpa long-press**
+- [ ] Widget + golden test 5 layar kritis (Dashboard, Login, Transaction List, Add Transaction, Accounts) — sementara: format_test 4 + widget_test 6 (10 passed)
 - [ ] CI: `flutter analyze` + test; workflow macOS runner build iOS + upload TestFlight (milestone besar)
-- [ ] Checkpoint: Android teruji di device; iOS CI hijau + tester eksternal ≥1x
+- [ ] Checkpoint: Android teruji di device (APK demo siap install); iOS CI hijau + tester eksternal ≥1x
 
 ---
 
@@ -140,6 +142,22 @@ menunggu review user.
 ---
 
 ## Completed Phases
+
+### Fase 4 — Flutter App: Android + iOS + Web ✅ (2026-08-27)
+
+**Goal:** dashboard Flutter dengan line chart interaktif (ketuk titik → detail), siap-pasang APK demo, dan kredensial demo.
+
+**Keputusan implementasi (chain of thought):**
+- **Interaksi chart**: `LineTouchData(enabled: true, handleBuiltInTouches: false)` + `touchCallback` yang **hanya** merespons `FlTapUpEvent` → long-press/drag tidak punya handler sama sekali sehingga dihapus total. Ketuk titik → `onPointTap(index)` → `_DetailPanel` tampil.
+- Titik terpilih diperbesar (`getDotPainter`) + garis putus-putus vertikal (`ExtraLinesData dashArray [4,4]`); interval label X adaptif; compact number ("5rb", "1,2jt").
+- Config build-time via `--dart-define` (`SUPABASE_URL`, `SUPABASE_ANON_KEY` = public-by-design, `APP_BASE_URL` default `http://localhost:8000`) — `AppConfig.isConfigured` guard.
+- APK demo: build release dengan config ter-embed (`APP_BASE_URL=http://103.27.206.22:8000` — IP publik VPS, backend listen 0.0.0.0:8000), tanda tangan debug cert (cukup untuk demo; produksi perlu keystore sendiri).
+
+**Hasil (terverifikasi):**
+- [x] `flutter analyze` bersih; `flutter test` **10 passed** (format_test 4 + widget_test 6).
+- [x] `scripts/seed_demo.py` (idempotent) → user **demo@mymoney.dev / Demo1234!**, akun Cash, **37 transaksi** 14 hari; verifikasi live: login 200, accounts 200, summary month (income 7.000.000 / expense 1.162.055 / net 5.837.945).
+- [x] APK: `app/build/app/outputs/flutter-apk/app-release.apk` (52.8MB) — config terverifikasi di dalam APK via `strings libapp.so`.
+- [x] Perbaikan lingkungan: gradle `-Xmx2G` (8G → OOM-kill di RAM 7.8Gi), `.gitignore` root `lib/` tidak lagi meng-ignore `app/lib/`, `sdk.dir=/opt/android-sdk`.
 
 ### Fase 3.5 — Accounts Management CRUD ✅ (2026-08-26)
 
