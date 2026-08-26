@@ -5,7 +5,7 @@
 > edited so the "Current Phase" points at the active one and completed phases
 > move under `## Completed Phases`.
 
-**Current Phase: Fase 3 — Report Dasar**
+**Current Phase: Fase 3.5 — Accounts Management CRUD**
 
 ---
 
@@ -62,11 +62,9 @@ menunggu review user.
 
 ---
 
-## Fase 3 — Report Dasar (target 3-5 hari)
+## Fase 3 — Report Dasar ✅ DONE (2026-08-26)
 
-- [ ] `core/report_service.py`: `parse_period_arg` + `get_report_summary` (SQL-only SUM/GROUP BY) — **reuse v1** (sudah matang), sesuaikan FK
-- [ ] `GET /api/reports/summary` + Telegram `/report`
-- [ ] Test service + API (adaptasi dari v1: 22 test)
+> Selesai & terverifikasi — detail hasil di **Completed Phases → Fase 3**.
 
 ---
 
@@ -143,6 +141,22 @@ menunggu review user.
 ---
 
 ## Completed Phases
+
+### Fase 3 — Report Dasar ✅ (2026-08-26)
+
+**Goal:** SQL aggregation (bukan Python loops) untuk summary per periode + endpoint REST untuk chart + Telegram `/report`.
+
+**Keputusan implementasi (chain of thought):**
+- Service sudah dibangun sejak Fase 0-1 (reuse v1 yang sudah matang): `parse_period_arg` (hari-ini/minggu-ini/bulan-ini/bulan-lalu + sinonim EN, default bulan ini), `get_report_summary` (SQL `SUM`/`GROUP BY` per tipe + per kategori), `get_report_trend` (deret harian **zero-filled**, timezone user via `func.timezone`).
+- `GET /api/reports/summary` + `GET /api/reports/trend` di `api/reports.py` (terdaftar sejak Fase 1): period `today|week|month|last-month` ATAU custom `start`/`end`; 422 untuk period invalid / `start >= end`; auth `require_active_user` (Supabase JWT); timezone dari `profiles.timezone` (default Asia/Jakarta).
+- Telegram `/report` (US-17) di `telegram_service.py`: parse arg → timezone user dari DB → `get_report_summary` → `_format_report` (teks ringkas per kategori).
+- Fase ini = **verifikasi & dokumentasi**: semua komponen sudah teruji; tidak ada kode baru yang diperlukan.
+
+**Hasil (terverifikasi):**
+- [x] `test_report_service.py` (aggregation: totals per tipe, breakdown per kategori urut terbesar; trend: zero-fill tiap hari) + `test_reports_api.py` (401 tanpa token, default month, 4 period valid, invalid → 422, custom range, range terbalik → 422, trend points) = **24 test**.
+- [x] `test_telegram_service.py`: 4 test `/report` (requires link, default this month, `minggu ini` → this week, timezone user dipakai).
+- [x] `pytest` **130 passed**; `ruff check`/`black --check` bersih.
+- [x] Verifikasi live: route `/api/reports/summary` & `/trend` terdaftar di OpenAPI; tanpa token → 401; test integration memakai Supabase JWT asli.
 
 ### Fase 2 — Telegram Bot Node + Parsing Teks ✅ (2026-08-26)
 

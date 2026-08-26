@@ -1,17 +1,14 @@
 # task.md — MyMoney To-Do List
 
 > Phased execution checklist — **v2 stack** (Supabase + FastAPI + Flutter + Node bot).
-> Update status as you work. Current phase: **Fase 3**.
+> Update status as you work. Current phase: **Fase 3.5**.
 > Saat fase selesai, pindahkan item ke `## Done` dan unmute fase berikut.
 
 Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ---
 
-## Fase 3 — Report Dasar (current)
-- [ ] `report_service` SQL aggregation + `/api/reports/summary` + `/report`
-
-## Fase 3.5 — Accounts CRUD
+## Fase 3.5 — Accounts CRUD (current)
 - [ ] CRUD akun, soft-delete, saldo computed; kategori Transfer/Penyesuaian
 
 ## Fase 4 — Flutter App (Android + iOS + Web)
@@ -33,6 +30,13 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 ---
 
 ## Done
+
+### Fase 3 — Report Dasar ✅ (2026-08-26)
+- [x] `report_service.py` SQL aggregation (`SUM`/`GROUP BY`): `parse_period_arg` (hari-ini/minggu-ini/bulan-ini/bulan-lalu) + `get_report_summary` + `get_report_trend` (zero-filled daily, timezone user)
+- [x] `GET /api/reports/summary` (total income/expense/net + breakdown per kategori) + `GET /api/reports/trend` (deret harian) — auth Supabase JWT, period/custom range, 422 validasi
+- [x] Telegram `/report` (US-17) — `_format_report` render ringkas; `period_label`; timezone user dari DB
+- [x] Test: `test_report_service.py` + `test_reports_api.py` (24 test) + `/report` di `test_telegram_service.py` — `pytest` 130 hijau, `ruff`/`black` bersih
+- [x] Verifikasi live: route terdaftar di OpenAPI; tanpa token → 401; test integration memakai Supabase JWT asli
 
 ### Fase 2 — Telegram Bot Node + Parsing Teks ✅ (2026-08-26)
 - [x] `bot/` pure proxy: webhook Telegraf verifikasi secret → forward ke backend dengan `X-Bot-Token` (BOT_SERVICE_TOKEN) — handler `/start` lokal yang men-shadow backend dihapus

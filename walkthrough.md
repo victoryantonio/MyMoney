@@ -1,7 +1,7 @@
 # walkthrough.md — MyMoney v2 Execution Guide
 
 > ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
-> Panduan aktif: **Fase 3** di bawah. Fase 0, 1, 1.5, 2 selesai (rekam di bagian bawah).
+> Panduan aktif: **Fase 3.5** di bawah. Fase 0, 1, 1.5, 2, 3 selesai (rekam di bagian bawah).
 > Guide fase berikutnya diisi saat fase dimulai (placeholder di bawah).
 > Rekam historis v1 ada di git history + `_archive/`.
 
@@ -184,8 +184,31 @@
 
 ---
 
-## Fase 3 — Report Dasar (placeholder)
-## Fase 3.5 — Accounts CRUD (placeholder)
+## Fase 3 — Report Dasar ✅ DONE (2026-08-26)
+
+**Tujuan:** SQL aggregation untuk summary per periode + endpoint REST + Telegram `/report`.
+**Hasil:** `report_service` + `/api/reports/summary` + `/trend` + `/report` sudah aktif sejak Fase 0-1; diverifikasi ulang di fase ini (test + route + auth).
+
+### Step 1 — Service (sudah ada, reuse)
+- `core/report_service.py`: `parse_period_arg` (hari-ini/minggu-ini/bulan-ini/bulan-lalu + EN synonyms, default bulan ini) → `get_report_summary` (SQL `SUM`/`GROUP BY` per tipe + per kategori) + `get_report_trend` (deret harian zero-filled, timezone user via `func.timezone`).
+- `schemas/report.py`: `ReportSummaryResponse`, `ReportTrendResponse`, `CategoryTotal`, `TrendPoint`.
+
+### Step 2 — API (sudah ada, reuse)
+- `GET /api/reports/summary` — total income/expense/net + breakdown per kategori; period `today|week|month|last-month` ATAU custom `start`/`end`; 422 bila period invalid / start ≥ end.
+- `GET /api/reports/trend` — deret harian (line chart); setiap hari di [start, end) muncul (zero-filled).
+- Auth: `require_active_user` (Supabase JWT → Profile). Timezone dari `profiles.timezone` (default Asia/Jakarta).
+
+### Step 3 — Bot `/report` (sudah ada, reuse)
+- `/report` di `telegram_service.py`: parse arg → timezone user dari DB → `parse_period_arg` → `get_report_summary` → `_format_report` (teks ringkas, per kategori dengan ikon).
+
+### Step 4 — Test & verifikasi
+- `test_report_service.py` (aggregation + trend zero-fill) + `test_reports_api.py` (auth 401, default month, valid periods, invalid 422, custom range, trend points) = **24 test**.
+- `test_telegram_service.py`: 4 test `/report` (requires link, default this month, arg minggu-ini → this week, timezone user).
+- `pytest` **130 passed**; `ruff`/`black` bersih; route terverifikasi via OpenAPI (401 tanpa token).
+
+---
+
+## Fase 3.5 — Accounts CRUD (current)
 ## Fase 4 — Flutter App (placeholder)
 ## Fase 5 — OCR Foto Nota (placeholder)
 ## Fase 7 — UI/UX Polish (placeholder)

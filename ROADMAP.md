@@ -45,7 +45,11 @@ transaksi via Postman dengan token Supabase asli.
 - [x] `nlu_parser` (Python, backend) — env-driven via `call_llm()` + kategori locked list → "Other" (sudah aktif sejak Fase 0)
 - [x] Cutover webhook penuh → Fase 6 (butuh URL publik bot); archive bot Python = NO-OP (tidak pernah ada di repo)
 
-### Fase 3 — Report Dasar (Target: 3-5 hari, TIDAK BERUBAH)
+### Fase 3 — Report Dasar ✅ (2026-08-26, TIDAK BERUBAH)
+- [x] `report_service.py` SQL aggregation (`SUM`/`GROUP BY`): `parse_period_arg` + `get_report_summary` + `get_report_trend` (zero-filled, timezone user) — reuse v1, sudah aktif sejak Fase 0-1
+- [x] `GET /api/reports/summary` (total + breakdown kategori) + `GET /api/reports/trend` (line chart data) — period/custom range, 422 validasi
+- [x] Telegram `/report` (US-17) — `_format_report` ringkas, timezone user
+- [x] Test service + API 24 test; `pytest` 130 hijau; `ruff`/`black` bersih; route terverifikasi live (401 tanpa token)
 
 ### Fase 3.5 — Accounts Management CRUD (Target: 1 minggu, TIDAK BERUBAH)
 
