@@ -43,7 +43,7 @@ class PendingTransaction(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     # 'create' = new transaction pending confirmation; 'update' = edit of an
     # existing transaction (Telegram /edit) pending confirmation
@@ -74,5 +74,5 @@ class PendingTransaction(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="pending_transactions")  # noqa: F821
+    user: Mapped["Profile"] = relationship(back_populates="pending_transactions")  # noqa: F821
     category: Mapped["Category"] = relationship(back_populates="pending_transactions")  # noqa: F821

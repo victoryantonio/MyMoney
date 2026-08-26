@@ -5,31 +5,18 @@ Runs against the full FastAPI app via TestClient (same pattern as
 test_health.py). Requires a running PostgreSQL.
 """
 
-import uuid
-
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
 
-_RUN_ID = uuid.uuid4().hex[:8]
 
-
-def _email(local: str) -> str:
-    return f"{local}_{_RUN_ID}@example.com"
-
-
-def _auth_headers() -> dict[str, str]:
-    """Register + login a fresh user, return the Bearer header."""
-    email = _email("report_api")
-    client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "SecurePass1", "display_name": "Report API"},
-    )
-    resp = client.post("/api/auth/login", json={"email": email, "password": "SecurePass1"})
-    assert resp.status_code == 200
-    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+@pytest.fixture
+def auth(supabase_factory):
+    """Fresh Supabase user per call → Bearer headers (skips in CI without creds)."""
+    return supabase_factory
 
 
 def test_summary_requires_auth():
@@ -37,8 +24,8 @@ def test_summary_requires_auth():
     assert response.status_code == 401
 
 
-def test_summary_default_month():
-    headers = _auth_headers()
+def test_summary_default_month(auth):
+    headers = auth()
     response = client.get("/api/reports/summary", headers=headers)
     assert response.status_code == 200
     data = response.json()
@@ -56,21 +43,21 @@ def test_summary_default_month():
     assert data["categories"] == []
 
 
-def test_summary_valid_periods():
-    headers = _auth_headers()
+def test_summary_valid_periods(auth):
+    headers = auth()
     for period in ("today", "week", "month", "last-month"):
         response = client.get(f"/api/reports/summary?period={period}", headers=headers)
         assert response.status_code == 200, period
 
 
-def test_summary_invalid_period():
-    headers = _auth_headers()
+def test_summary_invalid_period(auth):
+    headers = auth()
     response = client.get("/api/reports/summary?period=year", headers=headers)
     assert response.status_code == 422
 
 
-def test_summary_custom_range():
-    headers = _auth_headers()
+def test_summary_custom_range(auth):
+    headers = auth()
     response = client.get(
         "/api/reports/summary",
         headers=headers,
@@ -80,8 +67,8 @@ def test_summary_custom_range():
     assert response.json()["total_expense"] == "0"
 
 
-def test_summary_custom_range_inverted():
-    headers = _auth_headers()
+def test_summary_custom_range_inverted(auth):
+    headers = auth()
     response = client.get(
         "/api/reports/summary",
         headers=headers,
@@ -98,8 +85,8 @@ def test_trend_requires_auth():
     assert response.status_code == 401
 
 
-def test_trend_default_month_returns_points():
-    headers = _auth_headers()
+def test_trend_default_month_returns_points(auth):
+    headers = auth()
     response = client.get("/api/reports/trend", headers=headers)
     assert response.status_code == 200
     data = response.json()
@@ -111,8 +98,8 @@ def test_trend_default_month_returns_points():
     assert set(first) == {"date", "income", "expense"}
 
 
-def test_trend_custom_range_zero_filled():
-    headers = _auth_headers()
+def test_trend_custom_range_zero_filled(auth):
+    headers = auth()
     response = client.get(
         "/api/reports/trend",
         headers=headers,
@@ -124,7 +111,7 @@ def test_trend_custom_range_zero_filled():
     assert all(p["income"] == "0" and p["expense"] == "0" for p in data["points"])
 
 
-def test_trend_invalid_period():
-    headers = _auth_headers()
+def test_trend_invalid_period(auth):
+    headers = auth()
     response = client.get("/api/reports/trend?period=year", headers=headers)
     assert response.status_code == 422

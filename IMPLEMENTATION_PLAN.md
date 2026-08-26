@@ -5,7 +5,7 @@
 > edited so the "Current Phase" points at the active one and completed phases
 > move under `## Completed Phases`.
 
-**Current Phase: Fase 0 — Setup Fondasi Baru (Supabase + Flutter + Node bot)**
+**Current Phase: Fase 1.5 — RBAC Admin**
 
 ---
 
@@ -38,59 +38,29 @@ menunggu review user.
 
 ---
 
-## Fase 0 — Setup Fondasi Baru (current, target 3-4 hari)
+## Fase 0 — Setup Fondasi Baru ✅ DONE (2026-08-26, commit `29abccc`)
 
-**Goal:** fondasi terhubung — Supabase (project + Auth + RLS dasar) satu-satunya
-sumber data; backend FastAPI terhubung ke Supabase Postgres; Alembic target
-Supabase; Flutter init; bot Node init; CI lint 3 ekosistem.
-
-**Current reality (verified):** backend v1 live (`api.mymoneyofficial.online`,
-Postgres self-hosted via docker-compose, bot Python di `backend/app/core/`);
-`android/` v1 di `_archive/`; Flutter & Node **belum terinstall** di environment.
-
-**Definition of done (ROADMAP §Fase 0):** backend jalan lokal terhubung Supabase;
-Flutter bisa register/login via Supabase Auth; migration sukses.
-
-**Task:**
-- [ ] Buat project Supabase + Auth providers (email, Google OAuth) — panduan di `walkthrough.md` Fase 0 Step 1 (user yang buat di dashboard)
-- [ ] Migration: tabel `profiles` + trigger `handle_new_user` + RLS dasar (profiles, transactions, accounts, categories) — DATABASE.md §2.1
-- [ ] Backend: settings Supabase di `core/config.py`; `DATABASE_URL` → Supabase (pooler); verifikasi koneksi; `/health` 200
-- [ ] Alembic target Supabase (`alembic/env.py`); `upgrade head` sukses
-- [ ] Init `app/` Flutter (Riverpod, supabase_flutter, dio) + layar Auth minimal
-- [ ] Init `bot/` Node/Telegraf/TypeScript (scaffold webhook minimal)
-- [ ] GitHub Actions: ruff/black (backend), `dart analyze` (app), eslint (bot)
-- [ ] `.env` lokal dari `.env.example` (Supabase keys terisi)
-
-**Verification (checkpoint):** `walkthrough.md` Fase 0 Step 7.
+> Selesai & ter-commit — detail hasil di **Completed Phases → Fase 0** di bawah.
 
 ---
 
-## Fase 1 — Backend Inti + Auth Supabase (target 1 minggu)
+## Fase 1 — Backend Inti + Auth Supabase ✅ DONE (2026-08-27)
 
-**Goal:** REST API v2 di atas Supabase: auth = Supabase JWT; profile auto-create
-via trigger; CRUD transaksi (service layer); unit test.
+> Selesai & terverifikasi — detail hasil di **Completed Phases → Fase 1** di bawah.
+
+---
+
+## Fase 1.5 — RBAC Admin (current, target 2 hari)
+
+**Goal:** endpoint admin (list/lock/delete user) + `require_role("admin")`.
 
 **Keputusan & alasan (chain of thought):**
-- Verifikasi JWT via **JWKS RS256** dari `/auth/v1/.well-known/jwks.json` (default Supabase modern), public key di-cache — bukan decode HS256 manual. `SUPABASE_JWT_SECRET` hanya fallback opsional.
-- `profiles.id == auth.users.id` (1:1) via trigger `on_auth_user_created` (DATABASE.md §2.1). Admin pertama di-seed manual SQL.
-- Endpoint login/register custom **dihapus** — digantikan Supabase Auth langsung dari Flutter (`supabase_flutter` SDK) & bot. Backend hanya verifikasi token.
-- `require_active_user` membaca `sub`/`auth.uid` dari token → lookup `profiles`.
+- Kolom `role` (CHECK user|admin) sudah ada di `profiles` sejak migration 0005 — tinggal pakai.
+- `require_role` sudah dibuat di `deps.py` (Fase 1) — endpoint admin tinggal menempelkannya.
+- Admin pertama di-seed manual SQL (`UPDATE profiles SET role='admin' WHERE id='<uid>'`).
 
 **Task:**
-- [ ] `core/security.py`: `verify_supabase_jwt()` (JWKS, cache, expired check)
-- [ ] `api/deps.py`: `require_active_user` (uid → profiles) + `require_role`
-- [ ] `core/transaction_service.py`: CRUD transaksi (FK → profiles), audit trail tetap; pagination cursor tetap
-- [ ] RLS + trigger terverifikasi (query sebagai user via anon key)
-- [ ] Unit test service layer (pytest; DB test = schema terpisah di Supabase atau Postgres lokal mirror)
-- [ ] `.env.example` final (env-driven LLM sudah di Fase 0)
-
-**Verification:** register via Supabase Auth → `profiles` auto-buat; CRUD transaksi via Postman dengan Supabase JWT asli; tanpa token → 401.
-
----
-
-## Fase 1.5 — RBAC Admin (target 2 hari)
-
-- [ ] Endpoint `/admin/users/*` + `require_role("admin")` (kolom `role` sudah ada di `profiles`)
+- [ ] `/admin/users/*` + `require_role("admin")`
 - [ ] Seed admin pertama (SQL manual)
 
 ---
@@ -197,6 +167,33 @@ via trigger; CRUD transaksi (service layer); unit test.
 ---
 
 ## Completed Phases
+
+### Fase 1 — Backend Inti + Auth Supabase ✅ (2026-08-27)
+
+**Goal:** REST API v2 di atas Supabase — auth = Supabase JWT; profile auto-create via trigger; CRUD transaksi (service layer); unit test.
+
+**Hasil (terverifikasi):**
+- [x] Migration `0006_fk_profiles.py` (di-run): drop 6 FK `*_user_id_fkey` → drop tabel `users` → re-create FK ke `profiles.id` (CASCADE). Verifikasi `information_schema`: tabel `users` hilang, semua FK → `profiles`.
+- [x] Model `Profile` (1:1 `auth.users`, trigger `on_auth_user_created`); semua model ORM (account/category/transaction/telegram_link/pending_transaction/audit_log) ber-FK `profiles.id`; `models/user.py` dihapus.
+- [x] `verify_supabase_jwt()` di `core/security.py`: fetch JWKS (cache TTL 300 s), dukung **RS256 + ES256** (proyek ini ternyata ES256 P-256 — dibuktikan live), fallback HS256 bila `SUPABASE_JWT_SECRET` diisi; return `sub`.
+- [x] `api/deps.py`: `get_current_user` (Bearer → verify → `db.get(Profile)` → 401), `require_active_user` (403), `require_role(*roles)` (403).
+- [x] Auth custom v1 dihapus: `api/auth.py`, `api/telegram_linking.py`, `schemas/auth.py`, `models/user.py`; `main.py` 23 route.
+- [x] Test suite v2: conftest (mimic `auth.users`, fixture `profile` + `supabase_factory` auto-skip tanpa kredensial); service layer + API tests memakai Supabase JWT asli. **118 passed**; `ruff check`/`black --check` bersih.
+- [x] E2E live: tanpa token → 401; token asli → 200; CRUD akun/transaksi + report summary/trend sukses.
+
+### Fase 0 — Setup Fondasi Baru ✅ (2026-08-26, commit `29abccc`)
+
+**Goal:** fondasi terhubung — Supabase satu-satunya sumber data; backend FastAPI terhubung ke Supabase Postgres; Alembic target Supabase; Flutter init; bot Node init; CI lint 3 ekosistem.
+
+**Hasil (terverifikasi):**
+- [x] Project Supabase dibuat user (ref `fqjkqcigjeyooejcgbrk`, region **ap-northeast-1/Tokyo**) + Auth email
+- [x] Migration `0005_supabase_profiles.py`: `profiles` + trigger `handle_new_user` + RLS 7 tabel — `alembic upgrade head` sukses di Supabase
+- [x] Backend: settings Supabase/LLM env-driven di `core/config.py`; `DATABASE_URL` → Supabase pooler (Tokyo, IPv4); `/health` 200
+- [x] Init `app/` Flutter (Riverpod, supabase_flutter, dio) + AuthScreen — `flutter analyze` bersih, test 2/2
+- [x] Init `bot/` Node/Telegraf/TypeScript — typecheck + lint bersih
+- [x] GitHub Actions: job `app` (flutter) + `bot` (node) ditambah ke `ci.yml`
+- [x] `.env` lokal terisi (Supabase keys, LLM deepseek, Telegram, bot token)
+- [x] Checkpoint end-to-end: signup Supabase Auth → `profiles` auto-terisi trigger (role=user, tz=Asia/Jakarta)
 
 ### v1 — Stack lama (archived, selesai 2026-08-25)
 

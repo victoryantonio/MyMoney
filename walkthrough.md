@@ -1,19 +1,61 @@
 # walkthrough.md — MyMoney v2 Execution Guide
 
 > ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
-> 6 dokumen inti sudah ditulis ulang; `android/` v1 di `_archive/android-kotlin-v1/`.
-> Panduan di bawah adalah cara mengeksekusi **Fase 0** (fase berjalan).
-> Guide fase berikutnya diisi saat fase itu dimulai (placeholder di bawah).
+> Panduan aktif: **Fase 1.5** di bawah. Fase 0 & 1 selesai (rekam di bagian bawah).
+> Guide fase berikutnya diisi saat fase dimulai (placeholder di bawah).
 > Rekam historis v1 ada di git history + `_archive/`.
 
 ---
 
-## Fase 0 — Setup Fondasi Baru (current)
+## Fase 1.5 — RBAC Admin (current)
 
-**Tujuan:** fondasi terhubung — Supabase sebagai sumber data, backend FastAPI
-terhubung, Flutter & bot Node ter-init, CI lint 3 ekosistem.
-**Checkpoint (DoD):** backend lokal ↔ Supabase OK; Flutter register/login via
-Supabase Auth; `alembic upgrade head` sukses.
+**Tujuan:** endpoint admin (list/lock/delete user) + `require_role("admin")` (kolom `role` sudah ada di `profiles`, CHECK user|admin).
+
+---
+
+## Fase 1 — Backend Inti + Auth Supabase ✅ DONE (2026-08-27)
+
+**Tujuan:** REST API v2 di atas Supabase — auth = Supabase JWT (JWKS), profile auto-create via trigger, CRUD transaksi service layer, unit test.
+**Hasil:** semua step selesai & terverifikasi live; `pytest` 118 hijau, `ruff`/`black` bersih.
+
+### Step 1 — Migration FK: `users` → `profiles` (prasyarat blocker)
+1. **Blocker terverifikasi**: semua tabel v1 punya FK `user_id → users.id`, padahal user v2 hanya ada di `auth.users` + `profiles` → insert account/transaksi GAGAL (ForeignKeyViolation).
+2. Migration `0006_fk_profiles.py`: drop semua FK ke `users.id` → drop tabel `users` (kosong) → re-create FK ke `profiles.id` (ondelete CASCADE).
+3. `alembic upgrade head` sukses; verifikasi via `information_schema` — tabel `users` hilang, semua FK `*_user_id_fkey` → `profiles`.
+
+### Step 2 — `verify_supabase_jwt()` di `core/security.py`
+- Fetch JWKS dari `{SUPABASE_URL}/auth/v1/.well-known/jwks.json` → cache in-memory (TTL 300 s).
+- **Temuan live**: Supabase project ini memakai **ES256 (P-256)** — bukan RS256! Implementasi mendukung **RS256 + ES256** (via `jose.jwk.construct`).
+- Validasi signature + `exp`; `SUPABASE_JWT_SECRET` hanya fallback HS256 bila diisi (kosong di project baru).
+- Terverifikasi live: token asli → PASS; token korup/diubah → ditolak.
+
+### Step 3 — deps: `require_active_user` → `profiles`
+- `api/deps.py`: `get_current_user` (HTTPBearer → verify → `db.get(Profile, sub)` → 401), `require_active_user` (403 bila nonaktif), `require_role(*roles)` (403).
+- `telegram_service.py` + semua router API (accounts/categories/reports/transactions) → `Profile`.
+
+### Step 4 — Hapus endpoint auth custom
+- `api/auth.py`, `api/telegram_linking.py`, `schemas/auth.py`, `models/user.py` dihapus. `main.py`: 23 route (telegram_webhook tetap — bot webhook tak butuh profile auth; linking dibangun ulang di Fase 2).
+
+### Step 5 — Unit test
+- `conftest.py`: mimic `auth.users` lokal (CI), fixture `profile`, `supabase_factory` (skip otomatis tanpa kredensial), `limiter.enabled=False`.
+- Semua test diadaptasi ke v2: service layer pakai `(db, profile)`; API tests pakai Supabase JWT asli.
+- **118 passed** · `ruff check .` bersih · `black --check .` bersih.
+
+### Step 6 — Checkpoint verification (DoD Fase 1) ✅
+- [x] Supabase JWT asli (password grant) → 401/200 benar; CRUD akun & transaksi sukses
+- [x] Tanpa token → 401; token palsu → 401
+- [x] `profiles` auto-buat saat register (trigger) — dibuktikan Fase 0
+- [x] `pytest` hijau (118)
+
+---
+
+## Fase 0 — Setup Fondasi Baru ✅ DONE (2026-08-26, commit `29abccc`)
+
+> Detail langkah lengkap di bawah dipertahankan sebagai rekam historis; semua
+> item checkpoint sudah terverifikasi: backend `/health` 200 + Supabase pooler
+> (Tokyo); `alembic upgrade head` 0001–0005 sukses; `profiles` + trigger + RLS
+> terpasang; Flutter analyze bersih + test 2/2; bot typecheck/lint bersih; CI
+> job `app` + `bot`; signup → profile auto-terisi (role=user, tz=Asia/Jakarta).
 
 ### Step 0 — Decision gate
 1. **LLM env-driven** (keputusan final 2026-08-26): `LLM_PROVIDER=auto` dengan
@@ -92,10 +134,6 @@ Supabase Auth; `alembic upgrade head` sukses.
 - [ ] `bot`: `tsc --noEmit` clean; webhook endpoint hidup
 
 ---
-
-## Fase 1 — Backend Inti + Auth Supabase (placeholder)
-> Goal & task: lihat `IMPLEMENTATION_PLAN.md` Fase 1. Diisi langkah detail saat
-> fase dimulai (pola sama seperti Fase 0 di atas).
 
 ## Fase 1.5 — RBAC Admin (placeholder)
 ## Fase 2 — Telegram Bot Node + Parsing Teks (placeholder)

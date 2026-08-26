@@ -9,28 +9,18 @@ report tests). Requires a running PostgreSQL.
 
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
 
-_RUN_ID = uuid.uuid4().hex[:8]
 
-
-def _email(local: str) -> str:
-    return f"{local}_{_RUN_ID}@example.com"
-
-
-def _register_and_login(local: str) -> dict[str, str]:
-    email = _email(local)
-    client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "SecurePass1", "display_name": "Cat API"},
-    )
-    resp = client.post("/api/auth/login", json={"email": email, "password": "SecurePass1"})
-    assert resp.status_code == 200
-    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+@pytest.fixture
+def auth(supabase_factory):
+    """Fresh Supabase user per call → Bearer headers (skips in CI without creds)."""
+    return supabase_factory
 
 
 def _create(headers: dict[str, str], name: str, type_: str = "expense"):
@@ -49,8 +39,8 @@ def _first_global_id(headers: dict[str, str]) -> str:
 # ── Create / list ────────────────────────────────────────────────────────────
 
 
-def test_create_category():
-    headers = _register_and_login("cat_create")
+def test_create_category(auth):
+    headers = auth("cat_create")
     resp = _create(headers, "Hobi", "expense")
     assert resp.status_code == 201
     data = resp.json()
@@ -60,22 +50,22 @@ def test_create_category():
     assert data["user_id"] is not None
 
 
-def test_create_duplicate_conflict():
-    headers = _register_and_login("cat_dup")
+def test_create_duplicate_conflict(auth):
+    headers = auth("cat_dup")
     assert _create(headers, "Kuliner").status_code == 201
     resp = _create(headers, "Kuliner")  # same owner, same name+type
     assert resp.status_code == 409
 
 
-def test_create_shadowing_global_conflict():
+def test_create_shadowing_global_conflict(auth):
     """A custom category must not shadow a global default of the same name."""
-    headers = _register_and_login("cat_shadow")
+    headers = auth("cat_shadow")
     resp = _create(headers, "Food", "expense")  # global 'Food/expense' exists
     assert resp.status_code == 409
 
 
-def test_list_includes_custom_and_global():
-    headers = _register_and_login("cat_list")
+def test_list_includes_custom_and_global(auth):
+    headers = auth("cat_list")
     assert _create(headers, "Olahraga", "expense").status_code == 201
     resp = client.get("/api/categories", headers=headers)
     assert resp.status_code == 200
@@ -87,8 +77,8 @@ def test_list_includes_custom_and_global():
 # ── PUT edit ─────────────────────────────────────────────────────────────────
 
 
-def test_put_rename():
-    headers = _register_and_login("cat_rename")
+def test_put_rename(auth):
+    headers = auth("cat_rename")
     created = _create(headers, "OldName").json()
     resp = client.put(
         f"/api/categories/{created['id']}",
@@ -102,8 +92,8 @@ def test_put_rename():
     assert data["id"] == created["id"]
 
 
-def test_put_change_type():
-    headers = _register_and_login("cat_type")
+def test_put_change_type(auth):
+    headers = auth("cat_type")
     created = _create(headers, "Freelance", "expense").json()
     resp = client.put(
         f"/api/categories/{created['id']}",
@@ -114,8 +104,8 @@ def test_put_change_type():
     assert resp.json()["type"] == "income"
 
 
-def test_put_global_category_forbidden():
-    headers = _register_and_login("cat_global")
+def test_put_global_category_forbidden(auth):
+    headers = auth("cat_global")
     global_id = _first_global_id(headers)
     resp = client.put(
         f"/api/categories/{global_id}",
@@ -125,9 +115,9 @@ def test_put_global_category_forbidden():
     assert resp.status_code == 403
 
 
-def test_put_other_users_category_not_found():
-    headers_a = _register_and_login("cat_owner_a")
-    headers_b = _register_and_login("cat_owner_b")
+def test_put_other_users_category_not_found(auth):
+    headers_a = auth("cat_owner_a")
+    headers_b = auth("cat_owner_b")
     created = _create(headers_a, "Privat").json()
     resp = client.put(
         f"/api/categories/{created['id']}",
@@ -137,8 +127,8 @@ def test_put_other_users_category_not_found():
     assert resp.status_code == 404
 
 
-def test_put_duplicate_conflict():
-    headers = _register_and_login("cat_putdup")
+def test_put_duplicate_conflict(auth):
+    headers = auth("cat_putdup")
     _create(headers, "Taken", "expense")
     other = _create(headers, "Free", "expense").json()
     resp = client.put(
@@ -149,8 +139,8 @@ def test_put_duplicate_conflict():
     assert resp.status_code == 409
 
 
-def test_put_invalid_type_422():
-    headers = _register_and_login("cat_badtype")
+def test_put_invalid_type_422(auth):
+    headers = auth("cat_badtype")
     created = _create(headers, "Valid").json()
     resp = client.put(
         f"/api/categories/{created['id']}",
@@ -163,8 +153,8 @@ def test_put_invalid_type_422():
 # ── DELETE ───────────────────────────────────────────────────────────────────
 
 
-def test_delete_category():
-    headers = _register_and_login("cat_delete")
+def test_delete_category(auth):
+    headers = auth("cat_delete")
     created = _create(headers, "Buang").json()
     resp = client.delete(f"/api/categories/{created['id']}", headers=headers)
     assert resp.status_code == 204
@@ -172,8 +162,8 @@ def test_delete_category():
     assert all(c["id"] != created["id"] for c in listed)
 
 
-def test_delete_global_category_forbidden():
-    headers = _register_and_login("cat_delglobal")
+def test_delete_global_category_forbidden(auth):
+    headers = auth("cat_delglobal")
     global_id = _first_global_id(headers)
     resp = client.delete(f"/api/categories/{global_id}", headers=headers)
     assert resp.status_code == 403

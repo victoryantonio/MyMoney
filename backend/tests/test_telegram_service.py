@@ -13,10 +13,9 @@ from sqlalchemy.orm import Session
 from app.core.telegram_service import process_telegram_update
 from app.models.account import Account
 from app.models.category import Category
-from app.models.pending_transaction import PendingTransaction
+from app.models.profile import Profile
 from app.models.telegram_link import TelegramLink
 from app.models.transaction import Transaction
-from app.models.user import User
 
 
 class TestProcessTelegramUpdate:
@@ -64,11 +63,9 @@ class TestProcessTelegramUpdate:
         """Test /start returns welcome message when already linked."""
         # Existing link
         link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
-        user = User(
+        user = Profile(
             id=self.user_id,
             display_name="Test User",
-            email="test@example.com",
-            password_hash="hash",
         )
         self.db.scalar.return_value = link
         self.db.get.return_value = user
@@ -246,9 +243,7 @@ class TestProcessTelegramUpdate:
             mock_parse.return_value = ParsedTransaction(
                 type="expense", amount=Decimal("50000"), category="Transport", note="Bensin"
             )
-            with patch(
-                "app.core.telegram_service.update_transaction_internal"
-            ) as mock_update:
+            with patch("app.core.telegram_service.update_transaction_internal") as mock_update:
                 mock_update.return_value = updated_tx
 
                 result = await process_telegram_update(
@@ -347,11 +342,9 @@ class TestProcessTelegramUpdate:
     async def test_report_uses_user_timezone(self):
         """Test /report resolves the user's timezone from the DB row."""
         link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
-        user = User(
+        user = Profile(
             id=self.user_id,
-            email="tz@example.com",
             display_name="TZ",
-            password_hash="x",
             timezone="Asia/Jakarta",
         )
         self.db.scalar.return_value = link
@@ -362,7 +355,7 @@ class TestProcessTelegramUpdate:
 
             result = await process_telegram_update(self.db, self._make_update("/report"))
 
-        self.db.get.assert_called_once_with(User, self.user_id)
+        self.db.get.assert_called_once_with(Profile, self.user_id)
         assert "📊 Report — this month" in result
 
     # ── Natural language transaction tests ────────────────────────────────────
@@ -417,9 +410,7 @@ class TestProcessTelegramUpdate:
             mock_parse.return_value = ParsedTransaction(
                 type="expense", amount=Decimal("35000"), category="Food", note="Makan siang"
             )
-            with patch(
-                "app.core.telegram_service.create_transaction_internal"
-            ) as mock_create:
+            with patch("app.core.telegram_service.create_transaction_internal") as mock_create:
                 mock_create.return_value = tx
 
                 result = await process_telegram_update(
@@ -468,9 +459,7 @@ class TestProcessTelegramUpdate:
                 category="Food",
                 note=None,  # LLM didn't provide note
             )
-            with patch(
-                "app.core.telegram_service.create_transaction_internal"
-            ) as mock_create:
+            with patch("app.core.telegram_service.create_transaction_internal") as mock_create:
                 mock_create.return_value = tx
 
                 result = await process_telegram_update(
@@ -606,7 +595,7 @@ class TestProcessTelegramUpdate:
         link = TelegramLink(id=uuid.uuid4(), user_id=self.user_id, telegram_id=self.telegram_id)
         self.db.scalar.return_value = link
 
-        user = User(id=self.user_id, display_name="Test User", email="test@example.com")
+        user = Profile(id=self.user_id, display_name="Test User")
         self.db.get.return_value = user
 
         account = Account(
@@ -635,7 +624,11 @@ class TestProcessTelegramUpdate:
             merchant="Mixue",
             date="2026-08-25",
             items=[
-                ReceiptItem(name="Ice Cream Tofee Hazelnut Latte (M)", qty=Decimal("2"), price=Decimal("21000"))
+                ReceiptItem(
+                    name="Ice Cream Tofee Hazelnut Latte (M)",
+                    qty=Decimal("2"),
+                    price=Decimal("21000"),
+                )
             ],
         )
 

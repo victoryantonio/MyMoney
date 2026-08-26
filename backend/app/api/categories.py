@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_active_user
 from app.core.audit_service import record_audit
 from app.models.category import Category
-from app.models.user import User
+from app.models.profile import Profile
 from app.schemas.category import (
     CategoryCreateRequest,
     CategoryResponse,
@@ -54,7 +54,7 @@ def _find_visible_duplicate(
 @router.get("", response_model=list[CategoryResponse])
 def list_categories(
     type: str | None = None,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> list[Category]:
     """
@@ -82,7 +82,7 @@ def list_categories(
 @router.post("", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
 def create_category(
     body: CategoryCreateRequest,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> Category:
     """Create a custom category scoped to the current user."""
@@ -115,7 +115,7 @@ def create_category(
 def update_category(
     category_id: uuid.UUID,
     body: CategoryUpdateRequest,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> Category:
     """
@@ -174,7 +174,7 @@ def update_category(
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_category(
     category_id: uuid.UUID,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> None:
     """

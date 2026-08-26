@@ -38,9 +38,9 @@ from app.core.transaction_service import (
     update_transaction_internal,
 )
 from app.models.account import Account
+from app.models.profile import Profile
 from app.models.telegram_link import TelegramLink
 from app.models.transaction import Transaction
-from app.models.user import User
 from app.schemas.report import ReportSummaryResponse
 
 log = structlog.get_logger()
@@ -163,7 +163,7 @@ async def _handle_photo_message(db: Session, message: dict[str, Any], chat_id: i
     )
 
     # ── Transaction date (dd-mm-yyyy from receipt, else now) ─────────────────
-    tz_str = getattr(db.get(User, link.user_id), "timezone", None)
+    tz_str = getattr(db.get(Profile, link.user_id), "timezone", None)
     tz = ZoneInfo(tz_str) if tz_str else ZoneInfo("UTC")
     if parsed.date:
         transaction_date = datetime.strptime(parsed.date, "%Y-%m-%d").replace(tzinfo=tz)
@@ -219,7 +219,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         # Check if already linked
         link = db.scalar(select(TelegramLink).where(TelegramLink.telegram_id == chat_id))
         if link and link.user_id:
-            user = db.get(User, link.user_id)
+            user = db.get(Profile, link.user_id)
             if user:
                 return f"Welcome back, {user.display_name}! Your account is already linked. Just type your expenses here (e.g. 'Coffee 25k')."
 
@@ -343,7 +343,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         parts = text.split(maxsplit=1)
         arg = parts[1].strip() if len(parts) > 1 else ""
         # Resolve the user's timezone so "bulan ini" means *their* month.
-        user = db.get(User, user_id)
+        user = db.get(Profile, user_id)
         tz_str = getattr(user, "timezone", None) if user else None
         tz = ZoneInfo(tz_str) if tz_str else ZoneInfo("UTC")
         start, end = parse_period_arg(arg, tz)

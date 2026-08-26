@@ -20,22 +20,22 @@ void main() {
     );
   });
 
-  testWidgets('AuthScreen menampilkan form login', (WidgetTester tester) async {
+  testWidgets('AuthScreen displays the login form', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: AuthScreen()));
 
     expect(find.text('MyMoney'), findsOneWidget);
     expect(find.byType(TextField), findsNWidgets(2));
-    expect(find.text('Masuk'), findsOneWidget);
-    expect(find.text('Belum punya akun? Daftar'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
+    expect(find.text("Don't have an account yet? Register"), findsOneWidget);
   });
 
-  testWidgets('AuthScreen toggle ke mode daftar', (WidgetTester tester) async {
+  testWidgets('Switch AuthScreen to register mode', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: AuthScreen()));
 
-    await tester.tap(find.text('Belum punya akun? Daftar'));
+    await tester.tap(find.text("Don't have an account yet? Register"));
     await tester.pump();
 
-    expect(find.text('Daftar'), findsOneWidget);
-    expect(find.text('Sudah punya akun? Masuk'), findsOneWidget);
+    expect(find.text('Register'), findsOneWidget);
+    expect(find.text('Already have an account? Login'), findsOneWidget);
   });
 }

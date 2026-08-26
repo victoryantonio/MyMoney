@@ -9,11 +9,10 @@ Revises: 0001
 Create Date: 2026-08-24
 """
 
-import uuid
-
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+from alembic import op
 
 revision = "0002"
 down_revision = "0001"
@@ -25,21 +24,32 @@ def upgrade() -> None:
     op.create_table(
         "pending_transactions",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "user_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("type", sa.String(10), nullable=False),
         sa.Column("total_amount", sa.Numeric(14, 2), nullable=False),
-        sa.Column("category_id", UUID(as_uuid=True), sa.ForeignKey("categories.id"), nullable=False),
+        sa.Column(
+            "category_id", UUID(as_uuid=True), sa.ForeignKey("categories.id"), nullable=False
+        ),
         sa.Column("merchant", sa.String(150), nullable=True),
         sa.Column("source", sa.String(10), nullable=False),
         sa.Column("note", sa.Text, nullable=True),
         sa.Column("confidence", sa.String(10), nullable=True),
         sa.Column("raw_input", sa.Text, nullable=True),
         sa.Column("items", JSONB, nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("type IN ('income', 'expense')", name="pending_transactions_type_check"),
         sa.CheckConstraint("total_amount > 0", name="pending_transactions_amount_positive"),
-        sa.CheckConstraint("source IN ('telegram', 'app')", name="pending_transactions_source_check"),
+        sa.CheckConstraint(
+            "source IN ('telegram', 'app')", name="pending_transactions_source_check"
+        ),
     )
     op.create_index("idx_pending_transactions_user_id", "pending_transactions", ["user_id"])
     op.create_index(

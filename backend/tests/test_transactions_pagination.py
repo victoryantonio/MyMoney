@@ -10,36 +10,24 @@ Runs against the full FastAPI app via TestClient (same pattern as
 test_reports_api.py). Requires a running PostgreSQL.
 """
 
-import uuid
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
 
-_RUN_ID = uuid.uuid4().hex[:8]
-
 # 25 transactions → 2 pages of 20 + 5.
 _TOTAL = 25
 _PAGE_SIZE = 20
 
 
-def _email(local: str) -> str:
-    return f"{local}_{_RUN_ID}@example.com"
-
-
-def _auth_headers(local: str = "paging") -> dict[str, str]:
-    """Register + login a fresh user, return the Bearer header."""
-    email = _email(local)
-    client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "SecurePass1", "display_name": "Paging API"},
-    )
-    resp = client.post("/api/auth/login", json={"email": email, "password": "SecurePass1"})
-    assert resp.status_code == 200
-    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+@pytest.fixture
+def auth(supabase_factory):
+    """Fresh Supabase user per call → Bearer headers (skips in CI without creds)."""
+    return supabase_factory
 
 
 def _seed(headers: dict[str, str]) -> None:
@@ -84,8 +72,8 @@ def test_pagination_requires_auth():
     assert resp.status_code == 401
 
 
-def test_keyset_pagination_covers_all_rows_exactly_once():
-    headers = _auth_headers()
+def test_keyset_pagination_covers_all_rows_exactly_once(auth):
+    headers = auth("paging")
     _seed(headers)
 
     seen_ids: list[str] = []
@@ -135,9 +123,9 @@ def test_keyset_pagination_covers_all_rows_exactly_once():
         assert prev > nxt, f"keyset order violated: {prev} not after {nxt}"
 
 
-def test_legacy_timestamp_cursor_still_works():
+def test_legacy_timestamp_cursor_still_works(auth):
     """A bare ISO-timestamp cursor (old format) must not error."""
-    headers = _auth_headers("paging_legacy")
+    headers = auth("paging_legacy")
     _seed(headers)
 
     resp = client.get("/api/transactions", headers=headers)
@@ -150,8 +138,8 @@ def test_legacy_timestamp_cursor_still_works():
     assert resp2.json()["total_count"] == _TOTAL
 
 
-def test_invalid_cursor_ignored():
-    headers = _auth_headers("paging_invalid")
+def test_invalid_cursor_ignored(auth):
+    headers = auth("paging_invalid")
     _seed(headers)
 
     resp = client.get(

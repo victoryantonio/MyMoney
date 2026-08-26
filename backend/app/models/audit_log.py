@@ -20,7 +20,7 @@ class AuditLog(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -37,4 +37,4 @@ class AuditLog(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="audit_logs")  # noqa: F821
+    user: Mapped["Profile"] = relationship(back_populates="audit_logs")  # noqa: F821

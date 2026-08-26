@@ -33,8 +33,8 @@ from app.api.deps import get_db, require_active_user
 from app.core.audit_service import record_audit
 from app.core.transaction_service import get_or_create_category
 from app.models.account import Account
+from app.models.profile import Profile
 from app.models.transaction import Transaction
-from app.models.user import User
 from app.schemas.account import (
     AccountCreateRequest,
     AccountDeactivateRequest,
@@ -91,7 +91,7 @@ def _to_response(account: Account, db: Session) -> AccountResponse:
 @router.get("", response_model=list[AccountResponse])
 def list_accounts(
     include_inactive: bool = False,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> list[AccountResponse]:
     """
@@ -106,7 +106,11 @@ def list_accounts(
             select(Account)
             .where(
                 Account.user_id == current_user.id,
-                Account.is_active == True if not include_inactive else Account.is_active.in_([True, False]),  # noqa: E712
+                (
+                    Account.is_active == True
+                    if not include_inactive
+                    else Account.is_active.in_([True, False])
+                ),  # noqa: E712
             )
             .order_by(Account.is_active.desc(), Account.created_at)
         )
@@ -117,7 +121,7 @@ def list_accounts(
 @router.post("", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 def create_account(
     body: AccountCreateRequest,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """Create a new account (cash wallet or bank account)."""
@@ -137,7 +141,7 @@ def create_account(
 @router.get("/{account_id}", response_model=AccountResponse)
 def get_account(
     account_id: uuid.UUID,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """Get a single account with its current computed balance."""
@@ -157,7 +161,7 @@ def get_account(
 def update_account(
     account_id: uuid.UUID,
     body: AccountUpdateRequest,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """Update account name or bank name."""
@@ -185,7 +189,7 @@ def update_account(
 def deactivate_account(
     account_id: uuid.UUID,
     body: AccountDeactivateRequest,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """

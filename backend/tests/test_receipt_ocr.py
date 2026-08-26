@@ -5,8 +5,6 @@ Unit tests for receipt_ocr.py — parsing/validation of vision LLM output
 
 from decimal import Decimal
 
-import pytest
-
 from app.core.receipt_ocr import _normalize_date, _parse_llm_json
 
 
@@ -39,10 +37,16 @@ class TestParseLlmJson:
         assert _parse_llm_json('{"type": "expense", "items": []}') is None
 
     def test_invalid_type_returns_none(self):
-        assert _parse_llm_json('{"type": "food", "items": [{"name": "x", "qty": 1, "price": 1}]}') is None
+        assert (
+            _parse_llm_json('{"type": "food", "items": [{"name": "x", "qty": 1, "price": 1}]}')
+            is None
+        )
 
     def test_qty_zero_returns_none(self):
-        assert _parse_llm_json('{"type": "expense", "items": [{"name": "x", "qty": 0, "price": 1}]}') is None
+        assert (
+            _parse_llm_json('{"type": "expense", "items": [{"name": "x", "qty": 0, "price": 1}]}')
+            is None
+        )
 
     def test_dd_mm_yyyy_date_normalized(self):
         parsed = _parse_llm_json(

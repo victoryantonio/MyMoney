@@ -31,7 +31,7 @@ class Transaction(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     type: Mapped[str] = mapped_column(String(10), nullable=False)
     # Use NUMERIC, not FLOAT — mandatory for financial values to avoid floating-point errors
@@ -63,7 +63,7 @@ class Transaction(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="transactions")  # noqa: F821
+    user: Mapped["Profile"] = relationship(back_populates="transactions")  # noqa: F821
     category: Mapped["Category"] = relationship(back_populates="transactions")  # noqa: F821
     account: Mapped["Account"] = relationship(back_populates="transactions")  # noqa: F821
     items: Mapped[list["TransactionItem"]] = relationship(  # noqa: F821

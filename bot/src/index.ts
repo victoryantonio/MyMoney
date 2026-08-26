@@ -23,18 +23,18 @@ const BOT_SERVICE_TOKEN = process.env.BOT_SERVICE_TOKEN ?? "";
 const WEBHOOK_PATH = "/webhook";
 
 if (!BOT_TOKEN || !WEBHOOK_SECRET) {
-  console.error("TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET wajib diisi di .env");
+  console.error("TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET must be filled in the .env file");
   process.exit(1);
 }
 
 const bot = new Telegraf(BOT_TOKEN);
 
 bot.command("start", (ctx) =>
-  ctx.reply("MyMoney bot aktif 🪙\nGunakan /help untuk daftar perintah."),
+  ctx.reply("MyMoney bot is active 🪙\nUse /help to see the list of commands."),
 );
 bot.command("help", (ctx) =>
   ctx.reply(
-    "Perintah: /start, /logout, /report, /undo, /edit — atau kirim teks natural-language (mis. 'beli kangkung 5k').",
+    "Commands: /start, /logout, /report, /undo, /edit — or send natural-language text (e.g., 'Beli kangkung 5k Cash').",
   ),
 );
 
@@ -56,7 +56,7 @@ bot.on("message", async (ctx) => {
       console.error(`backend ${res.status}: ${await res.text()}`);
     }
   } catch (err) {
-    console.error("gagal forward ke backend:", err);
+    console.error("Failed forward to backend:", err);
   }
 });
 

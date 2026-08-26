@@ -11,8 +11,9 @@ Create Date: 2026-08-24
 """
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
+
+from alembic import op
 
 revision = "0003"
 down_revision = "0002"
@@ -53,8 +54,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("idx_pending_transactions_action", table_name="pending_transactions")
-    op.drop_constraint(
-        "pending_transactions_action_check", "pending_transactions", type_="check"
-    )
+    op.drop_constraint("pending_transactions_action_check", "pending_transactions", type_="check")
     op.drop_column("pending_transactions", "target_transaction_id")
     op.drop_column("pending_transactions", "action")

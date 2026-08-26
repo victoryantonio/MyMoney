@@ -10,40 +10,17 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-import pytest
-
-from app.core.report_service import get_report_summary, get_report_trend, parse_period_arg, period_label
-from app.db.session import SessionLocal
+from app.core.report_service import (
+    get_report_summary,
+    get_report_trend,
+    parse_period_arg,
+    period_label,
+)
 from app.models.account import Account
 from app.models.category import Category
 from app.models.transaction import Transaction
-from app.models.user import User
 
 _TZ = ZoneInfo("UTC")
-
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    yield session
-    session.close()
-
-
-@pytest.fixture
-def user(db):
-    u = User(
-        id=uuid.uuid4(),
-        email=f"report_{uuid.uuid4().hex[:10]}@example.com",
-        password_hash="x",
-        display_name="Report Test",
-    )
-    db.add(u)
-    db.commit()
-    db.refresh(u)
-    return u
-
 
 # ── Unit: parse_period_arg / period_label ────────────────────────────────────
 
@@ -95,21 +72,21 @@ class TestParsePeriod:
 
 
 class TestReportAggregation:
-    def _seed(self, db, user):
+    def _seed(self, db, profile):
         """Create categories, an account, and transactions with fixed dates.
 
-        Categories are user-scoped (user_id=user.id) so repeated test runs on
+        Categories are user-scoped (user_id=profile.id) so repeated test runs on
         the shared dev DB never pollute the global default set — the unique
         index idx_categories_user_name_type forbids duplicate globals.
         """
-        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=user.id)
-        transport = Category(id=uuid.uuid4(), name="Transport", type="expense", user_id=user.id)
-        salary = Category(id=uuid.uuid4(), name="Salary", type="income", user_id=user.id)
+        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=profile.id)
+        transport = Category(id=uuid.uuid4(), name="Transport", type="expense", user_id=profile.id)
+        salary = Category(id=uuid.uuid4(), name="Salary", type="income", user_id=profile.id)
         db.add_all([food, transport, salary])
         db.flush()
 
         account = Account(
-            id=uuid.uuid4(), user_id=user.id, account_name="Cash", initial_balance=Decimal("0")
+            id=uuid.uuid4(), user_id=profile.id, account_name="Cash", initial_balance=Decimal("0")
         )
         db.add(account)
         db.flush()
@@ -118,7 +95,7 @@ class TestReportAggregation:
             db.add(
                 Transaction(
                     id=uuid.uuid4(),
-                    user_id=user.id,
+                    user_id=profile.id,
                     type=type_,
                     total_amount=Decimal(amount),
                     category_id=cat.id,
@@ -138,12 +115,12 @@ class TestReportAggregation:
         db.commit()
         return food, transport, salary
 
-    def test_summary_totals_and_breakdown(self, db, user):
-        food, transport, salary = self._seed(db, user)
+    def test_summary_totals_and_breakdown(self, db, profile):
+        food, transport, salary = self._seed(db, profile)
         start = datetime(2026, 8, 1, tzinfo=UTC)
         end = datetime(2026, 9, 1, tzinfo=UTC)
 
-        summary = get_report_summary(db, user.id, start_date=start, end_date=end)
+        summary = get_report_summary(db, profile.id, start_date=start, end_date=end)
 
         assert summary.total_expense == Decimal("105000")  # 50000+25000+30000
         assert summary.total_income == Decimal("1000000")
@@ -159,48 +136,48 @@ class TestReportAggregation:
         # Bigger totals sort first
         assert summary.categories[0].name == "Salary"
 
-    def test_summary_excludes_outside_period(self, db, user):
-        self._seed(db, user)
+    def test_summary_excludes_outside_period(self, db, profile):
+        self._seed(db, profile)
         # July-only window → the single July transaction is the only match
         start = datetime(2026, 7, 1, tzinfo=UTC)
         end = datetime(2026, 8, 1, tzinfo=UTC)
 
-        summary = get_report_summary(db, user.id, start_date=start, end_date=end)
+        summary = get_report_summary(db, profile.id, start_date=start, end_date=end)
 
         assert summary.total_expense == Decimal("99999")
         assert summary.total_income == Decimal("0")
 
-    def test_summary_empty_period(self, db, user):
+    def test_summary_empty_period(self, db, profile):
         start = datetime(2025, 1, 1, tzinfo=UTC)
         end = datetime(2025, 2, 1, tzinfo=UTC)
 
-        summary = get_report_summary(db, user.id, start_date=start, end_date=end)
+        summary = get_report_summary(db, profile.id, start_date=start, end_date=end)
 
         assert summary.total_expense == Decimal("0")
         assert summary.total_income == Decimal("0")
         assert summary.net == Decimal("0")
         assert summary.categories == []
 
-    def test_aggregation_is_sql_not_python(self, db, user):
+    def test_aggregation_is_sql_not_python(self, db, profile):
         """Sanity check: the query returns GROUP BY rows (fewer than tx count)."""
-        self._seed(db, user)
+        self._seed(db, profile)
         # 4 August transactions → 3 distinct (name, type) groups
         start = datetime(2026, 8, 1, tzinfo=UTC)
         end = datetime(2026, 9, 1, tzinfo=UTC)
-        summary = get_report_summary(db, user.id, start_date=start, end_date=end)
+        summary = get_report_summary(db, profile.id, start_date=start, end_date=end)
         assert len(summary.categories) == 3
 
 
 class TestReportTrend:
-    def _seed(self, db, user):
+    def _seed(self, db, profile):
         """Same seed as TestReportAggregation but with fixed UTC days."""
-        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=user.id)
-        salary = Category(id=uuid.uuid4(), name="Salary", type="income", user_id=user.id)
+        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=profile.id)
+        salary = Category(id=uuid.uuid4(), name="Salary", type="income", user_id=profile.id)
         db.add_all([food, salary])
         db.flush()
 
         account = Account(
-            id=uuid.uuid4(), user_id=user.id, account_name="Cash", initial_balance=Decimal("0")
+            id=uuid.uuid4(), user_id=profile.id, account_name="Cash", initial_balance=Decimal("0")
         )
         db.add(account)
         db.flush()
@@ -209,7 +186,7 @@ class TestReportTrend:
             db.add(
                 Transaction(
                     id=uuid.uuid4(),
-                    user_id=user.id,
+                    user_id=profile.id,
                     type=type_,
                     total_amount=Decimal(amount),
                     category_id=cat.id,
@@ -225,13 +202,13 @@ class TestReportTrend:
         tx("expense", "99999", food, datetime(2026, 7, 31, 23, 59, tzinfo=UTC))  # outside
         db.commit()
 
-    def test_trend_buckets_by_day_and_zero_fills(self, db, user):
+    def test_trend_buckets_by_day_and_zero_fills(self, db, profile):
         """Every day in range appears; income/expense bucketed per day."""
-        self._seed(db, user)
+        self._seed(db, profile)
         start = datetime(2026, 8, 1, tzinfo=UTC)
         end = datetime(2026, 9, 1, tzinfo=UTC)
 
-        trend = get_report_trend(db, user.id, start_date=start, end_date=end, tz=ZoneInfo("UTC"))
+        trend = get_report_trend(db, profile.id, start_date=start, end_date=end, tz=ZoneInfo("UTC"))
 
         # 31 days in August — all present (zero-filled)
         assert len(trend.points) == 31
@@ -247,13 +224,13 @@ class TestReportTrend:
         # Day 31 exists and is zero-filled
         assert by_day["2026-08-31"].expense == Decimal("0")
 
-    def test_trend_respects_timezone_boundaries(self, db, user):
+    def test_trend_respects_timezone_boundaries(self, db, profile):
         """A transaction near midnight UTC lands on the right day in +07:00."""
-        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=user.id)
+        food = Category(id=uuid.uuid4(), name="Food", type="expense", user_id=profile.id)
         db.add(food)
         db.flush()
         account = Account(
-            id=uuid.uuid4(), user_id=user.id, account_name="Cash", initial_balance=Decimal("0")
+            id=uuid.uuid4(), user_id=profile.id, account_name="Cash", initial_balance=Decimal("0")
         )
         db.add(account)
         db.flush()
@@ -261,7 +238,7 @@ class TestReportTrend:
         db.add(
             Transaction(
                 id=uuid.uuid4(),
-                user_id=user.id,
+                user_id=profile.id,
                 type="expense",
                 total_amount=Decimal("10000"),
                 category_id=food.id,
@@ -274,7 +251,9 @@ class TestReportTrend:
 
         start = datetime(2026, 8, 1, tzinfo=UTC)
         end = datetime(2026, 9, 1, tzinfo=UTC)
-        trend = get_report_trend(db, user.id, start_date=start, end_date=end, tz=ZoneInfo("Asia/Jakarta"))
+        trend = get_report_trend(
+            db, profile.id, start_date=start, end_date=end, tz=ZoneInfo("Asia/Jakarta")
+        )
 
         by_day = {p.date.isoformat(): p for p in trend.points}
         assert by_day["2026-08-05"].expense == Decimal("0")

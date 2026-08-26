@@ -27,7 +27,7 @@ class Category(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # NULL = global default category (belongs to all users)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True
     )
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     type: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -39,7 +39,7 @@ class Category(Base):
     )
 
     # Relationships
-    user: Mapped["User | None"] = relationship(back_populates="categories")  # noqa: F821
+    user: Mapped["Profile | None"] = relationship(back_populates="categories")  # noqa: F821
     transactions: Mapped[list["Transaction"]] = relationship(  # noqa: F821
         back_populates="category"
     )

@@ -8,6 +8,8 @@ Startup order:
   4. /health liveness endpoint registered
 """
 
+from pathlib import Path
+
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,7 +17,6 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from pathlib import Path
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
@@ -61,16 +62,12 @@ app.add_middleware(
 # ── Routers ────────────────────────────────────────────────────────────────────
 from app.api import (  # noqa: E402
     accounts,
-    auth,
     categories,
     reports,
-    telegram_linking,
     telegram_webhook,
     transactions,
 )
 
-app.include_router(auth.router)
-app.include_router(telegram_linking.router)
 app.include_router(telegram_webhook.router)
 app.include_router(categories.router)
 app.include_router(accounts.router)

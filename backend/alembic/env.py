@@ -1,9 +1,8 @@
-import sys
 import os
+import sys
 from logging.config import fileConfig
 
-from sqlalchemy import create_engine
-from sqlalchemy import pool
+from sqlalchemy import create_engine, pool
 
 from alembic import context
 
@@ -12,8 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Import all models so Alembic autogenerate can detect them
 import app.models  # noqa: F401, E402
-from app.db.base import Base  # noqa: E402
 from app.core.config import settings  # noqa: E402
+from app.db.base import Base  # noqa: E402
 
 config = context.config
 
@@ -53,9 +52,7 @@ def run_migrations_online() -> None:
         connection.commit()
 
 
-
 if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

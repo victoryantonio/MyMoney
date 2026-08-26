@@ -14,9 +14,10 @@ Revises: 0004
 Create Date: 2026-08-26
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
+
+from alembic import op
 
 revision = "0005"
 down_revision = "0004"
@@ -38,12 +39,14 @@ def upgrade() -> None:
         sa.Column("role", sa.String(10), nullable=False, server_default="user"),
         sa.Column("timezone", sa.String(50), nullable=False, server_default="Asia/Jakarta"),
         sa.Column("is_active", sa.Boolean, nullable=False, server_default=sa.true()),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
     )
-    op.create_check_constraint(
-        "ck_profiles_role", "profiles", "role IN ('user', 'admin')"
-    )
+    op.create_check_constraint("ck_profiles_role", "profiles", "role IN ('user', 'admin')")
 
     # ── Trigger: auto-create profile saat user register ───────────────────────
     op.execute(

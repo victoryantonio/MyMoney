@@ -20,9 +20,7 @@ from app.core.transaction_service import (
     get_or_create_category,
     get_or_create_default_account,
 )
-from app.db.session import SessionLocal
 from app.models.audit_log import AuditLog
-from app.models.user import User
 
 # ── Unit: validation (mocked session) ─────────────────────────────────────────
 
@@ -56,27 +54,6 @@ def test_valid_entry_added_and_flushed():
 # ── Integration: audit row persisted (real DB) ────────────────────────────────
 
 
-@pytest.fixture
-def db():
-    session = SessionLocal()
-    yield session
-    session.close()
-
-
-@pytest.fixture
-def user(db):
-    u = User(
-        id=uuid.uuid4(),
-        email=f"audit_{uuid.uuid4().hex[:10]}@example.com",
-        password_hash="x",
-        display_name="Audit Test",
-    )
-    db.add(u)
-    db.commit()
-    db.refresh(u)
-    return u
-
-
 def _latest_audit(db, user_id) -> AuditLog | None:
     return db.scalar(
         select(AuditLog)
@@ -86,13 +63,13 @@ def _latest_audit(db, user_id) -> AuditLog | None:
     )
 
 
-def test_create_transaction_writes_audit_row(db, user):
-    account = get_or_create_default_account(db, user.id)
-    category = get_or_create_category(db, user.id, "Food", "expense")
+def test_create_transaction_writes_audit_row(db, profile):
+    account = get_or_create_default_account(db, profile.id)
+    category = get_or_create_category(db, profile.id, "Food", "expense")
 
     tx = create_transaction_internal(
         db=db,
-        user_id=user.id,
+        user_id=profile.id,
         type="expense",
         total_amount=Decimal("35000"),
         category_id=category.id,
@@ -101,7 +78,7 @@ def test_create_transaction_writes_audit_row(db, user):
         note="Makan siang",
     )
 
-    row = _latest_audit(db, user.id)
+    row = _latest_audit(db, profile.id)
     assert row is not None
     assert row.action == "create"
     assert row.entity_type == "transaction"
@@ -109,27 +86,3 @@ def test_create_transaction_writes_audit_row(db, user):
     assert row.source == "telegram"
     assert row.new_value["total_amount"] == "35000"
     assert row.old_value is None
-
-
-def test_login_failed_audit_via_api():
-    """Login failure for an existing user writes a login_failed audit row."""
-    from fastapi.testclient import TestClient
-
-    from app.main import app
-
-    client = TestClient(app)
-    email = f"lf_{uuid.uuid4().hex[:10]}@example.com"
-    client.post(
-        "/api/auth/register",
-        json={"email": email, "password": "SecurePass1", "display_name": "LF"},
-    )
-    resp = client.post("/api/auth/login", json={"email": email, "password": "WrongPass9"})
-    assert resp.status_code == 401
-
-    with SessionLocal() as db:
-        u = db.scalar(select(User).where(User.email == email))
-        row = db.scalar(
-            select(AuditLog).where(AuditLog.user_id == u.id, AuditLog.action == "login_failed")
-        )
-        assert row is not None
-        assert row.source == "app"

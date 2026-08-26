@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_active_user
 from app.core.report_service import get_report_summary, get_report_trend, parse_period_arg
-from app.models.user import User
+from app.models.profile import Profile
 from app.schemas.report import ReportSummaryResponse, ReportTrendResponse
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
@@ -50,7 +50,7 @@ def report_summary(
     period: str = Query(default="month", description="today | week | month | last-month"),
     start: datetime | None = Query(default=None, description="Custom range start (ISO)"),
     end: datetime | None = Query(default=None, description="Custom range end (ISO, exclusive)"),
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> ReportSummaryResponse:
     """Summarize income/expense per category for a period (SQL aggregation)."""
@@ -65,7 +65,7 @@ def report_trend(
     period: str = Query(default="month", description="today | week | month | last-month"),
     start: datetime | None = Query(default=None, description="Custom range start (ISO)"),
     end: datetime | None = Query(default=None, description="Custom range end (ISO, exclusive)"),
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> ReportTrendResponse:
     """Daily income/expense series for the period (for the cash-flow line chart)."""

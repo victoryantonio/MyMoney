@@ -113,7 +113,9 @@ def _normalize_date(value: str) -> str | None:
     return None
 
 
-async def parse_receipt_image(image_bytes: bytes, mime_type: str = "image/jpeg") -> ParsedReceipt | None:
+async def parse_receipt_image(
+    image_bytes: bytes, mime_type: str = "image/jpeg"
+) -> ParsedReceipt | None:
     """Send the receipt photo to the vision LLM; returns ParsedReceipt or None."""
     if not image_bytes:
         return None

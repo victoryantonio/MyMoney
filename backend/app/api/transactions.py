@@ -31,8 +31,8 @@ from app.core.transaction_service import (
 )
 from app.models.account import Account
 from app.models.category import Category
+from app.models.profile import Profile
 from app.models.transaction import Transaction
-from app.models.user import User
 from app.schemas.transaction import (
     TransactionCreateRequest,
     TransactionListResponse,
@@ -123,7 +123,7 @@ def list_transactions(
     type: Literal["income", "expense"] | None = Query(default=None),
     category_id: uuid.UUID | None = Query(default=None),
     account_id: uuid.UUID | None = Query(default=None),
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> TransactionListResponse:
     """
@@ -176,7 +176,7 @@ def list_transactions(
 @router.post("", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
 def create_transaction(
     body: TransactionCreateRequest,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> Transaction:
     """
@@ -204,7 +204,7 @@ def create_transaction(
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(
     transaction_id: uuid.UUID,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> Transaction:
     """Get a single transaction with all its line items."""
@@ -225,7 +225,7 @@ def get_transaction(
 def update_transaction(
     transaction_id: uuid.UUID,
     body: TransactionUpdateRequest,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> Transaction:
     """
@@ -275,7 +275,7 @@ def update_transaction(
 @router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_transaction(
     transaction_id: uuid.UUID,
-    current_user: User = Depends(require_active_user),
+    current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> None:
     """Hard-delete a transaction and all its items (CASCADE in DB)."""

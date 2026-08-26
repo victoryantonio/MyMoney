@@ -14,7 +14,7 @@ class Account(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     account_name: Mapped[str] = mapped_column(String(100), nullable=False)
     # NULL for cash wallets; set for bank accounts (e.g. "BCA", "Mandiri")
@@ -35,5 +35,5 @@ class Account(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship(back_populates="accounts")  # noqa: F821
+    user: Mapped["Profile"] = relationship(back_populates="accounts")  # noqa: F821
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")  # noqa: F821
