@@ -10,7 +10,8 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 
 ## Fase 4 — Flutter App (Android + iOS + Web) (current)
 - [x] Scaffold + layar kritis (Auth, Dashboard, Transaksi, Kategori, Akun)
-- [x] Charts; widget/golden test 5 layar; CI iOS + TestFlight
+- [x] Charts interaktif; tap titik menampilkan detail hari tersebut
+- [~] Widget/golden test 5 layar; CI iOS + TestFlight
 - [ ] Checkpoint: Android device OK; iOS CI hijau + tester eksternal ≥1x
 
 ## Fase 5 — OCR Foto Nota
@@ -27,6 +28,20 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 ---
 
 ## Done
+
+### Fase 4 — Performance & UX follow-up ✅ (2026-08-27, commits `d784e9d`, `2ab9b41`)
+- [x] Dashboard loading diparalelkan; transaksi lengkap lazy-load hanya saat filter akun atau summary card dipakai
+- [x] Navigation tab lazy initialization; refresh Dashboard saat kembali ke tab Dashboard
+- [x] Period selector Today / This Week / This Month / Custom + custom range pending state
+- [x] Account multiselect client-side dengan cache transaksi dan tanpa query N+1
+- [x] Summary card Income / Expense / Net interaktif; daftar transaksi layar penuh dengan sorting tanggal/nominal
+- [x] Toggle mata menyembunyikan Balance, Income, Expense, dan Net
+- [x] Form transaksi: opsi akun/kategori paralel; urutan field tipe, nominal, akun, merchant, kategori, catatan
+- [x] Multi-item text Telegram dan `/edit` (qty, harga, total, merchant)
+- [x] Profile: ganti email dengan verifikasi OTP Supabase
+- [x] Chart: warna mengikuti template; label sumbu direnggangkan untuk mencegah tabrakan
+- [x] Validasi: `flutter analyze` bersih, `flutter test` 20 passed, APK release per-ABI berhasil (arm64 21,4 MB)
+- [ ] Validasi langsung di Samsung S23+ setelah instal APK release arm64
 
 ### Fase 4 — Flutter App (Android + iOS + Web) ✅ (2026-08-27, commit `41e3693`)
 - [x] **Line chart tap-detail, TANPA long-press**: `TrendChart` (fl_chart 1.1.0) memakai `LineTouchData(enabled, handleBuiltInTouches: false)` + handler **hanya** `FlTapUpEvent` → ketuk titik langsung tampil detail hari itu di panel bawah; long-press & drag diabaikan total

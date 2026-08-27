@@ -1,7 +1,7 @@
 # walkthrough.md — MyMoney v2 Execution Guide
 
 > ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
-> Panduan aktif: **Fase 4 (selesai 2026-08-27)** di bawah. Fase 0, 1, 1.5, 2, 3, 3.5 selesai (rekam di bagian bawah).
+> Panduan aktif: **Fase 4 (implementasi selesai; checkpoint device/iOS masih terbuka)** di bawah. Fase 0, 1, 1.5, 2, 3, 3.5 selesai (rekam di bagian bawah).
 > Guide fase berikutnya diisi saat fase dimulai (placeholder di bawah).
 > Rekam historis v1 ada di git history + `_archive/`.
 
@@ -236,7 +236,28 @@
 
 ---
 
-## Fase 4 — Flutter App (current) ✅ (2026-08-27)
+## Fase 4 — Flutter App (implementation complete; checkpoint open) (2026-08-27)
+
+> Implementasi Flutter dan follow-up performance/UX selesai. Fase tetap aktif
+> sampai APK release diuji di perangkat Android dan checkpoint iOS/TestFlight
+> terpenuhi.
+
+### Step 5 — Performance & UX follow-up (commit `d784e9d`, `2ab9b41`)
+- Dashboard dan form memuat request independen secara paralel.
+- Semua transaksi untuk filter akun di-load lazy; dashboard default hanya mengambil satu halaman transaksi terbaru.
+- Tab navigasi diinisialisasi lazy; Dashboard refresh saat tab dipilih kembali.
+- Summary card dapat ditekan untuk daftar transaksi penuh dengan sorting tanggal/nominal.
+- Toggle mata menyamarkan seluruh nominal; form transaksi mengikuti urutan tipe, nominal, akun, merchant, kategori, catatan.
+- Ganti email memakai `auth.updateUser` lalu verifikasi `OtpType.emailChange`.
+- Chart memakai token warna DESIGN.md dan interval label adaptif agar tidak bertabrakan.
+- Multi-item text Telegram dan `/edit` mengirim item, merchant, dan total hasil perhitungan.
+
+### Step 6 — Verifikasi
+- `flutter analyze`: bersih.
+- `flutter test`: 20 passed.
+- `flutter build apk --release --split-per-abi`: arm64-v8a 21,4 MB; armeabi-v7a 19,0 MB; x86_64 23,0 MB.
+- Backend unit tests: 70 passed; integration API yang membutuhkan Supabase live belum dapat dijalankan di environment lokal (ReadTimeout).
+- Checkpoint tersisa: instal dan uji Samsung S23+, iOS CI, dan tester eksternal TestFlight.
 
 ### Step 1 — Line chart: tap → detail, hilangkan long-press
 - `app/pubspec.yaml` + `fl_chart ^1.1.0`; `flutter pub get`.

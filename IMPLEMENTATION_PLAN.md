@@ -7,6 +7,10 @@
 
 **Current Phase: Fase 4 — Flutter App: Android + iOS + Web**
 
+> Status update 2026-08-27: implementasi UI/UX dan performance follow-up
+> sudah selesai pada commit `d784e9d` dan `2ab9b41`. Fase 4 tetap aktif untuk
+> checkpoint Android device, iOS CI, dan tester eksternal TestFlight.
+
 ---
 
 ## Pivot v2 — Ringkasan (2026-08-26)
@@ -74,7 +78,7 @@ menunggu review user.
 
 ---
 
-## Fase 4 — Flutter App: Android + iOS + Web (target 3-3.5 minggu) ✅ DONE (2026-08-27)
+## Fase 4 — Flutter App: Android + iOS + Web (implementation complete; checkpoint open) (2026-08-27)
 
 > Selesai & ter-commit — detail hasil di **Completed Phases → Fase 4** di bawah. Milestone besar iOS CI + TestFlight masih terbuka (lihat task di bawah).
 
@@ -92,6 +96,18 @@ menunggu review user.
 - [ ] Widget + golden test 5 layar kritis (Dashboard, Login, Transaction List, Add Transaction, Accounts) — sementara: format_test 4 + widget_test 6 (10 passed)
 - [ ] CI: `flutter analyze` + test; workflow macOS runner build iOS + upload TestFlight (milestone besar)
 - [ ] Checkpoint: Android teruji di device (APK demo siap install); iOS CI hijau + tester eksternal ≥1x
+
+### Fase 4 follow-up — Performance & UX (2026-08-27)
+- [x] Loading dashboard/form paralel; navigation tabs lazy initialization.
+- [x] Dashboard refresh saat kembali; akun baru muncul setelah kembali ke Dashboard.
+- [x] Filter akun multiselect client-side dengan lazy cache transaksi.
+- [x] Period tabs Today / This Week / This Month / Custom.
+- [x] Summary card interaktif dengan daftar transaksi dan sorting tanggal/nominal.
+- [x] Toggle hide seluruh nominal; form transaksi diurutkan sesuai workflow pengguna.
+- [x] Chart label adaptif dan warna mengikuti token `DESIGN.md`.
+- [x] Ganti email via Supabase email-change OTP.
+- [x] Multi-item text Telegram dan `/edit`.
+- [x] Validasi: Flutter analyze bersih, 20 Flutter tests, APK release arm64 21,4 MB.
 
 ---
 
