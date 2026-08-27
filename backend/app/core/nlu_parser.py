@@ -18,11 +18,21 @@ from app.core.llm_client import TEXT_MODELS, call_llm
 log = structlog.get_logger()
 
 
+class ParsedItem(BaseModel):
+    """One line item of a multi-item transaction (e.g. "Mixue 2x21000")."""
+
+    name: str = Field(min_length=1, max_length=150)
+    qty: Decimal = Field(gt=0)
+    price: Decimal = Field(ge=0)
+
+
 class ParsedTransaction(BaseModel):
     type: str = Field(pattern="^(income|expense)$")
-    amount: Decimal = Field(gt=0)
+    amount: Decimal | None = Field(default=None, gt=0)
     category: str
     note: str | None = None
+    merchant: str | None = None
+    items: list[ParsedItem] = Field(default_factory=list)
 
 
 # Hardcoded system prompt — never influenced by user input (CODING_RULES §2.9.B).
@@ -34,10 +44,21 @@ Respond ONLY with a valid JSON object, no markdown formatting, no backticks, no 
 Schema:
 {
   "type": "expense" or "income",
-  "amount": number (exact numeric value, e.g. 35000),
+  "amount": number (the TOTAL in IDR, e.g. 35000; omit only if "items" fully determines the total),
   "category": string (a short 1-2 word category name, e.g. "Food", "Transport", "Salary"),
-  "note": string (optional, what it was for, e.g. "Makan siang padang")
+  "note": string (optional, what it was for, e.g. "Makan siang padang"),
+  "merchant": string (optional, store/place name when mentioned, e.g. "Mixue"),
+  "items": [
+    {"name": string, "qty": number (default 1), "price": number (UNIT price in IDR)}
+  ]
 }
+
+Rules:
+- If the text lists several items with quantities (e.g. "Mixue 2x21000, Es Teh 1x5000"),
+  extract them into "items" (qty x unit price) and set "amount" = the sum of line totals.
+- If the text only states a single total (e.g. "makan siang 35rb"), leave "items" as an
+  empty list and set "amount" to that total.
+- "2x21000" means qty=2, unit price=21000 (line total 42000). "35rb" = 35000.
 
 If you cannot parse it or it's not a transaction, return {"error": "unrecognized"}
 

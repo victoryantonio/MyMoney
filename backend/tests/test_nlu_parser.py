@@ -145,3 +145,79 @@ class TestParseTextToTransaction:
             assert result.type == "expense"
             assert result.amount == Decimal("25000")
             assert result.category == "Transport"
+
+    @pytest.mark.asyncio
+    async def test_parse_multi_item(self):
+        """Text with several line items ('Mixue 2x21000, Es Teh 1x5000')
+        yields a ParsedTransaction with items + merchant + summed amount."""
+        mock_response = self._make_mock_response(
+            json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "type": "expense",
+                                        "amount": 47000,
+                                        "category": "Food",
+                                        "merchant": "Mixue",
+                                        "note": "Beli es teh",
+                                        "items": [
+                                            {"name": "Ice Cream Tofee (M)", "qty": 2, "price": 21000},
+                                            {"name": "Es Teh", "qty": 1, "price": 5000},
+                                        ],
+                                    }
+                                )
+                            }
+                        }
+                    ]
+                }
+            )
+        )
+
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+
+            result = await parse_text_to_transaction("Mixue 2x21000, Es Teh 1x5000")
+
+            assert result is not None
+            assert len(result.items) == 2
+            assert result.items[0].name == "Ice Cream Tofee (M)"
+            assert result.items[0].qty == Decimal("2")
+            assert result.items[0].price == Decimal("21000")
+            assert result.items[1].price == Decimal("5000")
+            assert result.amount == Decimal("47000")
+            assert result.merchant == "Mixue"
+
+    @pytest.mark.asyncio
+    async def test_parse_single_total_no_items(self):
+        """Text with a single total leaves items empty and amount set."""
+        mock_response = self._make_mock_response(
+            json.dumps(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "type": "expense",
+                                        "amount": 35000,
+                                        "category": "Food",
+                                    }
+                                )
+                            }
+                        }
+                    ]
+                }
+            )
+        )
+
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_response
+
+            result = await parse_text_to_transaction("Makan siang 35rb")
+
+            assert result is not None
+            assert result.items == []
+            assert result.amount == Decimal("35000")

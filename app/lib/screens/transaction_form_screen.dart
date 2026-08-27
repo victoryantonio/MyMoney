@@ -93,12 +93,14 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       _optionsError = null;
     });
     try {
-      final categories = await widget.api.fetchCategories(type: _type);
-      final accounts = await widget.api.fetchAccounts();
+      final results = await Future.wait<Object?>([
+        widget.api.fetchCategories(type: _type),
+        widget.api.fetchAccounts(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _categories = categories;
-        _accounts = accounts;
+        _categories = results[0] as List<CategoryModel>;
+        _accounts = results[1] as List<AccountModel>;
         _loadingOptions = false;
       });
     } on ApiException catch (e) {
@@ -361,7 +363,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ── Kategori & akun ────────────────────────────────────────────
+              // ── Akun ──────────────────────────────────────────────────────
               if (_loadingOptions)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
@@ -382,8 +384,35 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                 )
               else ...[
                 DropdownButtonFormField<String>(
-                  initialValue:
-                      categoryValid ? _categoryId : null,
+                  initialValue: accountValid ? _accountId : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Akun',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final a in accounts)
+                      DropdownMenuItem(value: a.id, child: Text(a.label)),
+                  ],
+                  onChanged:
+                      _saving ? null : (v) => setState(() => _accountId = v),
+                ),
+              ],
+              const SizedBox(height: 16),
+
+              // ── Merchant ──────────────────────────────────────────────────
+              TextFormField(
+                controller: _merchantCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Merchant / keterangan',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Kategori ──────────────────────────────────────────────────
+              if (!_loadingOptions && _optionsError == null) ...[
+                DropdownButtonFormField<String>(
+                  initialValue: categoryValid ? _categoryId : null,
                   decoration: const InputDecoration(
                     labelText: 'Kategori',
                     border: OutlineInputBorder(),
@@ -407,31 +436,9 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                     ),
                   ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: accountValid ? _accountId : null,
-                  decoration: const InputDecoration(
-                    labelText: 'Akun',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final a in accounts)
-                      DropdownMenuItem(value: a.id, child: Text(a.label)),
-                  ],
-                  onChanged:
-                      _saving ? null : (v) => setState(() => _accountId = v),
-                ),
               ],
-              const SizedBox(height: 16),
 
-              // ── Merchant, tanggal, catatan ─────────────────────────────────
-              TextFormField(
-                controller: _merchantCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Merchant / keterangan',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
+              // ── Tanggal dan catatan ───────────────────────────────────────
               InkWell(
                 onTap: _pickDate,
                 borderRadius: BorderRadius.circular(4),

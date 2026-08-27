@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/providers.dart';
+import '../core/theme_controller.dart';
 import 'dashboard_screen.dart';
 import 'notifications_screen.dart';
 import 'profile_screen.dart';
@@ -26,6 +27,29 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   int _index = 0;
+  int _dashboardRefreshToken = 0;
+  final Set<int> _visitedTabs = {0};
+
+  Widget _tab(int index, ThemeController themeController) {
+    if (!_visitedTabs.contains(index)) return const SizedBox.shrink();
+    switch (index) {
+      case 0:
+        return DashboardScreen(
+          supabase: widget.supabase,
+          refreshToken: _dashboardRefreshToken,
+        );
+      case 1:
+        return const TransactionsScreen();
+      case 2:
+        return const NotificationsScreen();
+      case 3:
+        return ProfileScreen(
+          supabase: widget.supabase,
+          themeController: themeController,
+        );
+    }
+    return const SizedBox.shrink();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,18 +58,16 @@ class _MainShellState extends ConsumerState<MainShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          DashboardScreen(supabase: widget.supabase),
-          const TransactionsScreen(),
-          const NotificationsScreen(),
-          ProfileScreen(
-            supabase: widget.supabase,
-            themeController: themeController,
-          ),
+          for (var i = 0; i < 4; i++) _tab(i, themeController),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) => setState(() {
+          _visitedTabs.add(i);
+          _index = i;
+          if (i == 0) _dashboardRefreshToken++;
+        }),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),

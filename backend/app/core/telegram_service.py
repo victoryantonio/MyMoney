@@ -299,22 +299,38 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
             db, user_id, parsed.category, parsed.type, allow_create=False
         )
 
+        items = [item.model_dump() for item in parsed.items] or None
+        total = (
+            Decimal(str(sum(item.qty * item.price for item in parsed.items)))
+            if items
+            else parsed.amount
+        )
+
         updated = update_transaction_internal(
             db=db,
             transaction=latest_tx,
             type=parsed.type,  # type: ignore
-            total_amount=parsed.amount,
+            total_amount=total,
             category_id=category.id,
             note=parsed.note or new_text,
+            merchant=parsed.merchant,
+            items=items,
         )
 
         amount_fmt = f"{updated.total_amount:,.0f}"
         icon = "📉" if updated.type == "expense" else "📈"
-        return (
-            f"Edited! {icon}\n"
-            f"{category.name}: IDR {amount_fmt}\n"
-            f"Note: {updated.note or 'none'}"
-        )
+        lines = [f"Edited! {icon}",
+                 f"🏪 {parsed.merchant}" if parsed.merchant else None,
+                 f"{category.name}: IDR {amount_fmt}"]
+        if updated.items:
+            lines.append("")
+            for item in updated.items:
+                qty = f"{item.qty:g}".rstrip("0").rstrip(".") if item.qty % 1 else f"{item.qty:.0f}"
+                lines.append(f"• {item.name} — {qty} x {item.price:,.0f}")
+        if updated.note:
+            lines.append("")
+            lines.append(f"Note: {updated.note}")
+        return "\n".join(line for line in lines if line is not None)
 
     # ── 3.5 Handle /confirm and /cancel (pending confirmation) ────────────────
     if text.startswith("/confirm"):
@@ -363,22 +379,39 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
     category = get_or_create_category(db, user_id, parsed.category, parsed.type, allow_create=False)
     account = get_or_create_default_account(db, user_id)
 
+    # Multi-item: total = sum of line totals; single amount used otherwise.
+    items = [item.model_dump() for item in parsed.items] or None
+    total = (
+        Decimal(str(sum(item.qty * item.price for item in parsed.items)))
+        if items
+        else parsed.amount
+    )
+
     tx = create_transaction_internal(
         db=db,
         user_id=user_id,
         type=parsed.type,  # type: ignore
-        total_amount=parsed.amount,
+        total_amount=total,
         category_id=category.id,
         account_id=account.id,
         source="telegram",
         note=parsed.note or text,  # use original text as note if LLM didn't extract one
+        merchant=parsed.merchant,
+        items=items,
     )
 
     amount_fmt = f"{tx.total_amount:,.0f}"
     icon = "📉" if tx.type == "expense" else "📈"
-    return (
-        f"Saved! {icon}\n"
-        f"{category.name}: IDR {amount_fmt}\n"
-        f"Note: {tx.note or 'none'}\n\n"
-        "Type /undo to revert."
-    )
+    lines = [f"Saved! {icon}", f"🏪 {parsed.merchant}" if parsed.merchant else None,
+             f"{category.name}: IDR {amount_fmt}"]
+    if tx.items:
+        lines.append("")
+        for item in tx.items:
+            qty = f"{item.qty:g}".rstrip("0").rstrip(".") if item.qty % 1 else f"{item.qty:.0f}"
+            lines.append(f"• {item.name} — {qty} x {item.price:,.0f}")
+    if tx.note:
+        lines.append("")
+        lines.append(f"Note: {tx.note}")
+    lines.append("")
+    lines.append("Type /undo to revert.")
+    return "\n".join(line for line in lines if line is not None)

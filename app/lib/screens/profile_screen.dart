@@ -115,6 +115,105 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await widget.supabase.auth.signOut();
   }
 
+  Future<void> _changeEmail() async {
+    final emailCtrl = TextEditingController(text: _info.email);
+    final requestedEmail = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Ganti email'),
+        content: TextField(
+          controller: emailCtrl,
+          autofocus: true,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Email baru',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = emailCtrl.text.trim();
+              if (value.isNotEmpty && value.contains('@')) {
+                Navigator.of(context).pop(value);
+              }
+            },
+            child: const Text('Kirim OTP'),
+          ),
+        ],
+      ),
+    );
+    emailCtrl.dispose();
+    if (requestedEmail == null || !mounted) return;
+
+    setState(() {
+      _sending = true;
+      _message = null;
+    });
+    try {
+      await widget.supabase.auth.updateUser(
+        UserAttributes(email: requestedEmail),
+      );
+      if (!mounted) return;
+      final otpCtrl = TextEditingController();
+      final otp = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Verifikasi email baru'),
+          content: TextField(
+            controller: otpCtrl,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            maxLength: 8,
+            decoration: const InputDecoration(
+              labelText: 'Kode OTP',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Nanti'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (otpCtrl.text.trim().isNotEmpty) {
+                  Navigator.of(context).pop(otpCtrl.text.trim());
+                }
+              },
+              child: const Text('Verifikasi'),
+            ),
+          ],
+        ),
+      );
+      otpCtrl.dispose();
+      if (otp == null || !mounted) return;
+      await widget.supabase.auth.verifyOTP(
+        email: requestedEmail,
+        token: otp,
+        type: OtpType.emailChange,
+      );
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _messageIsError = false;
+        _message = 'Email berhasil diverifikasi dan diubah.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _messageIsError = true;
+        _message = 'Gagal mengganti email. Periksa OTP lalu coba lagi.';
+      });
+    }
+  }
+
   void _openCategories() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const CategoriesScreen()),
@@ -258,6 +357,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   leading: const Icon(Icons.alternate_email),
                   title: const Text('Email'),
                   subtitle: Text(info.email),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Ganti email'),
+                  subtitle: const Text('Memerlukan verifikasi OTP'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _sending ? null : _changeEmail,
                 ),
                 const Divider(height: 1),
                 ListTile(

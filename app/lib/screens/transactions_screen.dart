@@ -65,10 +65,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       _error = null;
     });
     try {
-      final categories = await _api.fetchCategories();
-      final accounts = await _api.fetchAccounts();
-      final page = await _api.fetchTransactions();
+      // Load categories, accounts, and the first page in parallel (lag fix —
+      // previously sequential awaits).
+      final results = await Future.wait<Object?>([
+        _api.fetchCategories(),
+        _api.fetchAccounts(),
+        _api.fetchTransactions(),
+      ]);
       if (!mounted) return;
+      final categories = results[0] as List<CategoryModel>;
+      final accounts = results[1] as List<AccountModel>;
+      final page = results[2] as TransactionListResult;
       setState(() {
         _categoryNames = {for (final c in categories) c.id: c.name};
         _accountLabels = {for (final a in accounts) a.id: a.label};

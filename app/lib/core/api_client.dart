@@ -57,14 +57,34 @@ class ApiClient {
   }
 
   /// GET /api/reports/summary?period=... → total income/expense/net + kategori.
-  Future<ReportSummary> fetchSummary({String period = 'month'}) async {
-    final data = await _get('/api/reports/summary', {'period': period});
+  /// Saat `period == 'custom'`, kirim `start`/`end` (yyyy-mm-dd) untuk rentang kustom.
+  Future<ReportSummary> fetchSummary({
+    String period = 'month',
+    String? start,
+    String? end,
+  }) async {
+    final query = <String, dynamic>{'period': period};
+    if (period == 'custom' && start != null && end != null) {
+      query['start'] = start;
+      query['end'] = end;
+    }
+    final data = await _get('/api/reports/summary', query);
     return ReportSummary.fromJson(data);
   }
 
   /// GET /api/reports/trend?period=... → deret harian untuk line chart.
-  Future<ReportTrend> fetchTrend({String period = 'month'}) async {
-    final data = await _get('/api/reports/trend', {'period': period});
+  /// Saat `period == 'custom'`, kirim `start`/`end` (yyyy-mm-dd) untuk rentang kustom.
+  Future<ReportTrend> fetchTrend({
+    String period = 'month',
+    String? start,
+    String? end,
+  }) async {
+    final query = <String, dynamic>{'period': period};
+    if (period == 'custom' && start != null && end != null) {
+      query['start'] = start;
+      query['end'] = end;
+    }
+    final data = await _get('/api/reports/trend', query);
     return ReportTrend.fromJson(data);
   }
 
@@ -119,6 +139,30 @@ class ApiClient {
     if (accountId != null) query['account_id'] = accountId;
     final data = await _get('/api/transactions', query);
     return TransactionListResult.fromJson(data);
+  }
+
+  /// Loop semua halaman transaksi (keyset pagination) → list lengkap.
+  /// Dipakai untuk filter akun client-side di dashboard (tanpa N+1: satu
+  /// loop berurutan, bukan query per-akun) — setara v1 `fetchAllTransactions`.
+  Future<List<TransactionModel>> fetchAllTransactions({
+    String? type,
+    String? categoryId,
+    String? accountId,
+    int maxItems = 2000,
+  }) async {
+    final all = <TransactionModel>[];
+    String? cursor;
+    do {
+      final page = await fetchTransactions(
+        cursor: cursor,
+        type: type,
+        categoryId: categoryId,
+        accountId: accountId,
+      );
+      all.addAll(page.items);
+      cursor = page.nextCursor;
+    } while (cursor != null && all.length < maxItems);
+    return all;
   }
 
   /// GET /api/transactions/{id} — detail satu transaksi (untuk form edit).
