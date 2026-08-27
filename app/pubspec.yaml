@@ -1,5 +1,5 @@
 name: mymoney_app
-description: "My Money! — aplikasi pencatat keuangan pribadi."
+description: "My Money — aplikasi pencatat keuangan pribadi."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -38,6 +38,11 @@ dependencies:
   supabase_flutter: ^2.17.2
   dio: ^5.11.0
   fl_chart: ^1.1.0
+  http: ^1.6.0
+  image_picker: ^1.2.0
+  flutter_local_notifications: ^19.2.0
+  timezone: ^0.10.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
@@ -49,7 +54,6 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
-  shared_preferences: ^2.5.5
   flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the

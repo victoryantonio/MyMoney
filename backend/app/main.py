@@ -63,6 +63,7 @@ app.add_middleware(
 from app.api import (  # noqa: E402
     accounts,
     categories,
+    receipts,
     reports,
     telegram_linking,
     telegram_webhook,
@@ -74,6 +75,7 @@ app.include_router(telegram_linking.router)
 app.include_router(categories.router)
 app.include_router(accounts.router)
 app.include_router(transactions.router)
+app.include_router(receipts.router)
 app.include_router(reports.router)
 
 # ── Static files (brand logo used by the Telegram linking pages) ─────────────

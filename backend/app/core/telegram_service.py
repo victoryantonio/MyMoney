@@ -54,16 +54,16 @@ def _format_report(summary: ReportSummaryResponse, label: str) -> str:
 
     lines = [
         f"📊 Report — {label}",
-        f"📈 Income: {fmt(summary.total_income)} IDR",
-        f"📉 Expense: {fmt(summary.total_expense)} IDR",
-        f"Net: {summary.net:+,.0f} IDR",
+        f"📈 Income: IDR {fmt(summary.total_income)}",
+        f"📉 Expense: IDR {fmt(summary.total_expense)}",
+        f"Net: IDR {summary.net:+,.0f}",
     ]
     if summary.categories:
         lines.append("")
         lines.append("By Category:")
         for c in summary.categories:
             icon = "📈" if c.type == "income" else "📉"
-            lines.append(f"{icon} {c.name}: {fmt(c.total)} IDR")
+            lines.append(f"{icon} {c.name}: {fmt(c.total)}")
     else:
         lines.append("")
         lines.append("No transactions in this period.")
@@ -111,7 +111,7 @@ def _format_receipt_reply(parsed: ParsedReceipt, tx: Transaction) -> str:
     lines = [
         f"Saved! {icon}",
         f"🏪 {parsed.merchant or tx.note or 'Receipt'}",
-        f"💰 {fmt(tx.total_amount)} IDR",
+        f"💰 IDR {fmt(tx.total_amount)}",
     ]
     if tx.items:
         lines.append("")
@@ -228,7 +228,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         link_url = f"{settings.app_base_url}/api/telegram/link?token={token}"
         return (
             "Welcome to MyMoney! 💸\n\n"
-            "To use this bot, please link your Telegram account to your MyMoney account by clicking the link below:\n\n"
+            "To use this bot, please link your Telegram account to your MyMoney account by clicking the link below and logging in with your MyMoney email & password:\n\n"
             f"{link_url}\n\n"
             "(This link expires in 10 minutes)"
         )
@@ -312,7 +312,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         icon = "📉" if updated.type == "expense" else "📈"
         return (
             f"Edited! {icon}\n"
-            f"{category.name}: {amount_fmt} IDR\n"
+            f"{category.name}: IDR {amount_fmt}\n"
             f"Note: {updated.note or 'none'}"
         )
 
@@ -327,7 +327,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
         amount_fmt = f"{tx.total_amount:,.0f}"
         icon = "📉" if tx.type == "expense" else "📈"
         cat_name = tx.category.name if tx.category else "Other"
-        return f"Saved! {icon}\n{cat_name}: {amount_fmt} IDR\nNote: {tx.note or 'none'}"
+        return f"Saved! {icon}\n{cat_name}: IDR {amount_fmt}\nNote: {tx.note or 'none'}"
 
     if text.startswith("/cancel"):
         try:
@@ -378,7 +378,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
     icon = "📉" if tx.type == "expense" else "📈"
     return (
         f"Saved! {icon}\n"
-        f"{category.name}: {amount_fmt} IDR\n"
+        f"{category.name}: IDR {amount_fmt}\n"
         f"Note: {tx.note or 'none'}\n\n"
         "Type /undo to revert."
     )

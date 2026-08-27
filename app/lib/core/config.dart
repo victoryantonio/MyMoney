@@ -26,7 +26,8 @@ class AppConfig {
   );
   static const appBaseUrl = String.fromEnvironment(
     'APP_BASE_URL',
-    defaultValue: 'http://103.27.206.22:8000',
+    // HTTPS via Cloudflare Tunnel (Android 9+ memblokir HTTP cleartext default).
+    defaultValue: 'https://api.mymoneyofficial.online',
   );
 
   static bool get isConfigured =>

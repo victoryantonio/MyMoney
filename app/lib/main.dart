@@ -3,15 +3,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config.dart';
+import 'core/notification_service.dart';
+import 'core/providers.dart';
+import 'core/theme_controller.dart';
 import 'screens/auth_screen.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/main_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  final themeController = await ThemeController.load();
+
   if (!AppConfig.isConfigured) {
     // Tanpa config: hanya hint setup (tidak ada network).
-    runApp(const ProviderScope(child: MyMoneyApp(supabaseAvailable: false)));
+    runApp(
+      ProviderScope(
+        overrides: [
+          themeControllerProvider.overrideWith((ref) => themeController),
+        ],
+        child: const MyMoneyApp(supabaseAvailable: false),
+      ),
+    );
     return;
   }
 
@@ -19,25 +31,44 @@ Future<void> main() async {
     url: AppConfig.supabaseUrl,
     publishableKey: AppConfig.supabaseAnonKey,
   );
-  runApp(const ProviderScope(child: MyMoneyApp(supabaseAvailable: true)));
+  await NotificationService.instance.init();
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        themeControllerProvider.overrideWith((ref) => themeController),
+      ],
+      child: const MyMoneyApp(supabaseAvailable: true),
+    ),
+  );
 }
 
-class MyMoneyApp extends StatelessWidget {
+class MyMoneyApp extends ConsumerWidget {
   const MyMoneyApp({super.key, required this.supabaseAvailable});
 
   final bool supabaseAvailable;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeControllerProvider).mode;
     return MaterialApp(
-      title: 'My Money!',
+      title: 'My Money',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF3B5B8C), // dusty slate blue (DESIGN.md)
+          brightness: Brightness.light,
         ),
         useMaterial3: true,
       ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF3B5B8C),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      themeMode: themeMode,
       home: supabaseAvailable ? const AuthGate() : const _SetupHint(),
     );
   }
@@ -54,7 +85,7 @@ class AuthGate extends StatelessWidget {
       builder: (context, snapshot) {
         final session = client.auth.currentSession;
         if (session != null) {
-          return DashboardScreen(supabase: client);
+          return MainShell(supabase: client);
         }
         return const AuthScreen();
       },

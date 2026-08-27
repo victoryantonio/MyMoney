@@ -61,6 +61,13 @@ def test_link_page_valid_token(link_token):
     resp = client.get(f"/api/telegram/link?token={link_token}")
     assert resp.status_code == 200
     assert "Link your Telegram account" in resp.text
+    # SSO login form: email + password (bukan OTP email saja)
+    assert 'id="login-form"' in resp.text
+    assert 'type="password"' in resp.text
+    assert "grant_type=password" in resp.text
+    assert 'id="recover-form"' in resp.text  # forgot password tetap via email
+    assert 'id="otp-form"' not in resp.text  # tidak ada input OTP manual
+    assert 'id="verify-form"' not in resp.text
 
 
 def test_link_page_invalid_token():

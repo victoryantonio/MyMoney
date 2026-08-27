@@ -9,16 +9,23 @@ Supabase Auth owns credentials; there is no local password verification):
      link: GET /api/telegram/link?token=<JWT>.
 
   2. User opens the link → backend validates the JWT and serves a minimal
-     HTML page. The page asks for the user's email and sends a Supabase OTP
-     to it (client-side, via the anon key which is safe for clients).
+     HTML page with an SSO-style login form (email + password). The page
+     calls Supabase `POST /auth/v1/token?grant_type=password` directly with
+     the anon key (client-safe) — no OTP entry in the linking flow.
 
-  3. User enters the OTP → the page exchanges it with Supabase
-     (`/auth/v1/verify`, type=email) for a session access_token, then calls
-     POST /api/telegram/link/confirm {link_token, access_token}.
+  3. On success the page posts the session access_token to
+     POST /api/telegram/link/confirm {link_token, access_token}; the tab
+     auto-closes after the link is confirmed.
 
   4. Backend verifies the Supabase JWT via JWKS → user_id, decodes
      link_token → telegram_id, and upserts the TelegramLink row
      (relink semantics: one telegram_id ↔ one profile).
+
+OTP / one-time-code emails are ONLY used outside this page:
+  - forgot password → Supabase `POST /auth/v1/recover` (recovery email)
+  - email verification after signup → Supabase `POST /auth/v1/resend`
+    (type=signup), also offered on this page when the logged-in email is
+    still unverified (email_confirmed_at == null).
 
 Phase 4 (Flutter app) will migrate the inline HTML to a proper template
 engine; for now we keep it inline to avoid adding Jinja2.
@@ -148,6 +155,20 @@ _LINK_FORM_HTML = """<!DOCTYPE html>
       background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text);
     }
     .hint { font-size: 0.8rem; color: var(--on-surface-variant); margin-top: 0.5rem; line-height: 1.4; }
+    .hint a { color: var(--primary); text-decoration: none; font-weight: 600; }
+    .hint a:hover { text-decoration: underline; }
+    .row { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+    .row button { flex: 1; min-width: 150px; padding: 0.6rem 0.75rem; font-size: 0.85rem; }
+    button.secondary {
+      background: transparent; color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+    button.secondary:hover { background: var(--primary-container); }
+    .success {
+      background: var(--ok-bg); border: 1px solid var(--ok-border); border-radius: 8px;
+      padding: 1.25rem 1rem; color: var(--ok-text); text-align: center; line-height: 1.5;
+    }
+    .success p:first-child { font-weight: 700; font-size: 1rem; }
   </style>
 </head>
 <body>
@@ -157,29 +178,59 @@ _LINK_FORM_HTML = """<!DOCTYPE html>
       <span class="brand-name">MyMoney</span>
     </div>
     <h1>Link your Telegram account</h1>
-    <p class="subtitle">Enter the email registered to your MyMoney account. We'll send a one-time code to verify it's you.</p>
+    <p class="subtitle">Log in with the email &amp; password of your MyMoney account to link it with Telegram. One-time codes are only used for password reset or email verification.</p>
     <div id="notice" class="notice"></div>
-    <form id="otp-form" onsubmit="sendCode(event)">
+
+    <!-- Login (email & password — SSO style) -->
+    <form id="login-form" onsubmit="login(event)">
       <div class="field">
         <label for="email">Email</label>
         <input type="email" id="email" required placeholder="you@email.com" autocomplete="email">
       </div>
-      <button type="submit" id="send-btn">Send code</button>
-    </form>
-    <form id="verify-form" onsubmit="verifyCode(event)" style="display:none">
       <div class="field">
-        <label for="otp">One-time code</label>
-        <input type="text" id="otp" required placeholder="000000" inputmode="numeric" autocomplete="one-time-code">
+        <label for="password">Password</label>
+        <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password">
       </div>
-      <button type="submit" id="verify-btn">Verify &amp; link</button>
-      <p class="hint">Check your inbox — the code expires in a few minutes. You can also use the password reset link if you prefer that flow.</p>
+      <button type="submit" id="login-btn">Login &amp; link</button>
+      <p class="hint"><a href="#" onclick="showRecover(event)">Forgot your password?</a></p>
     </form>
+
+    <!-- Forgot password (via recovery email — no manual OTP) -->
+    <form id="recover-form" onsubmit="recover(event)" style="display:none">
+      <div class="field">
+        <label for="recover-email">Email</label>
+        <input type="email" id="recover-email" required placeholder="you@email.com" autocomplete="email">
+      </div>
+      <button type="submit" id="recover-btn">Send recovery email</button>
+      <p class="hint"><a href="#" onclick="showLogin(event)">Back to login</a></p>
+    </form>
+
+    <!-- Email belum terverifikasi (non-blocking warning + resend) -->
+    <div id="verify-warning" style="display:none">
+      <div class="notice" id="verify-notice">
+        Your email <strong id="verify-email"></strong> is not verified yet. You can still link the account, but please verify your email to secure it.
+      </div>
+      <div class="row">
+        <button type="button" id="resend-btn" onclick="resendVerification(event)">Kirim ulang email verifikasi</button>
+        <button type="button" id="continue-btn" class="secondary" onclick="confirmLink()">Lanjutkan tautkan</button>
+      </div>
+    </div>
+
+    <!-- Success → auto-close tab -->
+    <div id="success" class="success" style="display:none">
+      <p>✅ Akun Telegram Anda berhasil ditautkan!</p>
+      <p class="hint">Tab ini akan ditutup otomatis… Jika tidak tertutup, tutup secara manual.</p>
+      <div class="row">
+        <button type="button" class="secondary" onclick="tryClose()">Tutup tab ini</button>
+      </div>
+    </div>
   </div>
   <script>
     const SUPABASE_URL = "__SUPABASE_URL__";
     const SUPABASE_ANON_KEY = "__SUPABASE_ANON_KEY__";
     const LINK_TOKEN = "__TOKEN__";
     let email = "";
+    let accessToken = null;
     const notice = document.getElementById("notice");
 
     function show(message, ok) {
@@ -188,65 +239,131 @@ _LINK_FORM_HTML = """<!DOCTYPE html>
       notice.style.display = "block";
     }
 
-    async function sendCode(event) {
+    function hideAll() {
+      document.getElementById("login-form").style.display = "none";
+      document.getElementById("recover-form").style.display = "none";
+      document.getElementById("verify-warning").style.display = "none";
+      document.getElementById("success").style.display = "none";
+    }
+
+    function showLogin(e) {
+      if (e) e.preventDefault();
+      hideAll();
+      notice.style.display = "none";
+      document.getElementById("login-form").style.display = "block";
+    }
+
+    function showRecover(e) {
+      e.preventDefault();
+      hideAll();
+      notice.style.display = "none";
+      document.getElementById("recover-form").style.display = "block";
+    }
+
+    function tryClose() {
+      try { window.close(); } catch (err) { /* blocked by browser — button stays */ }
+    }
+
+    async function login(event) {
       event.preventDefault();
       email = document.getElementById("email").value.trim();
-      const btn = document.getElementById("send-btn");
+      const password = document.getElementById("password").value;
+      const btn = document.getElementById("login-btn");
       btn.disabled = true;
-      btn.textContent = "Sending…";
+      btn.textContent = "Logging in…";
       try {
-        const res = await fetch(SUPABASE_URL + "/auth/v1/otp", {
+        const res = await fetch(SUPABASE_URL + "/auth/v1/token?grant_type=password", {
           method: "POST",
           headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email, create_user: false })
+          body: JSON.stringify({ email: email, password: password })
         });
-        if (res.status === 429) { show("Too many requests — please wait a minute and try again."); return; }
-        if (!res.ok) { show("Could not send the code. Please check the email and try again."); return; }
-        document.getElementById("otp-form").style.display = "none";
-        document.getElementById("verify-form").style.display = "block";
-        show("Code sent to " + email, true);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.access_token) {
+          const msg = data.error_description || data.msg || data.error || "Check your email and password.";
+          show("Login failed: " + msg);
+          return;
+        }
+        accessToken = data.access_token;
+        // Email belum terverifikasi → warning non-blocking + opsi kirim ulang.
+        if (data.user && !data.user.email_confirmed_at) {
+          hideAll();
+          document.getElementById("verify-email").textContent = email;
+          document.getElementById("verify-warning").style.display = "block";
+          notice.style.display = "none";
+          return;
+        }
+        await confirmLink();
       } catch (err) {
         show("Network error — please try again.");
       } finally {
         btn.disabled = false;
-        btn.textContent = "Send code";
+        btn.textContent = "Login";
       }
     }
 
-    async function verifyCode(event) {
-      event.preventDefault();
-      const otp = document.getElementById("otp").value.trim();
-      const btn = document.getElementById("verify-btn");
-      btn.disabled = true;
-      btn.textContent = "Verifying…";
+    async function confirmLink() {
       try {
-        const verify = await fetch(SUPABASE_URL + "/auth/v1/verify", {
-          method: "POST",
-          headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "email", email: email, token: otp })
-        });
-        const data = await verify.json();
-        if (!verify.ok || !data.access_token) {
-          show("Invalid or expired code. Please try again.");
-          return;
-        }
         const confirm = await fetch("/api/telegram/link/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ link_token: LINK_TOKEN, access_token: data.access_token })
+          body: JSON.stringify({ link_token: LINK_TOKEN, access_token: accessToken })
         });
         if (confirm.ok) {
-          document.getElementById("verify-form").style.display = "none";
-          show("✅ Your Telegram account is now linked! Go back to Telegram and try again.", true);
+          hideAll();
+          document.getElementById("success").style.display = "block";
+          setTimeout(tryClose, 1500); // auto-close tab after linking
         } else {
           const err = await confirm.json().catch(() => ({}));
           show("Could not link: " + (err.detail || "unknown error. The link may have expired — send /start again."));
+          showLogin(null);
         }
+      } catch (err) {
+        show("Network error — please try again.");
+        showLogin(null);
+      }
+    }
+
+    async function recover(event) {
+      event.preventDefault();
+      const recoverEmail = document.getElementById("recover-email").value.trim();
+      const btn = document.getElementById("recover-btn");
+      btn.disabled = true;
+      btn.textContent = "Sending…";
+      try {
+        const res = await fetch(SUPABASE_URL + "/auth/v1/recover", {
+          method: "POST",
+          headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ email: recoverEmail })
+        });
+        if (res.status === 429) { show("Too many requests — please wait a minute and try again."); return; }
+        if (!res.ok) { show("Could not send the recovery email. Please check the address and try again."); return; }
+        show("📧 Recovery email sent to " + recoverEmail + ". Follow the link in the email to set a new password, then log in above.", true);
       } catch (err) {
         show("Network error — please try again.");
       } finally {
         btn.disabled = false;
-        btn.textContent = "Verify & link";
+        btn.textContent = "Send recovery email";
+      }
+    }
+
+    async function resendVerification(event) {
+      event.preventDefault();
+      const btn = document.getElementById("resend-btn");
+      btn.disabled = true;
+      btn.textContent = "Sending…";
+      try {
+        const res = await fetch(SUPABASE_URL + "/auth/v1/resend", {
+          method: "POST",
+          headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "signup", email: email })
+        });
+        if (!res.ok) { show("Could not resend the verification email. Please try again."); return; }
+        show("📧 Verification email sent to " + email + ". Check your inbox, then come back and click 'Lanjutkan tautkan'.", true);
+      } catch (err) {
+        show("Network error — please try again.");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Kirim ulang email verifikasi";
       }
     }
   </script>

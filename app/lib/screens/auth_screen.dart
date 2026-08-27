@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Layar Auth minimal (Fase 0 checkpoint): login/register via Supabase Auth.
@@ -13,27 +16,38 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
+  final _fullName = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _fullNameFocus = FocusNode();
   final _passwordFocus = FocusNode();
   bool _isLogin = true;
   bool _loading = false;
   String? _error;
+  String? _success;
 
   SupabaseClient get _client => widget.client ?? Supabase.instance.client;
 
   @override
   void dispose() {
+    _fullName.dispose();
     _email.dispose();
     _password.dispose();
+    _fullNameFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    final fullName = _fullName.text.trim();
+    if (!_isLogin && fullName.isEmpty) {
+      setState(() => _error = 'Full name is required.');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
+      _success = null;
     });
     try {
       if (_isLogin) {
@@ -42,13 +56,38 @@ class _AuthScreenState extends State<AuthScreen> {
           password: _password.text,
         );
       } else {
-        await _client.auth.signUp(
+        final res = await _client.auth.signUp(
           email: _email.text.trim(),
           password: _password.text,
+          data: {'display_name': fullName},
         );
+        if (res.session == null && res.user != null) {
+          // Email confirmation aktif di project: beri tahu user cek email.
+          if (mounted) {
+            setState(() {
+              _success =
+                  'Registration successful! Please check your email for verification before logging in.';
+            });
+          }
+          return;
+        }
       }
     } on AuthException catch (e) {
       if (mounted) setState(() => _error = e.message);
+    } on http.ClientException {
+      // DNS / koneksi gagal (mis. "Failed host lookup ... errno 7").
+      if (mounted) {
+        setState(() => _error =
+            'Unable to connect to the server. Check your internet connection, then try again.');
+      }
+    } on TimeoutException {
+      if (mounted) {
+        setState(() => _error = 'The connection to the server timed out. Please try again.');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'An unexpected error occurred. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -76,11 +115,25 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'My Money!',
+                  'My Money',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 24),
+                if (!_isLogin) ...[
+                  TextField(
+                    controller: _fullName,
+                    focusNode: _fullNameFocus,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                    decoration: const InputDecoration(
+                      labelText: 'Full Name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
@@ -112,6 +165,16 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ),
                 ],
+                if (_success != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _success!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: _loading ? null : _submit,
@@ -124,7 +187,11 @@ class _AuthScreenState extends State<AuthScreen> {
                       : Text(_isLogin ? 'Login' : 'Register'),
                 ),
                 TextButton(
-                  onPressed: () => setState(() => _isLogin = !_isLogin),
+                  onPressed: () => setState(() {
+                    _isLogin = !_isLogin;
+                    _error = null;
+                    _success = null;
+                  }),
                   child: Text(_isLogin
                       ? "Don't have an account yet? Register"
                       : "Already have an account? Login"),

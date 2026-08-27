@@ -1,6 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- WAJIB untuk release build: tanpa ini semua panggilan jaringan gagal
+         dengan "Failed host lookup ... errno 7" (manifest debug punya sendiri). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Scan nota lewat kamera (fitur OCR, setara v1 Kotlin — REQUIREMENTS US-07). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Notifikasi transaksi/pengingat (setara v1 Kotlin Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Pengingat per jam lokal: jadwal tersimpan antar boot & mode alarm tepat waktu. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- Kamera opsional: app tetap berfungsi di device tanpa kamera (galeri tetap jalan). -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
     <application
-        android:label="My Money!"
+        android:label="My Money"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher">
@@ -31,6 +45,21 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Receiver jadwal notifikasi lokal (flutter_local_notifications):
+             menjalankan notifikasi tepat waktu & memulihkan jadwal setelah boot. -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

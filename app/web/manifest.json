@@ -1,6 +1,6 @@
 {
-    "name": "My Money!",
-    "short_name": "My Money!",
+    "name": "My Money",
+    "short_name": "My Money",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#3B5B8C",

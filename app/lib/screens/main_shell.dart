@@ -1,0 +1,74 @@
+/// Shell utama setelah login: bottom navigation 4 tab.
+///
+/// Setara v1 Kotlin `MainScreen.kt` — Dashboard / Transaksi / Notifikasi /
+/// Profil. Setiap tab punya Scaffold sendiri (AppBar + FAB masing-masing);
+/// IndexedStack menjaga state setiap tab saat berpindah.
+library;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../core/providers.dart';
+import 'dashboard_screen.dart';
+import 'notifications_screen.dart';
+import 'profile_screen.dart';
+import 'transactions_screen.dart';
+
+class MainShell extends ConsumerStatefulWidget {
+  const MainShell({super.key, required this.supabase});
+
+  final SupabaseClient supabase;
+
+  @override
+  ConsumerState<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends ConsumerState<MainShell> {
+  int _index = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final themeController = ref.watch(themeControllerProvider);
+    return Scaffold(
+      body: IndexedStack(
+        index: _index,
+        children: [
+          DashboardScreen(supabase: widget.supabase),
+          const TransactionsScreen(),
+          const NotificationsScreen(),
+          ProfileScreen(
+            supabase: widget.supabase,
+            themeController: themeController,
+          ),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'Transaksi',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.notifications_outlined),
+            selectedIcon: Icon(Icons.notifications),
+            label: 'Notifikasi',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profil',
+          ),
+        ],
+      ),
+    );
+  }
+}
