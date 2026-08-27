@@ -15,6 +15,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _passwordFocus = FocusNode();
   bool _isLogin = true;
   bool _loading = false;
   String? _error;
@@ -25,6 +26,7 @@ class _AuthScreenState extends State<AuthScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -64,10 +66,17 @@ class _AuthScreenState extends State<AuthScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.account_balance_wallet, size: 48),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Image.asset(
+                    'assets/icon/icon.png',
+                    width: 72,
+                    height: 72,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  'MyMoney',
+                  'My Money!',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
@@ -75,6 +84,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) => _passwordFocus.requestFocus(),
                   decoration: const InputDecoration(
                     labelText: 'Email',
                     border: OutlineInputBorder(),
@@ -84,6 +95,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 TextField(
                   controller: _password,
                   obscureText: true,
+                  focusNode: _passwordFocus,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _submit(),
                   decoration: const InputDecoration(
                     labelText: 'Password',
                     border: OutlineInputBorder(),

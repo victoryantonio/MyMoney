@@ -78,7 +78,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MyMoney'),
+        title: const Text('My Money!'),
         actions: [
           IconButton(
             tooltip: 'Keluar',

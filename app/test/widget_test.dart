@@ -23,7 +23,8 @@ void main() {
   testWidgets('AuthScreen displays the login form', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: AuthScreen()));
 
-    expect(find.text('MyMoney'), findsOneWidget);
+    expect(find.text('My Money!'), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget); // icon aplikasi di form login
     expect(find.byType(TextField), findsNWidgets(2));
     expect(find.text('Login'), findsOneWidget);
     expect(find.text("Don't have an account yet? Register"), findsOneWidget);

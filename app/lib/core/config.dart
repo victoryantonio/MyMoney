@@ -12,11 +12,21 @@ library;
 class AppConfig {
   AppConfig._();
 
-  static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  static const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+  /// Fallback default (public-by-design) agar app langsung jalan tanpa
+  /// --dart-define — memperbaiki SocketException "No address associated with
+  /// hostname" (errno 7 = DNS gagal karena URL kosong saat build tanpa config).
+  static const supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'https://fqjkqcigjeyooejcgbrk.supabase.co',
+  );
+  static const supabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZxamtxY2lnamV5b29lamNnYnJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NDIyMjAsImV4cCI6MjEwMzMxODIyMH0.KTCG_IlHAZqvydlWMQZL1B7THscRLXrZitnhpGUVrVg',
+  );
   static const appBaseUrl = String.fromEnvironment(
     'APP_BASE_URL',
-    defaultValue: 'http://localhost:8000',
+    defaultValue: 'http://103.27.206.22:8000',
   );
 
   static bool get isConfigured =>

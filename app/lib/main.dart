@@ -2,24 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'core/config.dart';
 import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
-
-/// Build-time credentials (Fase 0 checkpoint):
-///   flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
-const _supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (_supabaseUrl.isEmpty || _supabaseAnonKey.isEmpty) {
-    // Tanpa --dart-define: hanya hint setup (tidak ada network).
+  if (!AppConfig.isConfigured) {
+    // Tanpa config: hanya hint setup (tidak ada network).
     runApp(const ProviderScope(child: MyMoneyApp(supabaseAvailable: false)));
     return;
   }
 
-  await Supabase.initialize(url: _supabaseUrl, publishableKey: _supabaseAnonKey);
+  await Supabase.initialize(
+    url: AppConfig.supabaseUrl,
+    publishableKey: AppConfig.supabaseAnonKey,
+  );
   runApp(const ProviderScope(child: MyMoneyApp(supabaseAvailable: true)));
 }
 
@@ -31,7 +30,7 @@ class MyMoneyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MyMoney',
+      title: 'My Money!',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
