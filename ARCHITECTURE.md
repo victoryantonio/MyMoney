@@ -145,6 +145,14 @@ Menggantikan rencana native Kotlin/Jetpack Compose sepenuhnya.
   tulis ulang logic refresh token seperti rencana awal.
 - Komunikasi ke backend: REST API biasa (Dio/http package) dengan Supabase
   JWT di header Authorization — backend Python yang verifikasi token ini.
+- Dashboard memuat report, akun, kategori, dan satu halaman transaksi terbaru
+  secara paralel. Pagination tetap keyset-based; seluruh transaksi hanya
+  diambil lazy ketika filter akun atau detail summary diperlukan.
+- Filter multi-akun adalah pengecualian terbatas pada thin client: Flutter
+  menyaring cache transaksi untuk kebutuhan UI, sedangkan agregasi report
+  utama tetap dilakukan backend melalui SQL.
+- Tab navigasi diinisialisasi lazy agar layar yang belum dibuka tidak
+  melakukan request atau rendering saat Dashboard pertama kali tampil.
 - Web build: Flutter Web di-deploy sebagai static site (Vercel/Netlify/
   Railway static hosting) — TIDAK menggantikan kebutuhan backend Python,
   web app tetap panggil REST API yang sama seperti mobile.

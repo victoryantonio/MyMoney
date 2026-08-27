@@ -340,6 +340,17 @@ memanggil endpoint Supabase langsung.
 - Konfigurasi template email (subject/isi link/OTP) di Dashboard Supabase →
   Authentication → Email Templates.
 
+### 8.1 Ganti Email
+
+1. User memilih **Ganti email** di Profile dan memasukkan alamat baru.
+2. Flutter memanggil `supabase.auth.updateUser(UserAttributes(email: ...))`;
+  Supabase mengirim OTP perubahan email sesuai konfigurasi project.
+3. User memasukkan OTP di aplikasi; Flutter memanggil
+  `verifyOTP(type: emailChange, email: emailBaru, token: otp)`.
+4. Email baru belum dianggap aktif sebelum verifikasi berhasil. Backend tidak
+  menyimpan OTP atau password; seluruh lifecycle kredensial tetap dikelola
+  Supabase Auth.
+
 ## 10. Row Level Security (RLS) — BAGIAN BARU, WAJIB
 
 Setiap tabel yang berisi data spesifik-user WAJIB diaktifkan RLS dan diberi

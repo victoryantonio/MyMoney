@@ -62,6 +62,13 @@ transaksi via Postman dengan token Supabase asli.
 - [x] Format util + test: `formatRupiah`/`formatDateShort`/`formatDateDetail` dkk; `flutter analyze` bersih + `flutter test` **10 passed**
 - [x] APK demo: `app/build/app/outputs/flutter-apk/app-release.apk` (52.8MB, config Supabase+backend ter-embed, debug cert) — cara build & install ada di walkthrough.md Fase 4
 - [x] Kredensial demo: **demo@mymoney.dev / Demo1234!** (`scripts/seed_demo.py`, 37 transaksi 14 hari) — terverifikasi live (login 200 → accounts 200 → summary month 7.000.000/1.162.055/5.837.945)
+- [x] Performance: loading report/form paralel, tab lazy initialization, dan transaksi lengkap lazy-load hanya saat diperlukan
+- [x] Dashboard UX: periode Today/Week/Month/Custom, filter akun multiselect client-side, refresh saat kembali dari tab lain
+- [x] Summary card Income/Expense/Net interaktif dengan daftar transaksi full-screen dan sorting tanggal/nominal
+- [x] Privacy toggle menyamarkan semua nominal; form transaksi mengikuti urutan tipe, nominal, akun, merchant, kategori, tanggal, catatan
+- [x] Chart memakai token warna `DESIGN.md`, tap singkat menampilkan detail titik, dan label sumbu adaptif untuk mencegah tabrakan
+- [x] Ganti email melalui Supabase `updateUser` + verifikasi OTP `emailChange`; multi-item text Telegram dan `/edit`
+- [x] Validasi implementasi: `flutter analyze` bersih, `flutter test` 20 passed, APK release per-ABI (arm64 21,4 MB)
 - [ ] Widget + golden test 5 layar kritis (Dashboard, Login, Transaction List, Add Transaction, Accounts) — sementara 10 test (format 4 + widget 6)
 - [ ] Setup GitHub Actions macOS runner untuk build iOS otomatis (gratis,
       repo publik) — trigger di setiap push ke `main`

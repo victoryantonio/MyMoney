@@ -130,6 +130,8 @@ Prinsip: **langsung, informatif, tanpa basa-basi motivasional.** Anda mencatat u
 ### 8.2 Input/Konfirmasi Transaksi
 - Setelah parsing (teks/foto), tampilkan hasil sebagai **form editable**, bukan read-only — setiap field (nominal, kategori, akun, item) bisa dikoreksi langsung sebelum tap "Simpan".
 - Confidence rendah (dari OCR) ditandai dengan badge warna `expense` (rust) kecil di dekat field terkait, bukan alert besar mengganggu.
+- Form manual mengikuti urutan baca: tipe pemasukan/pengeluaran, nominal,
+  akun, merchant, kategori, tanggal, catatan, lalu item opsional.
 
 ### 8.3 Riwayat Transaksi (revisi)
 - Grouping per tanggal relatif ("Hari Ini", "Kemarin", lalu tanggal eksplisit
@@ -143,14 +145,23 @@ Prinsip: **langsung, informatif, tanpa basa-basi motivasional.** Anda mencatat u
   item/nota jika ada — interaksi ringan, bukan modal berat untuk aksi baca.
 
 ### 8.4 Report/Dashboard (revisi)
+- Cash Flow memakai garis Income sage dan Expense rust dengan interval label
+  adaptif agar tidak bertabrakan; tap singkat titik menampilkan detail hari,
+  sedangkan drag dan long-press tidak memicu tooltip.
+- Donut By Category tidak menampilkan label di dalam slice; legenda dan daftar
+  kategori diletakkan terpisah di bawah chart dengan spacing stabil.
+- Tap kartu Income, Expense, atau Net membuka daftar transaksi layar penuh;
+  default terbaru dan tersedia sorting tanggal atau nominal.
 - Chart donut kategori: tap slice = filter list transaksi di bawahnya ke
-  kategori tsb (state lokal, tidak perlu network call baru).
+  kategori tersebut (state lokal, tidak perlu network call baru).
 - Toggle periode (Today/Week/Month/Custom) sebagai segmented control dengan
   lebar tetap per opsi (lihat perbaikan bug §4 di bawah) — bukan Row bebas
   yang bisa wrap.
 - Angka Income/Expense/Net: tetap IBM Plex Mono, WAJIB uji dengan nominal
   7 digit (Rp1.000.00) agar tidak terpotong di card sempit — ini root
   cause bug yang terlihat di build sekarang.
+- Tombol mata pada kartu saldo menyamarkan seluruh nominal Balance, Income,
+  Expense, dan Net.
 
 ### 8.5 Manajemen Akun
 - List akun dengan saldo computed real-time.

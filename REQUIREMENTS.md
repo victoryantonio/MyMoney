@@ -76,6 +76,12 @@ masuk kalau lupa password.
 - Ditangani penuh Supabase Auth (`/auth/v1/recover` → `/auth/v1/verify` →
   `PUT /auth/v1/user`); flow terdokumentasi di DATABASE.md §8.
 
+**US-02b (BARU, 2026-08-27)** — Sebagai user, saya ingin mengganti alamat
+email dari menu Profile, agar akun saya memakai alamat yang masih aktif.
+- Aplikasi mengirim email baru melalui `auth.updateUser`; Supabase mengirim
+  OTP perubahan email; alamat baru hanya aktif setelah `emailChange` berhasil
+  diverifikasi.
+
 **US-03** — Sebagai user, saya ingin menghubungkan akun Telegram saya ke akun MyMoney lewat command `/start`, agar bot mengenali saya tanpa login ulang tiap chat.
 
 ### 4.2 Pencatatan Transaksi — Teks
@@ -102,7 +108,7 @@ masuk kalau lupa password.
 
 ### 4.4 Manajemen Transaksi
 
-**US-11** — Sebagai user, saya ingin melihat daftar transaksi saya (filter by tanggal/kategori/tipe), baik lewat app maupun command `/report` di Telegram.
+**US-11** — Sebagai user, saya ingin melihat daftar transaksi saya (filter by tanggal/kategori/tipe), baik lewat app maupun command `/report` di Telegram, serta mengurutkannya berdasarkan tanggal atau nominal.
 
 **US-12** — Sebagai user, saya ingin mengedit transaksi yang sudah tersimpan, kalau ternyata ada kesalahan yang baru saya sadari belakangan.
 
@@ -116,7 +122,7 @@ masuk kalau lupa password.
 
 ### 4.6 Report
 
-**US-16** — Sebagai user, saya ingin melihat ringkasan pengeluaran/pemasukan per periode (harian/mingguan/bulanan) dalam bentuk grafik di Android app.
+**US-16** — Sebagai user, saya ingin melihat ringkasan pengeluaran/pemasukan per periode (harian/mingguan/bulanan/kustom) dalam bentuk grafik di Flutter app, mengetuk titik untuk detail hari, dan membuka daftar transaksi dari kartu Income/Expense/Net.
 
 **US-17** — Sebagai user, saya ingin meminta ringkasan singkat lewat command `/report` di Telegram, agar bisa cek cepat tanpa buka app.
 
