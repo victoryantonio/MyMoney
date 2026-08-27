@@ -307,9 +307,9 @@ class TestProcessTelegramUpdate:
             result = await process_telegram_update(self.db, self._make_update("/report"))
 
         assert "📊 Report — this month" in result
-        assert "📈 Income: 1,000,000 IDR" in result
-        assert "📉 Expense: 105,000 IDR" in result
-        assert "Net: +895,000 IDR" in result
+        assert "📈 Income: IDR 1,000,000" in result
+        assert "📉 Expense: IDR 105,000" in result
+        assert "Net: IDR +895,000" in result
         assert "Salary" in result
         assert "Food" in result
         # parse_period_arg was called with the empty arg → default boundaries
@@ -335,7 +335,7 @@ class TestProcessTelegramUpdate:
             result = await process_telegram_update(self.db, self._make_update("/report minggu ini"))
 
         assert "📊 Report — this week" in result
-        assert "Net: +0 IDR" in result
+        assert "Net: IDR +0" in result
         assert "No transactions in this period." in result
 
     @pytest.mark.asyncio
