@@ -214,7 +214,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     setState(() => _selectedAccountIds.clear());
   }
 
-  void _openTransactionList(String? type) {
+  Future<void> _openTransactionList(String? type) async {
+    await _ensureAllTxLoaded();
+    if (!mounted) return;
     final transactions = _filteredTxs
         .where((tx) => type == null || tx.type == type)
         .toList();
