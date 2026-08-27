@@ -19,7 +19,6 @@ import '../core/format.dart';
 import '../models/report_models.dart';
 import '../models/transaction_models.dart';
 import '../widgets/trend_chart.dart';
-import 'receipt_screen.dart';
 import 'transaction_list_screen.dart';
 import 'transaction_form_screen.dart';
 
@@ -117,8 +116,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   /// Kirim start/end hanya saat periode kustom.
   String? get _customStartIso =>
-      _period == 'custom' ? _fmtDate(_customStart) : null;
-  String? get _customEndIso => _period == 'custom' ? _fmtDate(_customEnd) : null;
+      _period == 'custom' && _customStart != null
+        ? '${_fmtDate(_customStart)}T00:00:00'
+        : null;
+    String? get _customEndIso =>
+      _period == 'custom' && _customEnd != null
+        ? '${_fmtDate(_customEnd!.add(const Duration(days: 1)))}T00:00:00'
+        : null;
 
   static String _fmtDate(DateTime? d) {
     if (d == null) return '';
@@ -179,6 +183,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   void _changePeriod(String period) {
     if (period == _period) return;
     setState(() => _period = period);
+    // Custom membutuhkan dua tanggal; jangan kirim request parsial yang akan
+    // ditolak backend dengan 422.
+    if (period == 'custom') return;
     _load();
   }
 
@@ -195,7 +202,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   Set<String>? get _activeAccountFilter =>
       _selectedAccountIds.isEmpty ? null : _selectedAccountIds;
 
-  void _toggleAccount(String id) {
+  Future<void> _toggleAccount(String id) async {
+    await _ensureAllTxLoaded();
+    if (!mounted) return;
     setState(() {
       if (_selectedAccountIds.isEmpty) {
         // Dari "semua" → pilih semua kecuali yang ditoggle (deselect satu).
@@ -248,31 +257,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         onRefresh: _load,
         child: _buildBody(context),
       ),
-      floatingActionButton: _DashboardFABs(
-        onScan: _openReceiptScanner,
-        onAdd: _addTransaction,
-      ),
     );
-  }
-
-  void _openReceiptScanner() {
-    Navigator.of(context).push(
-      MaterialPageRoute<bool>(
-        builder: (_) => ReceiptScreen(api: _api),
-      ),
-    ).then((changed) {
-      if (changed == true) _load();
-    });
-  }
-
-  void _addTransaction() {
-    Navigator.of(context).push(
-      MaterialPageRoute<bool>(
-        builder: (_) => TransactionFormScreen(api: _api),
-      ),
-    ).then((changed) {
-      if (changed == true) _load();
-    });
   }
 
   void _editTransaction(TransactionModel tx) {
@@ -350,6 +335,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         const SizedBox(height: 12),
         _CategoryBreakdownCard(
           summary: summary,
+          categories: _filteredCategories,
           recentTransactions: _recentTx,
           categoryNames: categoryNames,
           selectedCategoryName: _selectedCategoryName,
@@ -417,6 +403,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       .where((tx) => _inPeriod(tx.transactionDate))
       .toList();
 
+  List<CategoryTotal> get _filteredCategories {
+    if (_activeAccountFilter == null) return _summary?.categories ?? const [];
+    final totals = <String, double>{};
+    final names = {for (final category in _categories) category.id: category.name};
+    for (final tx in _filteredTxs) {
+      final name = names[tx.categoryId];
+      if (name == null) continue;
+      final key = '${tx.type}:$name';
+      totals[key] = (totals[key] ?? 0) + tx.totalAmount;
+    }
+    final result = [
+      for (final entry in totals.entries)
+        CategoryTotal(
+          name: entry.key.substring(entry.key.indexOf(':') + 1),
+          type: entry.key.substring(0, entry.key.indexOf(':')),
+          total: entry.value,
+        ),
+    ];
+    result.sort((a, b) => b.total.compareTo(a.total));
+    return result;
+  }
+
   double get _filteredIncome => _filteredTxs
       .where((tx) => tx.type == 'income')
       .fold(0, (s, tx) => s + tx.totalAmount);
@@ -451,40 +459,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           expense: buckets[k]![1],
         ),
     ];
-  }
-}
-
-/// FAB: ikon scan (kecil) + ikon tambah transaksi — keduanya icon-only,
-/// tanpa teks "Scan Nota" (permintaan user). Ditumpuk vertikal.
-class _DashboardFABs extends StatelessWidget {
-  const _DashboardFABs({required this.onScan, required this.onAdd});
-
-  final VoidCallback onScan;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        FloatingActionButton(
-          heroTag: 'scan',
-          tooltip: 'Scan Nota',
-          onPressed: onScan,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.document_scanner_outlined),
-        ),
-        const SizedBox(height: 12),
-        FloatingActionButton(
-          heroTag: 'add',
-          tooltip: 'Tambah Transaksi',
-          onPressed: onAdd,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.add),
-        ),
-      ],
-    );
   }
 }
 
@@ -1248,6 +1222,7 @@ class _DetailPanel extends StatelessWidget {
 class _CategoryBreakdownCard extends StatelessWidget {
   const _CategoryBreakdownCard({
     required this.summary,
+    required this.categories,
     required this.recentTransactions,
     required this.categoryNames,
     required this.selectedCategoryName,
@@ -1259,6 +1234,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
   });
 
   final ReportSummary summary;
+  final List<CategoryTotal> categories;
   final List<TransactionModel> recentTransactions;
   final Map<String, String> categoryNames;
   final String? selectedCategoryName;
@@ -1270,10 +1246,8 @@ class _CategoryBreakdownCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final expenseCats =
-        summary.categories.where((c) => c.type == 'expense').toList();
-    final incomeCats =
-        summary.categories.where((c) => c.type == 'income').toList();
+    final expenseCats = categories.where((c) => c.type == 'expense').toList();
+    final incomeCats = categories.where((c) => c.type == 'income').toList();
 
     // Filter transaksi terbaru berdasarkan kategori terpilih (client-side).
     final nameOf = categoryNames;

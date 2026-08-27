@@ -11,7 +11,9 @@ class Settings(BaseSettings):
 
     # ── App ──────────────────────────────────────────────────────────────────
     app_env: str = "development"
-    app_base_url: str = "http://localhost:8000"
+    # Public fallback prevents Telegram linking from generating an unusable
+    # localhost URL when a deployment omitted APP_BASE_URL.
+    app_base_url: str = "https://api.mymoneyofficial.online"
 
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str

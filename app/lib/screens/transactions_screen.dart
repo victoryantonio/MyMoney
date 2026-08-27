@@ -226,11 +226,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             child: const Icon(Icons.document_scanner_outlined),
           ),
           const SizedBox(height: 12),
-          FloatingActionButton.extended(
+          FloatingActionButton(
             heroTag: 'add',
+            tooltip: 'Tambah transaksi',
             onPressed: _openAdd,
-            icon: const Icon(Icons.add),
-            label: const Text('Tambah'),
+            child: const Icon(Icons.add),
           ),
         ],
       ),

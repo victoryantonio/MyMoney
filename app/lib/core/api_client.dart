@@ -57,7 +57,7 @@ class ApiClient {
   }
 
   /// GET /api/reports/summary?period=... → total income/expense/net + kategori.
-  /// Saat `period == 'custom'`, kirim `start`/`end` (yyyy-mm-dd) untuk rentang kustom.
+  /// Saat `period == 'custom'`, kirim `start`/`end` ISO datetime untuk rentang kustom.
   Future<ReportSummary> fetchSummary({
     String period = 'month',
     String? start,
@@ -73,7 +73,7 @@ class ApiClient {
   }
 
   /// GET /api/reports/trend?period=... → deret harian untuk line chart.
-  /// Saat `period == 'custom'`, kirim `start`/`end` (yyyy-mm-dd) untuk rentang kustom.
+  /// Saat `period == 'custom'`, kirim `start`/`end` ISO datetime untuk rentang kustom.
   Future<ReportTrend> fetchTrend({
     String period = 'month',
     String? start,
