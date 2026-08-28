@@ -1,9 +1,22 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    and_,
+    exists,
+    func,
+    or_,
+    select,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -11,16 +24,47 @@ from app.db.base import Base
 _GLOBAL_OWNER_UUID = "00000000-0000-0000-0000-000000000000"
 
 
+def category_visible_clause(user_id: uuid.UUID):
+    """
+    WHERE filter: kategori yang terlihat oleh user.
+
+    Terlihat = aktif DAN (milik user ATAU default global yang tidak
+    disembunyikan oleh baris "shadow" non-aktif milik user — dipakai saat
+    user menghapus kategori default global hanya untuk dirinya sendiri).
+    """
+    shadow = aliased(Category)
+    hidden = exists(
+        select(shadow.id).where(
+            shadow.user_id == user_id,
+            shadow.is_active.is_(False),
+            shadow.name == Category.name,
+            shadow.type == Category.type,
+        )
+    )
+    return and_(
+        Category.is_active.is_(True),
+        or_(
+            Category.user_id == user_id,
+            and_(Category.user_id.is_(None), ~hidden),
+        ),
+    )
+
+
 class Category(Base):
     __tablename__ = "categories"
     __table_args__ = (
-        CheckConstraint("type IN ('income', 'expense')", name="categories_type_check"),
+        # 'transfer' disertakan sejak migrasi 0008 (tipe transaksi transfer,
+        # walau transaksi transfer TIDAK memakai kategori).
+        CheckConstraint("type IN ('income', 'expense', 'transfer')", name="categories_type_check"),
+        # Partial (WHERE is_active = TRUE) — migrasi 0008 — supaya baris shadow
+        # per-user (is_active=FALSE) tidak bentrok dengan kategori custom baru.
         Index(
             "idx_categories_user_name_type",
             func.coalesce("user_id", _GLOBAL_OWNER_UUID),
             "name",
             "type",
             unique=True,
+            postgresql_where=text("is_active = TRUE"),
         ),
     )
 

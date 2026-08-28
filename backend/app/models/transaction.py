@@ -20,7 +20,10 @@ from app.db.base import Base
 class Transaction(Base):
     __tablename__ = "transactions"
     __table_args__ = (
-        CheckConstraint("type IN ('income', 'expense')", name="transactions_type_check"),
+        CheckConstraint(
+            "type IN ('income', 'expense', 'transfer')",
+            name="transactions_type_check",
+        ),
         CheckConstraint("total_amount > 0", name="transactions_amount_positive"),
         CheckConstraint("source IN ('telegram', 'app')", name="transactions_source_check"),
         CheckConstraint(
@@ -36,13 +39,18 @@ class Transaction(Base):
     type: Mapped[str] = mapped_column(String(10), nullable=False)
     # Use NUMERIC, not FLOAT — mandatory for financial values to avoid floating-point errors
     total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
-    category_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id"), nullable=False
+    # NULL untuk transaksi transfer — transfer tidak memakai kategori
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
     )
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("accounts.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    # Akun tujuan transfer (hanya terisi saat type == 'transfer')
+    to_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=True
     )
     merchant: Mapped[str | None] = mapped_column(String(150), nullable=True)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -65,7 +73,11 @@ class Transaction(Base):
     # Relationships
     user: Mapped["Profile"] = relationship(back_populates="transactions")  # noqa: F821
     category: Mapped["Category"] = relationship(back_populates="transactions")  # noqa: F821
-    account: Mapped["Account"] = relationship(back_populates="transactions")  # noqa: F821
+    # foreign_keys wajib — ada 2 FK ke accounts (account_id + to_account_id).
+    account: Mapped["Account"] = relationship(  # noqa: F821
+        back_populates="transactions",
+        foreign_keys="Transaction.account_id",
+    )
     items: Mapped[list["TransactionItem"]] = relationship(  # noqa: F821
         back_populates="transaction",
         cascade="all, delete-orphan",

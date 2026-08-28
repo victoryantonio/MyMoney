@@ -9,12 +9,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.audit_service import record_audit
 from app.models.account import Account
-from app.models.category import Category
+from app.models.category import Category, category_visible_clause
 from app.models.pending_transaction import PendingTransaction
 from app.models.transaction import Transaction
 from app.models.transaction_item import TransactionItem
@@ -66,9 +66,8 @@ def get_or_create_category(
     """
     category = db.scalar(
         select(Category).where(
-            Category.is_active == True,  # noqa: E712
+            category_visible_clause(user_id),
             func.lower(Category.name) == category_name.lower(),
-            or_(Category.user_id == None, Category.user_id == user_id),  # noqa: E711
         )
     )
 
@@ -91,25 +90,36 @@ def get_or_create_category(
     # Locked mode: resolve to the seeded default "Other" for the tx type.
     other = db.scalar(
         select(Category).where(
-            Category.is_active == True,  # noqa: E712
+            category_visible_clause(user_id),
             func.lower(Category.name) == DEFAULT_CATEGORY_OTHER.lower(),
             Category.type == tx_type,
-            Category.user_id.is_(None),
         )
     )
     if other is None:
-        raise ValueError(f"default category 'Other' ({tx_type}) is missing — re-run migration 0001")
+        # Default global "Other" disembunyikan user — buat "Other" milik user
+        # agar jalur locked (telegram/LLM) tetap punya fallback.
+        other = Category(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            name=DEFAULT_CATEGORY_OTHER,
+            type=tx_type,
+            is_default=False,
+        )
+        db.add(other)
+        db.commit()
+        db.refresh(other)
     return other
 
 
 def create_transaction_internal(
     db: Session,
     user_id: uuid.UUID,
-    type: Literal["income", "expense"],
+    type: Literal["income", "expense", "transfer"],
     total_amount: Decimal,
-    category_id: uuid.UUID,
     account_id: uuid.UUID,
     source: str,
+    category_id: uuid.UUID | None = None,
+    to_account_id: uuid.UUID | None = None,
     note: str | None = None,
     merchant: str | None = None,
     transaction_date: datetime | None = None,
@@ -134,6 +144,7 @@ def create_transaction_internal(
         total_amount=total_amount,
         category_id=category_id,
         account_id=account_id,
+        to_account_id=to_account_id if type == "transfer" else None,
         merchant=merchant,
         source=source,
         note=note,
@@ -159,8 +170,9 @@ def create_transaction_internal(
         new_value={
             "type": type,
             "total_amount": str(total_amount),
-            "category_id": str(category_id),
+            "category_id": str(category_id) if category_id else None,
             "account_id": str(account_id),
+            "to_account_id": str(to_account_id) if to_account_id else None,
             "source": source,
             "note": note,
         },
@@ -177,12 +189,13 @@ def create_transaction_internal(
 def update_transaction_internal(
     db: Session,
     transaction: Transaction,
-    type: Literal["income", "expense"],
+    type: Literal["income", "expense", "transfer"],
     total_amount: Decimal,
-    category_id: uuid.UUID,
+    category_id: uuid.UUID | None,
     note: str | None = None,
     merchant: str | None = None,
     account_id: uuid.UUID | None = None,
+    to_account_id: uuid.UUID | None = None,
     transaction_date: datetime | None = None,
     items: list[dict] | None = None,
     audit_ip_address: str | None = None,
@@ -197,8 +210,9 @@ def update_transaction_internal(
     old_value = {
         "type": transaction.type,
         "total_amount": str(transaction.total_amount),
-        "category_id": str(transaction.category_id),
+        "category_id": str(transaction.category_id) if transaction.category_id else None,
         "account_id": str(transaction.account_id),
+        "to_account_id": str(transaction.to_account_id) if transaction.to_account_id else None,
         "note": transaction.note,
         "merchant": transaction.merchant,
         "transaction_date": (
@@ -207,7 +221,11 @@ def update_transaction_internal(
     }
     transaction.type = type
     transaction.total_amount = total_amount
-    transaction.category_id = category_id
+    transaction.category_id = category_id if type != "transfer" else None
+    if to_account_id is not None or type == "transfer":
+        transaction.to_account_id = to_account_id
+    else:
+        transaction.to_account_id = None
     transaction.note = note
     if merchant is not None:
         transaction.merchant = merchant
@@ -237,8 +255,11 @@ def update_transaction_internal(
         new_value={
             "type": type,
             "total_amount": str(total_amount),
-            "category_id": str(category_id),
+            "category_id": str(transaction.category_id) if transaction.category_id else None,
             "account_id": str(transaction.account_id),
+            "to_account_id": (
+                str(transaction.to_account_id) if transaction.to_account_id else None
+            ),
             "note": note,
             "merchant": transaction.merchant,
         },

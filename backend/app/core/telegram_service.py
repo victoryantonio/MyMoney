@@ -322,9 +322,11 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
 
         amount_fmt = f"{updated.total_amount:,.0f}"
         icon = "📉" if updated.type == "expense" else "📈"
-        lines = [f"Edited! {icon}",
-                 f"🏪 {parsed.merchant}" if parsed.merchant else None,
-                 f"{category.name}: IDR {amount_fmt}"]
+        lines = [
+            f"Edited! {icon}",
+            f"🏪 {parsed.merchant}" if parsed.merchant else None,
+            f"{category.name}: IDR {amount_fmt}",
+        ]
         if updated.items:
             lines.append("")
             for item in updated.items:
@@ -405,8 +407,11 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
 
     amount_fmt = f"{tx.total_amount:,.0f}"
     icon = "📉" if tx.type == "expense" else "📈"
-    lines = [f"Saved! {icon}", f"🏪 {parsed.merchant}" if parsed.merchant else None,
-             f"{category.name}: IDR {amount_fmt}"]
+    lines = [
+        f"Saved! {icon}",
+        f"🏪 {parsed.merchant}" if parsed.merchant else None,
+        f"{category.name}: IDR {amount_fmt}",
+    ]
     if tx.items:
         lines.append("")
         for item in tx.items:

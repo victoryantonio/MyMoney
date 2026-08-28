@@ -35,10 +35,13 @@ class TransactionItemResponse(BaseModel):
 
 
 class TransactionCreateRequest(BaseModel):
-    type: Literal["income", "expense"]
+    type: Literal["income", "expense", "transfer"]
     total_amount: Decimal = Field(gt=0)
-    category_id: uuid.UUID
+    # Wajib untuk income/expense; NULL untuk transfer.
+    category_id: uuid.UUID | None = None
     account_id: uuid.UUID
+    # Akun tujuan — hanya untuk type == 'transfer'.
+    to_account_id: uuid.UUID | None = None
     merchant: str | None = Field(default=None, max_length=150)
     note: str | None = None
     transaction_date: datetime
@@ -48,10 +51,11 @@ class TransactionCreateRequest(BaseModel):
 class TransactionUpdateRequest(BaseModel):
     """All fields optional — PATCH semantics."""
 
-    type: Literal["income", "expense"] | None = None
+    type: Literal["income", "expense", "transfer"] | None = None
     total_amount: Decimal | None = Field(default=None, gt=0)
     category_id: uuid.UUID | None = None
     account_id: uuid.UUID | None = None
+    to_account_id: uuid.UUID | None = None
     merchant: str | None = None
     note: str | None = None
     transaction_date: datetime | None = None
@@ -65,8 +69,9 @@ class TransactionResponse(BaseModel):
     id: uuid.UUID
     type: str
     total_amount: Decimal
-    category_id: uuid.UUID
+    category_id: uuid.UUID | None  # NULL untuk transfer
     account_id: uuid.UUID
+    to_account_id: uuid.UUID | None  # hanya terisi saat transfer
     merchant: str | None
     source: str
     note: str | None

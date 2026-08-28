@@ -5,18 +5,21 @@ GET  /api/categories           — list all categories visible to the user
                                  (global defaults + user's own custom categories)
 POST /api/categories           — create a user-specific custom category
 PUT  /api/categories/{id}      — rename and/or re-type a user-specific category
-DELETE /api/categories/{id}    — soft-delete a user-specific category (is_active=False)
+DELETE /api/categories/{id}    — soft-delete a category. Global defaults are
+                                 "shadowed" per-user (is_active=False row milik
+                                 user) sehingga hanya user tsb yang tidak
+                                 melihatnya lagi; user lain tetap melihat default.
 """
 
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_active_user
 from app.core.audit_service import record_audit
-from app.models.category import Category
+from app.models.category import Category, category_visible_clause
 from app.models.profile import Profile
 from app.schemas.category import (
     CategoryCreateRequest,
@@ -35,16 +38,16 @@ def _find_visible_duplicate(
     exclude_id: uuid.UUID | None = None,
 ) -> Category | None:
     """
-    Case-insensitive duplicate lookup across the categories visible to this
-    user (global defaults + user's own). Guards the unique index
-    idx_categories_user_name_type (DATABASE.md §2.3) and prevents a custom
-    category from shadowing a global default of the same name.
+    Case-insensitive duplicate lookup across the categories VISIBLE to this
+    user (category_visible_clause: aktif, milik user atau global yang tidak
+    di-shadow oleh user). Mencegah kategori custom membayangi default global
+    dengan nama yang sama dan melindungi unique index
+    idx_categories_user_name_type (DATABASE.md §2.3).
     """
     stmt = select(Category).where(
-        Category.is_active == True,  # noqa: E712
         func.lower(Category.name) == name.lower(),
         Category.type == type,
-        or_(Category.user_id == None, Category.user_id == user_id),  # noqa: E711
+        category_visible_clause(user_id),
     )
     if exclude_id is not None:
         stmt = stmt.where(Category.id != exclude_id)
@@ -59,21 +62,18 @@ def list_categories(
 ) -> list[Category]:
     """
     List all categories visible to the current user:
-      - Global defaults (user_id IS NULL)
+      - Global defaults (user_id IS NULL) yang belum di-shadow user ini
       - User's own custom categories
 
-    Optionally filter by type: ?type=income or ?type=expense
+    Optionally filter by type: ?type=income | ?type=expense | ?type=transfer
     """
     stmt = (
         select(Category)
-        .where(
-            Category.is_active == True,  # noqa: E712
-            or_(Category.user_id == None, Category.user_id == current_user.id),  # noqa: E711
-        )
+        .where(category_visible_clause(current_user.id))
         .order_by(Category.is_default.desc(), Category.name)
     )
 
-    if type in ("income", "expense"):
+    if type in ("income", "expense", "transfer"):
         stmt = stmt.where(Category.type == type)
 
     return list(db.scalars(stmt))
@@ -178,23 +178,69 @@ def delete_category(
     db: Session = Depends(get_db),
 ) -> None:
     """
-    Soft-delete a user-specific category (set is_active=False).
-    Cannot delete global default categories.
+    Soft-delete sebuah kategori yang terlihat oleh user ini.
+
+    - Kategori milik user → is_active=False (transaksi lama tetap tersimpan;
+      kategori tidak bisa dipilih lagi).
+    - Default global (user_id IS NULL) → buat baris "shadow" milik user
+      (is_active=False, nama/type sama). User lain tetap melihat default;
+      user ini tidak melihatnya lagi (category_visible_clause). Tidak pernah
+      menghapus baris global agar user lain tidak terpengaruh.
     """
     category = db.get(Category, category_id)
     if category is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
-    # Global defaults are immutable for everyone (they are user_id IS NULL,
-    # so they must be checked before the ownership check below).
-    if category.is_default:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot delete a global default category",
-        )
-
     if category.user_id != current_user.id:
+        # Default global → shadow per-user.
+        if category.is_default and category.user_id is None:
+            existing_shadow = db.scalar(
+                select(Category).where(
+                    Category.user_id == current_user.id,
+                    Category.is_active == False,  # noqa: E712
+                    func.lower(Category.name) == category.name.lower(),
+                    Category.type == category.type,
+                )
+            )
+            if existing_shadow is None:
+                shadow = Category(
+                    id=uuid.uuid4(),
+                    user_id=current_user.id,
+                    name=category.name,
+                    type=category.type,
+                    is_default=False,
+                    is_active=False,
+                )
+                db.add(shadow)
+                record_audit(
+                    db,
+                    user_id=current_user.id,
+                    action="delete",
+                    entity_type="category",
+                    entity_id=category.id,
+                    old_value={
+                        "name": category.name,
+                        "type": category.type,
+                        "is_default": True,
+                    },
+                    new_value={"is_active": False, "note": "global default shadowed per-user"},
+                    source="app",
+                )
+                db.commit()
+            return None
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
+    old_value = {"name": category.name, "type": category.type}
     category.is_active = False
+    record_audit(
+        db,
+        user_id=current_user.id,
+        action="delete",
+        entity_type="category",
+        entity_id=category.id,
+        old_value=old_value,
+        new_value={"is_active": False},
+        source="app",
+    )
     db.commit()
+    return None

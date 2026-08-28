@@ -58,6 +58,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
   String? _categoryId;
   String? _accountId;
+  String? _toAccountId; // hanya untuk tipe transfer
   bool _loadingOptions = true;
   String? _optionsError;
   bool _saving = false;
@@ -79,6 +80,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     _date = tx?.transactionDate ?? widget.initialDate ?? DateTime.now();
     _categoryId = tx?.categoryId ?? widget.initialCategoryId;
     _accountId = tx?.accountId ?? widget.initialAccountId;
+    _toAccountId = tx?.toAccountId;
     if (tx != null) {
       _items.addAll(
         tx.items
@@ -118,17 +120,21 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       setState(() {
         _categories = results[0] as List<CategoryModel>;
         _accounts = results[1] as List<AccountModel>;
-        _categoryId ??= _categories
+        // Transfer TIDAK memakai kategori — jangan pilih default kategori.
+        if (_type != 'transfer' && _categoryId == null) {
+          final candidates = _categories
               .where((c) => c.type == _type && c.isActive)
-              .firstWhere(
-                (c) => c.name.toLowerCase() == 'other',
-                orElse: () => _categories.firstWhere(
-                  (c) => c.type == _type && c.isActive,
-                  orElse: () => _categories.first,
-                ),
-              )
+              .toList();
+          if (candidates.isNotEmpty) {
+            _categoryId = candidates
+                .firstWhere(
+                  (c) => c.name.toLowerCase() == 'other',
+                  orElse: () => candidates.first,
+                )
                 .id;
-              if (_accountId == null) {
+          }
+        }
+        if (_accountId == null) {
           final active = _accounts.where((a) => a.isActive).toList();
           if (active.isNotEmpty) {
             _accountId = active
@@ -155,6 +161,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     setState(() {
       _type = type;
       _categoryId = null; // kategori beda tipe — reset pilihan
+      if (type != 'transfer') _toAccountId = null;
     });
     _loadOptions();
   }
@@ -270,7 +277,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       );
       return;
     }
-    if (_categoryId == null) {
+    if (_type != 'transfer' && _categoryId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pilih kategori terlebih dahulu')),
       );
@@ -281,6 +288,20 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
         const SnackBar(content: Text('Pilih akun terlebih dahulu')),
       );
       return;
+    }
+    if (_type == 'transfer') {
+      if (_toAccountId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pilih akun tujuan terlebih dahulu')),
+        );
+        return;
+      }
+      if (_toAccountId == _accountId) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Akun tujuan harus berbeda dari akun asal')),
+        );
+        return;
+      }
     }
 
     setState(() => _saving = true);
@@ -294,6 +315,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
           totalAmount: amount,
           categoryId: _categoryId,
           accountId: _accountId,
+          toAccountId: _toAccountId,
           merchant: merchant.isEmpty ? null : merchant,
           note: note.isEmpty ? null : note,
           transactionDate: _date,
@@ -303,8 +325,9 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
         await widget.api.createTransaction(
           type: _type,
           totalAmount: amount,
-          categoryId: _categoryId!,
+          categoryId: _categoryId,
           accountId: _accountId!,
+          toAccountId: _toAccountId,
           merchant: merchant.isEmpty ? null : merchant,
           note: note.isEmpty ? null : note,
           transactionDate: _date,
@@ -332,6 +355,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     final accounts = _accounts.where((a) => a.isActive).toList();
     final categoryValid = categories.any((c) => c.id == _categoryId);
     final accountValid = accounts.any((a) => a.id == _accountId);
+    final toAccountValid =
+        _toAccountId != null && accounts.any((a) => a.id == _toAccountId);
 
     return Scaffold(
       appBar: AppBar(
@@ -363,6 +388,11 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                     value: 'income',
                     label: Text('Pemasukan'),
                     icon: Icon(Icons.arrow_upward),
+                  ),
+                  ButtonSegment(
+                    value: 'transfer',
+                    label: Text('Transfer'),
+                    icon: Icon(Icons.swap_horiz),
                   ),
                 ],
                 selected: {_type},
@@ -469,45 +499,88 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                   ],
                 )
               else ...[
-                DropdownButtonFormField<String>(
-                  initialValue: categoryValid ? _categoryId : null,
-                  decoration: const InputDecoration(
-                    labelText: 'Kategori',
-                    border: OutlineInputBorder(),
+                if (_type == 'transfer') ...[
+                  // ── Transfer: akun asal + tujuan (tanpa kategori) ─────────
+                  DropdownButtonFormField<String>(
+                    initialValue: accountValid ? _accountId : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Dari akun',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final a in accounts)
+                        DropdownMenuItem(value: a.id, child: Text(a.label)),
+                    ],
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _accountId = v),
                   ),
-                  items: [
-                    for (final c in categories)
-                      DropdownMenuItem(value: c.id, child: Text(c.name)),
-                  ],
-                  onChanged: _saving
-                      ? null
-                      : (v) => setState(() => _categoryId = v),
-                ),
-                if (_categoryId != null && !categoryValid)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Kategori sebelumnya tidak tersedia — pilih kategori lain.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.error,
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: toAccountValid ? _toAccountId : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Ke akun',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final a in accounts)
+                        DropdownMenuItem(value: a.id, child: Text(a.label)),
+                    ],
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _toAccountId = v),
+                  ),
+                  if (accountValid && toAccountValid && _toAccountId == _accountId)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Akun tujuan harus berbeda dari akun asal.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
                       ),
                     ),
+                ] else ...[
+                  DropdownButtonFormField<String>(
+                    initialValue: categoryValid ? _categoryId : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Kategori',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final c in categories)
+                        DropdownMenuItem(value: c.id, child: Text(c.name)),
+                    ],
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _categoryId = v),
                   ),
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  initialValue: accountValid ? _accountId : null,
-                  decoration: const InputDecoration(
-                    labelText: 'Akun',
-                    border: OutlineInputBorder(),
+                  if (_categoryId != null && !categoryValid)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Kategori sebelumnya tidak tersedia — pilih kategori lain.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: accountValid ? _accountId : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Akun',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final a in accounts)
+                        DropdownMenuItem(value: a.id, child: Text(a.label)),
+                    ],
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _accountId = v),
                   ),
-                  items: [
-                    for (final a in accounts)
-                      DropdownMenuItem(value: a.id, child: Text(a.label)),
-                  ],
-                  onChanged: _saving
-                      ? null
-                      : (v) => setState(() => _accountId = v),
-                ),
+                ],
               ],
 
               const SizedBox(height: 16),

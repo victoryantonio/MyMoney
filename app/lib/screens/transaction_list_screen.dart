@@ -78,9 +78,14 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final tx = items[index];
-                final color = tx.type == 'income'
-                    ? AppColors.income(context)
-                    : AppColors.expense(context);
+                final color = switch (tx.type) {
+                  'income' => AppColors.income(context),
+                  'transfer' => Theme.of(context).colorScheme.primary,
+                  _ => AppColors.expense(context),
+                };
+                final categoryLabel = tx.type == 'transfer'
+                    ? 'Transfer'
+                    : widget.categoryNames[tx.categoryId] ?? '—';
                 return Card(
                   margin: EdgeInsets.zero,
                   elevation: 0,
@@ -89,19 +94,27 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                     leading: CircleAvatar(
                       backgroundColor: color.withValues(alpha: 0.14),
                       child: Icon(
-                        tx.type == 'income' ? Icons.arrow_upward : Icons.arrow_downward,
+                        tx.type == 'income'
+                            ? Icons.arrow_upward
+                            : tx.type == 'transfer'
+                                ? Icons.swap_horiz
+                                : Icons.arrow_downward,
                         color: color,
                       ),
                     ),
                     title: Text(
-                      tx.merchant ?? widget.categoryNames[tx.categoryId] ?? 'Transaksi',
+                      tx.merchant ??
+                          (tx.type == 'transfer'
+                              ? 'Transfer'
+                              : widget.categoryNames[tx.categoryId] ??
+                                  'Transaksi'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
                       '${formatDateDetail(tx.transactionDate)} · '
                       '${widget.accountLabels[tx.accountId] ?? 'Akun'} · '
-                      '${widget.categoryNames[tx.categoryId] ?? '—'}',
+                      '$categoryLabel',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),

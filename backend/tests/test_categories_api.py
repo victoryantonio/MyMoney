@@ -162,11 +162,49 @@ def test_delete_category(auth):
     assert all(c["id"] != created["id"] for c in listed)
 
 
-def test_delete_global_category_forbidden(auth):
+def test_delete_global_category_shadows_per_user(auth):
+    """Default global bisa 'dihapus' per-user: dibuat baris shadow non-aktif
+    milik user (migrasi 0008). User lain tetap melihat default tsb."""
     headers = auth("cat_delglobal")
     global_id = _first_global_id(headers)
     resp = client.delete(f"/api/categories/{global_id}", headers=headers)
-    assert resp.status_code == 403
+    assert resp.status_code == 204
+    # …tidak muncul lagi untuk user ini.
+    listed = client.get("/api/categories", headers=headers).json()
+    assert all(c["id"] != global_id for c in listed)
+
+    # User lain tetap melihat default global tersebut (baris asli tidak dihapus).
+    other = auth("cat_delglobal2")
+    other_listed = client.get("/api/categories", headers=other).json()
+    assert any(c["id"] == global_id for c in other_listed)
+
+
+def test_delete_user_category_then_recreate_same_name(auth):
+    """Setelah user 'menghapus' default global (shadow), user bisa membuat
+    kategori custom dengan nama yang sama — tidak bentrok index."""
+    headers = auth("cat_recreate")
+    global_name = next(
+        c["name"] for c in client.get("/api/categories", headers=headers).json() if c["is_default"]
+    )
+    global_type = next(
+        c["type"]
+        for c in client.get("/api/categories", headers=headers).json()
+        if c["is_default"] and c["name"] == global_name
+    )
+    global_id = next(
+        c["id"]
+        for c in client.get("/api/categories", headers=headers).json()
+        if c["is_default"] and c["name"] == global_name
+    )
+    assert client.delete(f"/api/categories/{global_id}", headers=headers).status_code == 204
+    # Bisa buat kategori custom dengan nama yang sama (sebelumnya 409).
+    resp = _create(headers, global_name, global_type)
+    assert resp.status_code == 201
+    # Sekarang kategori custom tsb TIDAK shadow lagi: masih terlihat + aktif.
+    listed = client.get("/api/categories", headers=headers).json()
+    mine = [c for c in listed if c["name"] == global_name and c["user_id"] is not None]
+    assert len(mine) == 1
+    assert mine[0]["is_active"] is True
 
 
 def test_delete_requires_auth():

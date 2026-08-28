@@ -1,9 +1,9 @@
 /// Management akun (dari tab Profil) — setara v1 Kotlin
 /// `AccountManagementScreen` (ARCHITECTURE.md §4.4).
 ///
-/// Tambah akun (nama, bank, saldo awal); edit nama/bank; nonaktifkan —
-/// saat saldo ≠ 0 wajib memilih akun tujuan (saldo dipindah via transaksi
-/// balancing di backend).
+/// Tambah akun (nama, JENIS AKUN: Kas/E-Wallet/Bank, saldo awal); edit
+/// nama/jenis; nonaktifkan — saat saldo ≠ 0 wajib memilih akun tujuan
+/// (saldo dipindah via SATU transaksi transfer di backend, migrasi 0008).
 library;
 
 import 'package:flutter/material.dart';
@@ -12,6 +12,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
 import '../models/transaction_models.dart';
+
+const _accountTypeOptions = [
+  (value: 'cash', label: 'Kas'),
+  (value: 'ewallet', label: 'E-Wallet'),
+  (value: 'bank', label: 'Bank'),
+];
+
+String _accountTypeLabel(String type) => _accountTypeOptions
+    .firstWhere((o) => o.value == type, orElse: () => (value: type, label: type))
+    .label;
 
 class AccountsScreen extends StatefulWidget {
   const AccountsScreen({super.key});
@@ -57,8 +67,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _openAdd() async {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
-    final bankCtrl = TextEditingController();
     final balanceCtrl = TextEditingController(text: '0');
+    String selType = 'cash';
 
     final saved = await showDialog<bool>(
       context: context,
@@ -79,11 +89,19 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     (v == null || v.trim().isEmpty) ? 'Nama wajib diisi' : null,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: bankCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nama bank (opsional)',
-                  border: OutlineInputBorder(),
+              StatefulBuilder(
+                builder: (context, setDialogState) =>
+                    DropdownButtonFormField<String>(
+                  initialValue: selType,
+                  decoration: const InputDecoration(
+                    labelText: 'Jenis Akun',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final o in _accountTypeOptions)
+                      DropdownMenuItem(value: o.value, child: Text(o.label)),
+                  ],
+                  onChanged: (v) => setDialogState(() => selType = v!),
                 ),
               ),
               const SizedBox(height: 12),
@@ -115,7 +133,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
               final name = nameCtrl.text.trim();
-              final bank = bankCtrl.text.trim();
               final balance =
                   double.tryParse(balanceCtrl.text.replaceAll('.', '')) ?? 0;
               final messenger = ScaffoldMessenger.of(context);
@@ -123,7 +140,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               try {
                 await _api.createAccount(
                   accountName: name,
-                  bankName: bank.isEmpty ? null : bank,
+                  accountType: selType,
                   initialBalance: balance,
                 );
                 messenger.showSnackBar(
@@ -149,7 +166,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _openEdit(AccountModel account) async {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: account.accountName);
-    final bankCtrl = TextEditingController(text: account.bankName ?? '');
+    String selType = account.accountType;
 
     final saved = await showDialog<bool>(
       context: context,
@@ -170,11 +187,19 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     (v == null || v.trim().isEmpty) ? 'Nama wajib diisi' : null,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: bankCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nama bank (opsional)',
-                  border: OutlineInputBorder(),
+              StatefulBuilder(
+                builder: (context, setDialogState) =>
+                    DropdownButtonFormField<String>(
+                  initialValue: selType,
+                  decoration: const InputDecoration(
+                    labelText: 'Jenis Akun',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final o in _accountTypeOptions)
+                      DropdownMenuItem(value: o.value, child: Text(o.label)),
+                  ],
+                  onChanged: (v) => setDialogState(() => selType = v!),
                 ),
               ),
             ],
@@ -189,14 +214,13 @@ class _AccountsScreenState extends State<AccountsScreen> {
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
               final name = nameCtrl.text.trim();
-              final bank = bankCtrl.text.trim();
               final messenger = ScaffoldMessenger.of(context);
               Navigator.of(context).pop(true);
               try {
                 await _api.updateAccount(
                   account.id,
                   accountName: name,
-                  bankName: bank.isEmpty ? null : bank,
+                  accountType: selType,
                 );
                 messenger.showSnackBar(
                   const SnackBar(content: Text('Akun diperbarui')),
@@ -349,7 +373,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
               const Text('Belum ada akun'),
               const SizedBox(height: 4),
               Text(
-                'Tambahkan akun kas/bank untuk mulai mencatat',
+                'Tambahkan akun kas, e-wallet, atau bank untuk mulai mencatat',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -415,6 +439,11 @@ class _AccountCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final positive = account.currentBalance >= 0;
+    final IconData icon = switch (account.accountType) {
+      'ewallet' => Icons.phone_android,
+      'bank' => Icons.account_balance_outlined,
+      _ => Icons.payments_outlined,
+    };
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
@@ -426,7 +455,7 @@ class _AccountCard extends StatelessWidget {
         leading: CircleAvatar(
           backgroundColor: theme.colorScheme.primaryContainer,
           child: Icon(
-            Icons.account_balance_outlined,
+            icon,
             color: theme.colorScheme.primary,
           ),
         ),
@@ -452,9 +481,8 @@ class _AccountCard extends StatelessWidget {
           ],
         ),
         subtitle: Text(
-          account.bankName?.isNotEmpty == true
-              ? account.bankName!
-              : 'Saldo awal ${formatRupiah(account.initialBalance)}',
+          '${_accountTypeLabel(account.accountType)} · '
+          'Saldo awal ${formatRupiah(account.initialBalance)}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

@@ -30,7 +30,7 @@ from app.core.transaction_service import (
     update_transaction_internal,
 )
 from app.models.account import Account
-from app.models.category import Category
+from app.models.category import Category, category_visible_clause
 from app.models.profile import Profile
 from app.models.transaction import Transaction
 from app.schemas.transaction import (
@@ -76,30 +76,21 @@ def _apply_cursor(stmt, cursor: str | None):
 
 
 def _verify_category_and_account(
-    category_id: uuid.UUID,
+    *,
+    tx_type: str,
+    category_id: uuid.UUID | None,
     account_id: uuid.UUID,
+    to_account_id: uuid.UUID | None,
     user_id: uuid.UUID,
     db: Session,
 ) -> None:
     """
-    Validate that both category and account exist and are accessible by this user.
-    Categories can be global (user_id=None) or user-specific.
+    Validate category/account references for a transaction, per type:
+
+    - income/expense: category wajib (aktif & terlihat user) + akun asal.
+    - transfer: TANPA kategori; akun asal + akun tujuan (aktif, milik user,
+      dan berbeda).
     """
-    from sqlalchemy import or_
-
-    category = db.scalar(
-        select(Category).where(
-            Category.id == category_id,
-            Category.is_active == True,  # noqa: E712
-            or_(Category.user_id == None, Category.user_id == user_id),  # noqa: E711
-        )
-    )
-    if category is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Category not found or not accessible",
-        )
-
     account = db.scalar(
         select(Account).where(
             Account.id == account_id,
@@ -111,6 +102,53 @@ def _verify_category_and_account(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Account not found or not accessible",
+        )
+
+    if tx_type == "transfer":
+        if category_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Transfer transactions do not use a category",
+            )
+        if to_account_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Target account is required for a transfer",
+            )
+        if to_account_id == account_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Target account must be different from the source account",
+            )
+        target = db.scalar(
+            select(Account).where(
+                Account.id == to_account_id,
+                Account.user_id == user_id,
+                Account.is_active == True,  # noqa: E712
+            )
+        )
+        if target is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Target account not found or not accessible",
+            )
+        return
+
+    if category_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Category is required for this transaction type",
+        )
+    category = db.scalar(
+        select(Category).where(
+            Category.id == category_id,
+            category_visible_clause(user_id),
+        )
+    )
+    if category is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Category not found or not accessible",
         )
 
 
@@ -184,7 +222,14 @@ def create_transaction(
     Source is set to 'app' for transactions created via the REST API.
     All mutations are delegated to the service layer (CODING_RULES §2.1).
     """
-    _verify_category_and_account(body.category_id, body.account_id, current_user.id, db)
+    _verify_category_and_account(
+        tx_type=body.type,
+        category_id=body.category_id,
+        account_id=body.account_id,
+        to_account_id=body.to_account_id,
+        user_id=current_user.id,
+        db=db,
+    )
 
     return create_transaction_internal(
         db=db,
@@ -193,6 +238,7 @@ def create_transaction(
         total_amount=body.total_amount,
         category_id=body.category_id,
         account_id=body.account_id,
+        to_account_id=body.to_account_id,
         source="app",
         note=body.note,
         merchant=body.merchant.strip() if body.merchant else None,
@@ -243,13 +289,20 @@ def update_transaction(
     if transaction is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
-    if body.category_id is not None or body.account_id is not None:
-        _verify_category_and_account(
-            body.category_id or transaction.category_id,
-            body.account_id or transaction.account_id,
-            current_user.id,
-            db,
-        )
+    new_type = body.type if body.type is not None else transaction.type
+    new_account_id = body.account_id or transaction.account_id
+    new_category_id = body.category_id if body.category_id is not None else transaction.category_id
+    new_to_account_id = (
+        body.to_account_id if body.to_account_id is not None else transaction.to_account_id
+    )
+    _verify_category_and_account(
+        tx_type=new_type,
+        category_id=new_category_id,
+        account_id=new_account_id,
+        to_account_id=new_to_account_id,
+        user_id=current_user.id,
+        db=db,
+    )
 
     # Resolve PATCH semantics into final values, then delegate to the service
     # layer (CODING_RULES §2.1). `items` stays None to keep existing items
@@ -257,12 +310,13 @@ def update_transaction(
     return update_transaction_internal(
         db=db,
         transaction=transaction,
-        type=body.type if body.type is not None else transaction.type,
+        type=new_type,
         total_amount=(
             body.total_amount if body.total_amount is not None else transaction.total_amount
         ),
-        category_id=body.category_id or transaction.category_id,
-        account_id=body.account_id or transaction.account_id,
+        category_id=new_category_id,
+        account_id=new_account_id,
+        to_account_id=new_to_account_id,
         note=body.note if body.note is not None else transaction.note,
         merchant=(
             body.merchant.strip() or None if body.merchant is not None else transaction.merchant

@@ -29,10 +29,8 @@ def auth(supabase_factory):
     return supabase_factory
 
 
-def _create_account(headers, name="Cash", initial="0.00", bank=None):
-    body = {"account_name": name, "initial_balance": initial}
-    if bank is not None:
-        body["bank_name"] = bank
+def _create_account(headers, name="Cash", initial="0.00", acct_type="cash"):
+    body = {"account_name": name, "initial_balance": initial, "account_type": acct_type}
     resp = client.post("/api/accounts", json=body, headers=headers)
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -68,12 +66,22 @@ def test_list_requires_auth():
 
 def test_create_account(auth):
     headers = auth()
-    acc = _create_account(headers, name="BCA", initial="50000.00", bank="BCA")
+    acc = _create_account(headers, name="BCA", initial="50000.00", acct_type="bank")
     assert acc["account_name"] == "BCA"
-    assert acc["bank_name"] == "BCA"
+    assert acc["account_type"] == "bank"
     assert acc["initial_balance"] == "50000.00"
     assert acc["current_balance"] == "50000.00"  # computed == initial (no tx yet)
     assert acc["is_active"] is True
+
+
+def test_create_account_type_validation(auth):
+    headers = auth()
+    resp = client.post(
+        "/api/accounts",
+        json={"account_name": "X", "account_type": "saham"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
 
 
 def test_create_account_validation(auth):
@@ -135,12 +143,12 @@ def test_update_account(auth):
     acc = _create_account(headers, name="Cash")
     resp = client.put(
         f"/api/accounts/{acc['id']}",
-        json={"account_name": "Wallet", "bank_name": "Mandiri"},
+        json={"account_name": "Wallet", "account_type": "ewallet"},
         headers=headers,
     )
     assert resp.status_code == 200
     assert resp.json()["account_name"] == "Wallet"
-    assert resp.json()["bank_name"] == "Mandiri"
+    assert resp.json()["account_type"] == "ewallet"
 
 
 def test_inactive_account_not_found_for_get_update(auth):
@@ -195,30 +203,23 @@ def test_deactivate_moves_balance_to_target(auth):
     assert resp.status_code == 200
     assert resp.json()["is_active"] is False
     # The deactivation response recomputes the source balance AFTER the
-    # balancing expense → drained to zero.
+    # balancing transfer → drained to zero.
     assert resp.json()["current_balance"] == "0.00"
 
-    # Target received the balance via a balancing "Transfer" income tx.
+    # Target received the balance via the balancing transfer (type='transfer').
     tgt = client.get(f"/api/accounts/{target['id']}", headers=headers).json()
     assert tgt["current_balance"] == "40000.00"
 
-    # Two balancing transactions with the seeded "Transfer" category exist:
-    # expense on source, income on target, note mentions the move.
+    # SATU transaksi transfer: saldo keluar dari sumber, masuk ke tujuan.
+    # Netral di laporan pemasukan/pengeluaran, tanpa kategori (migrasi 0008).
     txs = client.get("/api/transactions", headers=headers).json()["items"]
     transfer_txs = [t for t in txs if t["note"] and "Saldo dipindah" in t["note"]]
-    assert len(transfer_txs) == 2
-    types = {t["type"] for t in transfer_txs}
-    assert types == {"expense", "income"}
-
-    # The "Transfer" category is the GLOBAL seeded default (DATABASE.md §2.4),
-    # not a user-created duplicate: both transfer rows point at its IDs.
-    transfer_ids = {
-        c["id"]
-        for c in client.get("/api/categories", headers=headers).json()
-        if c["name"] == "Transfer" and c["is_default"] and c["user_id"] is None
-    }
-    assert len(transfer_ids) == 2  # expense + income
-    assert all(t["category_id"] in transfer_ids for t in transfer_txs)
+    assert len(transfer_txs) == 1
+    t = transfer_txs[0]
+    assert t["type"] == "transfer"
+    assert t["category_id"] is None
+    assert t["account_id"] == source["id"]
+    assert t["to_account_id"] == target["id"]
 
 
 def test_deactivate_target_must_differ(auth):

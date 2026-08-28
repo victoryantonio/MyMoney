@@ -1390,7 +1390,9 @@ class _CategoryBreakdownCard extends StatelessWidget {
       rows.add(
         _RecentTransactionRow(
           tx: tx,
-          categoryName: nameOf[tx.categoryId] ?? '—',
+          categoryName: tx.type == 'transfer'
+              ? 'Transfer'
+              : nameOf[tx.categoryId] ?? '—',
           onTap: () => onTransactionTap(tx),
         ),
       );
@@ -1601,9 +1603,12 @@ class _RecentTransactionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIncome = tx.type == 'income';
-    final color = isIncome
-        ? AppColors.income(context)
-        : AppColors.expense(context);
+    final isTransfer = tx.type == 'transfer';
+    final color = isTransfer
+        ? Theme.of(context).colorScheme.primary
+        : isIncome
+            ? AppColors.income(context)
+            : AppColors.expense(context);
     final subtitle = tx.merchant?.isNotEmpty == true
         ? tx.merchant!
         : tx.note?.isNotEmpty == true
@@ -1621,7 +1626,11 @@ class _RecentTransactionRow extends StatelessWidget {
               radius: 16,
               backgroundColor: color.withValues(alpha: 0.15),
               child: Icon(
-                isIncome ? Icons.arrow_upward : Icons.arrow_downward,
+                isTransfer
+                    ? Icons.swap_horiz
+                    : isIncome
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward,
                 size: 16,
                 color: color,
               ),
@@ -1653,7 +1662,7 @@ class _RecentTransactionRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              '${isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
+              '${isTransfer ? '' : isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: color,

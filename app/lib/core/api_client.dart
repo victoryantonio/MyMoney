@@ -203,6 +203,7 @@ class ApiClient {
     double? totalAmount,
     String? categoryId,
     String? accountId,
+    String? toAccountId,
     String? merchant,
     String? note,
     DateTime? transactionDate,
@@ -214,6 +215,7 @@ class ApiClient {
       if (totalAmount != null) data['total_amount'] = totalAmount;
       if (categoryId != null) data['category_id'] = categoryId;
       if (accountId != null) data['account_id'] = accountId;
+      if (toAccountId != null) data['to_account_id'] = toAccountId;
       if (merchant != null) data['merchant'] = merchant;
       if (note != null) data['note'] = note;
       if (transactionDate != null) {
@@ -295,7 +297,7 @@ class ApiClient {
 
   Future<AccountModel> createAccount({
     required String accountName,
-    String? bankName,
+    String accountType = 'cash',
     double initialBalance = 0,
   }) async {
     try {
@@ -303,7 +305,7 @@ class ApiClient {
         '/api/accounts',
         data: {
           'account_name': accountName,
-          'bank_name': bankName,
+          'account_type': accountType,
           'initial_balance': initialBalance,
         },
       );
@@ -316,12 +318,12 @@ class ApiClient {
   Future<AccountModel> updateAccount(
     String id, {
     String? accountName,
-    String? bankName,
+    String? accountType,
   }) async {
     try {
       final data = <String, dynamic>{};
       if (accountName != null) data['account_name'] = accountName;
-      if (bankName != null) data['bank_name'] = bankName;
+      if (accountType != null) data['account_type'] = accountType;
       final res = await _dio.put<Map<String, dynamic>>(
         '/api/accounts/$id',
         data: data,
@@ -380,11 +382,13 @@ class ApiClient {
   }
 
   /// POST /api/transactions — simpan transaksi (hasil review Scan Nota).
+  /// `categoryId` null untuk tipe transfer; `toAccountId` hanya untuk transfer.
   Future<void> createTransaction({
     required String type,
     required double totalAmount,
-    required String categoryId,
+    String? categoryId,
     required String accountId,
+    String? toAccountId,
     String? merchant,
     String? note,
     required DateTime transactionDate,
@@ -398,6 +402,7 @@ class ApiClient {
           'total_amount': totalAmount,
           'category_id': categoryId,
           'account_id': accountId,
+          'to_account_id': toAccountId,
           'merchant': merchant,
           'note': note,
           'transaction_date': transactionDate.toIso8601String(),

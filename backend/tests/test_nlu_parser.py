@@ -164,7 +164,11 @@ class TestParseTextToTransaction:
                                         "merchant": "Mixue",
                                         "note": "Beli es teh",
                                         "items": [
-                                            {"name": "Ice Cream Tofee (M)", "qty": 2, "price": 21000},
+                                            {
+                                                "name": "Ice Cream Tofee (M)",
+                                                "qty": 2,
+                                                "price": 21000,
+                                            },
                                             {"name": "Es Teh", "qty": 1, "price": 5000},
                                         ],
                                     }

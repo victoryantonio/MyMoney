@@ -13,6 +13,7 @@ import '../core/api_client.dart';
 import '../core/currency_controller.dart';
 import '../core/providers.dart';
 import '../core/theme_controller.dart';
+import 'accounts_screen.dart';
 import 'dashboard_screen.dart';
 import 'profile_screen.dart';
 import 'transaction_form_screen.dart';
@@ -57,6 +58,55 @@ class _MainShellState extends ConsumerState<MainShell> {
     return const SizedBox.shrink();
   }
 
+  /// FAB '+': wajib ada minimal SATU akun aktif sebelum input transaksi.
+  /// Jika belum ada akun → tolak + arahkan ke Account Management.
+  Future<void> _openTransactionForm(BuildContext context) async {
+    try {
+      final accounts = await _api.fetchAccounts();
+      if (!context.mounted) return;
+      if (accounts.isEmpty) {
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Belum ada akun'),
+            content: const Text(
+              'Buat akun terlebih dahulu (mis. Kas, E-Wallet, atau Bank) '
+              'sebelum mencatat transaksi.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Nanti saja'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Buat Akun'),
+              ),
+            ],
+          ),
+        );
+        if (go == true && context.mounted) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const AccountsScreen(),
+            ),
+          );
+        }
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => TransactionFormScreen(api: _api),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeController = ref.watch(themeControllerProvider);
@@ -72,11 +122,7 @@ class _MainShellState extends ConsumerState<MainShell> {
       floatingActionButton: FloatingActionButton(
         heroTag: 'global-add-transaction',
         tooltip: 'Tambah transaksi',
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => TransactionFormScreen(api: _api),
-          ),
-        ),
+        onPressed: () => _openTransactionForm(context),
         child: const Icon(Icons.add),
       ),
       bottomNavigationBar: NavigationBar(

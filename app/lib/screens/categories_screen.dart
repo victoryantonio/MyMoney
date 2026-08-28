@@ -1,6 +1,11 @@
 /// Management kategori (dari tab Profil) — setara v1 Kotlin
-/// `CategoryManagementScreen`. Kategori default global tidak bisa
-/// diedit/dihapus (backend menolak 403) — ditandai chip "Default".
+/// `CategoryManagementScreen`.
+///
+/// - Kategori milik user: bisa diedit & dihapus (soft-delete).
+/// - Default global: tidak bisa diedit, TAPI bisa dihapus per-user
+///   (backend membuat baris "shadow" — hanya user ini yang tidak
+///   melihatnya lagi; pengguna lain tetap melihat default).
+/// - Tipe Transfer tidak memakai kategori (lihat info di bawah daftar).
 library;
 
 import 'package:flutter/material.dart';
@@ -148,8 +153,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Hapus kategori?'),
         content: Text(
-          'Kategori "${category.name}" akan dinonaktifkan. '
-          'Transaksi lama tetap tersimpan.',
+          category.isDefault
+              ? 'Kategori default "${category.name}" hanya disembunyikan '
+                  'untuk kamu. Transaksi lama tetap tersimpan dan pengguna '
+                  'lain tetap melihat kategori ini.'
+              : 'Kategori "${category.name}" akan dinonaktifkan. '
+                  'Transaksi lama tetap tersimpan.',
         ),
         actions: [
           TextButton(
@@ -231,6 +240,36 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         _section(context, 'Pengeluaran', expenses, AppColors.expense(context)),
         const SizedBox(height: 16),
         _section(context, 'Pemasukan', incomes, AppColors.income(context)),
+        const SizedBox(height: 16),
+        Card(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.swap_horiz,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Transfer antar akun tidak memakai kategori — buka tombol '
+                    '+ lalu pilih tipe Transfer.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -282,15 +321,22 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (cats[i].isDefault)
+                      if (cats[i].isDefault) ...[
                         Chip(
                           label: const Text('Default'),
                           labelStyle: const TextStyle(fontSize: 11),
                           visualDensity: VisualDensity.compact,
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
-                        )
-                      else ...[
+                        ),
+                        // Default global: tidak bisa diedit, tapi bisa
+                        // disembunyikan untuk user ini (shadow di backend).
+                        IconButton(
+                          tooltip: 'Sembunyikan',
+                          icon: const Icon(Icons.delete_outline, size: 20),
+                          onPressed: () => _confirmDelete(cats[i]),
+                        ),
+                      ] else ...[
                         IconButton(
                           tooltip: 'Edit',
                           icon: const Icon(Icons.edit_outlined, size: 20),

@@ -44,7 +44,7 @@ class AccountModel {
   const AccountModel({
     required this.id,
     required this.accountName,
-    required this.bankName,
+    required this.accountType,
     required this.initialBalance,
     required this.currentBalance,
     required this.netBalance,
@@ -53,20 +53,23 @@ class AccountModel {
 
   final String id;
   final String accountName;
-  final String? bankName;
+  final String accountType; // 'cash' | 'ewallet' | 'bank'
   final double initialBalance;
   final double currentBalance;
   final double netBalance;
   final bool isActive;
 
-  String get label => bankName == null || bankName!.isEmpty
-      ? accountName
-      : '$accountName ($bankName)';
+  /// Label ramah: 'Cash', 'BCA · Bank', 'GoPay · E-Wallet', dst.
+  String get label {
+    const names = {'cash': 'Cash', 'ewallet': 'E-Wallet', 'bank': 'Bank'};
+    final t = names[accountType] ?? accountType;
+    return accountType == 'cash' ? accountName : '$accountName · $t';
+  }
 
   factory AccountModel.fromJson(Map<String, dynamic> json) => AccountModel(
         id: json['id'] as String,
         accountName: json['account_name'] as String,
-        bankName: json['bank_name'] as String?,
+        accountType: json['account_type'] as String? ?? 'cash',
         initialBalance: _toDouble(json['initial_balance']),
         currentBalance: _toDouble(json['current_balance']),
         netBalance: _toDouble(json['net_balance']),
@@ -173,6 +176,7 @@ class TransactionModel {
     required this.source,
     required this.transactionDate,
     required this.createdAt,
+    this.toAccountId,
     this.merchant,
     this.note,
     this.confidence,
@@ -181,10 +185,11 @@ class TransactionModel {
   });
 
   final String id;
-  final String type; // 'income' | 'expense'
+  final String type; // 'income' | 'expense' | 'transfer'
   final double totalAmount;
-  final String categoryId;
+  final String? categoryId; // null untuk transfer
   final String accountId;
+  final String? toAccountId; // hanya terisi saat type == 'transfer'
   final String? merchant;
   final String source;
   final String? note;
@@ -199,8 +204,9 @@ class TransactionModel {
         id: json['id'] as String,
         type: json['type'] as String,
         totalAmount: _toDouble(json['total_amount']),
-        categoryId: json['category_id'] as String,
+        categoryId: json['category_id'] as String?,
         accountId: json['account_id'] as String,
+        toAccountId: json['to_account_id'] as String?,
         merchant: json['merchant'] as String?,
         source: json['source'] as String? ?? 'app',
         note: json['note'] as String?,

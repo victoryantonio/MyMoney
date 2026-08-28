@@ -129,7 +129,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Hapus transaksi?'),
         content: Text(
-          'Transaksi "${_categoryNames[tx.categoryId] ?? tx.merchant ?? 'ini'}" '
+          'Transaksi "${_categoryNames[tx.categoryId] ?? (tx.type == 'transfer' ? 'Transfer' : tx.merchant ?? 'ini')}" '
           'sebesar ${formatRupiah(tx.totalAmount)} akan dihapus permanen.',
         ),
         actions: [
@@ -295,8 +295,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       ),
                     _TransactionTile(
                       tx: items[j],
-                      categoryName:
-                          _categoryNames[items[j].categoryId] ?? '—',
+                      categoryName: items[j].type == 'transfer'
+                          ? 'Transfer'
+                          : _categoryNames[items[j].categoryId] ?? '—',
                       accountLabel:
                           _accountLabels[items[j].accountId] ?? '',
                       onTap: () => _edit(items[j]),
@@ -331,14 +332,18 @@ class _TransactionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIncome = tx.type == 'income';
-    final color = isIncome
-        ? AppColors.income(context)
-        : AppColors.expense(context);
+    final isTransfer = tx.type == 'transfer';
+    final color = isTransfer
+        ? Theme.of(context).colorScheme.primary
+        : isIncome
+            ? AppColors.income(context)
+            : AppColors.expense(context);
     final title = tx.merchant?.isNotEmpty == true
         ? tx.merchant!
-        : categoryName;
+        : (isTransfer ? 'Transfer' : categoryName);
     final subtitle = [
-      if (tx.merchant?.isNotEmpty == true) categoryName,
+      if (tx.merchant?.isNotEmpty == true && !isTransfer) categoryName,
+      if (tx.merchant?.isNotEmpty == true && isTransfer) 'Transfer',
       if (accountLabel.isNotEmpty) accountLabel,
       if (tx.note?.isNotEmpty == true) tx.note!,
     ].join(' · ');
@@ -354,7 +359,11 @@ class _TransactionTile extends StatelessWidget {
               radius: 18,
               backgroundColor: color.withValues(alpha: 0.15),
               child: Icon(
-                isIncome ? Icons.arrow_upward : Icons.arrow_downward,
+                isTransfer
+                    ? Icons.swap_horiz
+                    : isIncome
+                        ? Icons.arrow_upward
+                        : Icons.arrow_downward,
                 size: 18,
                 color: color,
               ),
@@ -388,7 +397,7 @@ class _TransactionTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text(
-              '${isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
+              '${isTransfer ? '' : isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
               style: TextStyle(fontWeight: FontWeight.w700, color: color),
             ),
             const SizedBox(width: 4),
