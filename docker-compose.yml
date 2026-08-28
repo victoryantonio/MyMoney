@@ -4,8 +4,6 @@ services:
     mem_limit: 1.5g
     env_file:
       - .env
-    volumes:
-      - ./receipts:/app/receipts
     ports:
       - "8000:8000"
     restart: unless-stopped

@@ -13,8 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source
 COPY . .
 
-# Create receipts directory and set ownership
-RUN mkdir -p /app/receipts && chown -R appuser:appgroup /app
+# Set ownership
+RUN chown -R appuser:appgroup /app
 
 # Switch to non-root user
 USER appuser
