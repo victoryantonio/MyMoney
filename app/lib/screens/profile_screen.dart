@@ -194,7 +194,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _changeEmail() async {
-    final emailCtrl = TextEditingController(text: _info.email);
+    // Input dikosongkan — jangan pre-fill email lama (privasi, hindari
+    // user tidak sengaja mengirim ulang email yang sama).
+    final emailCtrl = TextEditingController();
     final requestedEmail = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
