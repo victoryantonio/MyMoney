@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config.dart';
+import 'core/currency_controller.dart';
 import 'core/notification_service.dart';
 import 'core/providers.dart';
 import 'core/theme_controller.dart';
@@ -13,6 +14,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final themeController = await ThemeController.load();
+  final currencyController = await CurrencyController.load();
 
   if (!AppConfig.isConfigured) {
     // Tanpa config: hanya hint setup (tidak ada network).
@@ -20,6 +22,7 @@ Future<void> main() async {
       ProviderScope(
         overrides: [
           themeControllerProvider.overrideWith((ref) => themeController),
+          currencyControllerProvider.overrideWith((ref) => currencyController),
         ],
         child: const MyMoneyApp(supabaseAvailable: false),
       ),
@@ -37,6 +40,7 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         themeControllerProvider.overrideWith((ref) => themeController),
+        currencyControllerProvider.overrideWith((ref) => currencyController),
       ],
       child: const MyMoneyApp(supabaseAvailable: true),
     ),
@@ -51,6 +55,9 @@ class MyMoneyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeControllerProvider).mode;
+    // Watch currency agar seluruh MaterialApp ikut rebuild saat mata uang
+    // diganti di Profil (semua format uang membaca CurrencyController.instance).
+    ref.watch(currencyControllerProvider);
     return MaterialApp(
       title: 'My Money',
       debugShowCheckedModeBanner: false,

@@ -12,6 +12,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/currency_controller.dart';
 import '../core/theme_controller.dart';
 import '../core/notification_service.dart';
 import 'accounts_screen.dart';
@@ -49,6 +50,7 @@ class ProfileScreen extends StatefulWidget {
     this.info,
     this.resendVerification,
     this.themeController,
+    this.currencyController,
   });
 
   final SupabaseClient supabase;
@@ -60,6 +62,9 @@ class ProfileScreen extends StatefulWidget {
 
   /// Kontrol tema; di-inject dari shell. Null (test) → bagian tema disembunyikan.
   final ThemeController? themeController;
+
+  /// Kontrol mata uang; di-inject dari shell. Null (test) → bagian disembunyikan.
+  final CurrencyController? currencyController;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -266,6 +271,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _pickCurrency() async {
+    final ctrl = widget.currencyController;
+    if (ctrl == null) return;
+    final scheme = Theme.of(context).colorScheme;
+    final selected = await showModalBottomSheet<Currency>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.only(bottom: 16),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Pilih Mata Uang',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            for (final currency in supportedCurrencies)
+              ListTile(
+                title: Text(currency.name),
+                subtitle: Text(currency.code),
+                trailing: currency.code == ctrl.currency.code
+                    ? Icon(Icons.check_circle, color: scheme.primary)
+                    : null,
+                onTap: () => Navigator.of(context).pop(currency),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) await ctrl.setCurrency(selected);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -274,6 +316,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ? info.displayName[0].toUpperCase()
         : '?';
     final themeController = widget.themeController;
+    final currencyController = widget.currencyController;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profil')),
@@ -469,6 +512,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // ── Mata uang (single currency, default Rupiah) ──────────────────
+          if (currencyController != null) ...[
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: theme.colorScheme.outlineVariant),
+              ),
+              child: ListTile(
+                leading: const Icon(Icons.attach_money),
+                title: const Text('Currency'),
+                subtitle: Text(
+                  '${currencyController.currency.symbol} · '
+                  '${currencyController.currency.name}',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _pickCurrency,
               ),
             ),
             const SizedBox(height: 16),

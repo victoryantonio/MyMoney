@@ -78,8 +78,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   Future<void> _load() async {
+    // Spinner layar penuh hanya saat belum ada data sama sekali. Refresh
+    // berikutnya (mis. ganti periode) berjalan diam-diam: konten tetap
+    // terlihat dan diperbarui di tempat — tanpa loading singkat yang
+    // mengganggu (fiks lag custom → This Month).
+    final hasData = _summary != null && _trend != null;
     setState(() {
-      _loading = true;
+      _loading = !hasData;
       _error = null;
       _selectedIndex = null;
     });
@@ -108,7 +113,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        // Refresh diam-diam gagal → pertahankan data lama, jangan ganti
+        // layar dengan error view yang menghilangkan konten.
+        if (!hasData) _error = e.message;
         _loading = false;
       });
     }
@@ -1342,16 +1349,53 @@ class _CategoryBreakdownCard extends StatelessWidget {
                 ),
               )
             else
-              for (final tx in filtered.take(5))
-                _RecentTransactionRow(
-                  tx: tx,
-                  categoryName: nameOf[tx.categoryId] ?? '—',
-                  onTap: () => onTransactionTap(tx),
-                ),
+              ..._recentRows(
+                context,
+                filtered.take(5).toList(),
+                nameOf,
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// Baris transaksi terbaru dikelompokkan per tanggal: header tanggal
+  /// ditampilkan saat tanggal berganti (mis. "Kamis, 27 Juli 2026").
+  List<Widget> _recentRows(
+    BuildContext context,
+    List<TransactionModel> txs,
+    Map<String, String> nameOf,
+  ) {
+    final rows = <Widget>[];
+    DateTime? lastDay;
+    for (final tx in txs) {
+      final d = tx.transactionDate;
+      final day = DateTime(d.year, d.month, d.day);
+      if (lastDay == null || day != lastDay) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: Text(
+              formatDateDetail(day),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+        );
+        lastDay = day;
+      }
+      rows.add(
+        _RecentTransactionRow(
+          tx: tx,
+          categoryName: nameOf[tx.categoryId] ?? '—',
+          onTap: () => onTransactionTap(tx),
+        ),
+      );
+    }
+    return rows;
   }
 
   List<Widget> _categoryRows(

@@ -343,17 +343,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               onPressed: _saving ? null : _openReceiptScanner,
               icon: const Icon(Icons.document_scanner_outlined),
             ),
-          IconButton(
-            tooltip: 'Simpan',
-            onPressed: _saving ? null : _save,
-            icon: _saving
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check),
-          ),
         ],
       ),
       body: SafeArea(
@@ -380,31 +369,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                 onSelectionChanged: _saving
                     ? null
                     : (s) => _changeType(s.first),
-              ),
-              const SizedBox(height: 16),
-
-              // ── Nominal (opsional bila transaksi tidak memakai item) ───────
-              TextFormField(
-                controller: _amountCtrl,
-                enabled: !_amountFromItems,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Nominal',
-                  prefixText: 'Rp ',
-                  helperText: _amountFromItems
-                      ? 'Otomatis dari total item'
-                      : null,
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: _formatAmountInput,
-                validator: (v) {
-                  if (_amountFromItems) return null;
-                  final n = double.tryParse((v ?? '').replaceAll('.', ''));
-                  if (n == null || n <= 0) return 'Nominal harus lebih dari 0';
-                  return null;
-                },
               ),
               const SizedBox(height: 16),
 
@@ -464,6 +428,31 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                   onEdit: (item) => _editItem(item, isNew: false),
                   onRemove: _removeItem,
                 ),
+              const SizedBox(height: 16),
+
+              // ── Nominal (opsional bila transaksi tidak memakai item) ───────
+              TextFormField(
+                controller: _amountCtrl,
+                enabled: !_amountFromItems,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Nominal',
+                  prefixText: '$currencySymbol ',
+                  helperText: _amountFromItems
+                      ? 'Otomatis dari total item'
+                      : null,
+                  border: const OutlineInputBorder(),
+                ),
+                onChanged: _formatAmountInput,
+                validator: (v) {
+                  if (_amountFromItems) return null;
+                  final n = double.tryParse((v ?? '').replaceAll('.', ''));
+                  if (n == null || n <= 0) return 'Nominal harus lebih dari 0';
+                  return null;
+                },
+              ),
               const SizedBox(height: 16),
 
               // ── Kategori & akun ───────────────────────────────────────────

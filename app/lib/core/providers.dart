@@ -7,11 +7,19 @@ library;
 
 import 'package:flutter_riverpod/legacy.dart' show ChangeNotifierProvider;
 
+import 'currency_controller.dart';
 import 'theme_controller.dart';
 
 final themeControllerProvider =
     ChangeNotifierProvider<ThemeController>((ref) {
   throw UnimplementedError(
     'themeControllerProvider harus di-override di main() sebelum runApp',
+  );
+});
+
+final currencyControllerProvider =
+    ChangeNotifierProvider<CurrencyController>((ref) {
+  throw UnimplementedError(
+    'currencyControllerProvider harus di-override di main() sebelum runApp',
   );
 });

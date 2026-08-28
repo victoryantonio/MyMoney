@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api_client.dart';
+import '../core/currency_controller.dart';
 import '../core/providers.dart';
 import '../core/theme_controller.dart';
 import 'dashboard_screen.dart';
@@ -32,7 +33,11 @@ class _MainShellState extends ConsumerState<MainShell> {
   final Set<int> _visitedTabs = {0};
   late final ApiClient _api = ApiClient.instance(widget.supabase);
 
-  Widget _tab(int index, ThemeController themeController) {
+  Widget _tab(
+    int index,
+    ThemeController themeController,
+    CurrencyController currencyController,
+  ) {
     if (!_visitedTabs.contains(index)) return const SizedBox.shrink();
     switch (index) {
       case 0:
@@ -46,6 +51,7 @@ class _MainShellState extends ConsumerState<MainShell> {
         return ProfileScreen(
           supabase: widget.supabase,
           themeController: themeController,
+          currencyController: currencyController,
         );
     }
     return const SizedBox.shrink();
@@ -54,11 +60,13 @@ class _MainShellState extends ConsumerState<MainShell> {
   @override
   Widget build(BuildContext context) {
     final themeController = ref.watch(themeControllerProvider);
+    final currencyController = ref.watch(currencyControllerProvider);
     return Scaffold(
       body: IndexedStack(
         index: _index,
         children: [
-          for (var i = 0; i < 3; i++) _tab(i, themeController),
+          for (var i = 0; i < 3; i++)
+            _tab(i, themeController, currencyController),
         ],
       ),
       floatingActionButton: FloatingActionButton(
