@@ -16,19 +16,21 @@
  */
 
 import http from "node:http";
+import dotenv from "dotenv";
 import { Telegraf } from "telegraf";
-import "dotenv/config";
+
+dotenv.config({ path: process.env.ENV_FILE ?? "../.env" });
 
 const PORT = Number(process.env.PORT ?? 3000);
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
-const BACKEND_URL = (process.env.APP_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+const BACKEND_URL = (process.env.APP_BASE_URL ?? "").replace(/\/$/, "");
 const BOT_SERVICE_TOKEN = process.env.BOT_SERVICE_TOKEN ?? "";
 const WEBHOOK_PATH = "/webhook";
 
-if (!BOT_TOKEN || !WEBHOOK_SECRET || !BOT_SERVICE_TOKEN) {
+if (!BOT_TOKEN || !WEBHOOK_SECRET || !BOT_SERVICE_TOKEN || !BACKEND_URL) {
   console.error(
-    "TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET / BOT_SERVICE_TOKEN must be set in the .env file",
+    "TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET / BOT_SERVICE_TOKEN / APP_BASE_URL must be set in the .env file",
   );
   process.exit(1);
 }

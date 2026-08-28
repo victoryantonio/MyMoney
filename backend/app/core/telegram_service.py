@@ -228,10 +228,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
 
         # Generate link token
         token = create_telegram_link_token(chat_id)
-        link_base_url = settings.app_base_url.rstrip("/")
-        if link_base_url.startswith(("http://localhost", "http://127.0.0.1")):
-            link_base_url = "https://api.mymoneyofficial.online"
-        link_url = f"{link_base_url}/api/telegram/link?token={token}"
+        link_url = f"{settings.app_base_url.rstrip('/')}/api/telegram/link?token={token}"
         return (
             "Welcome to MyMoney! 💸\n\n"
             "To use this bot, please link your Telegram account to your MyMoney account by clicking the link below and logging in with your MyMoney email & password:\n\n"
