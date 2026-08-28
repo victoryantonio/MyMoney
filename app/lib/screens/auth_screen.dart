@@ -106,6 +106,84 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  /// Kirim email reset password via Supabase Auth (`/auth/v1/recover`).
+  /// Hanya tersedia di mode login.
+  Future<void> _forgotPassword() async {
+    final emailCtrl = TextEditingController(text: _email.text.trim());
+    final email = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lupa password'),
+        content: TextField(
+          controller: emailCtrl,
+          autofocus: true,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            labelText: 'Email',
+            border: OutlineInputBorder(),
+            hintText: 'Masukkan email terdaftar',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = emailCtrl.text.trim();
+              if (value.isNotEmpty && value.contains('@')) {
+                Navigator.of(context).pop(value);
+              }
+            },
+            child: const Text('Kirim link reset'),
+          ),
+        ],
+      ),
+    );
+    emailCtrl.dispose();
+    if (email == null || !mounted) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+      _success = null;
+    });
+    try {
+      await _client.auth.resetPasswordForEmail(email);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _success = 'Link reset password terkirim ke $email. Cek inbox Anda.';
+      });
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } on http.ClientException {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error =
+            'Unable to connect to the server. Check your internet connection, then try again.';
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'The connection to the server timed out. Please try again.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'An unexpected error occurred. Please try again.';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,6 +247,15 @@ class _AuthScreenState extends State<AuthScreen> {
                     border: OutlineInputBorder(),
                   ),
                 ),
+                if (_isLogin) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _loading ? null : _forgotPassword,
+                      child: const Text('Lupa password?'),
+                    ),
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(
