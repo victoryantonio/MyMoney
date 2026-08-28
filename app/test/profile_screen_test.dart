@@ -46,7 +46,9 @@ void main() {
     ));
 
     expect(find.text('Budi'), findsOneWidget);
-    expect(find.text('budi@mail.com'), findsWidgets);
+    // Email di bawah nama disensor: 3 depan + ***** + 5 belakang.
+    expect(find.text('bud*****l.com'), findsOneWidget);
+    expect(find.text('budi@mail.com'), findsNothing);
     expect(find.text('Email belum diverifikasi'), findsOneWidget);
     expect(find.text('Kirim ulang email verifikasi'), findsOneWidget);
 

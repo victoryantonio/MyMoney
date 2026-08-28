@@ -43,6 +43,20 @@ class ProfileInfo {
   final bool emailVerified;
 }
 
+/// Sensor email: 3 karakter depan + `*****` + 5 karakter belakang.
+///
+/// Contoh: `demo@mymoney.dev` → `dem*****y.dev`. Email yang terlalu pendek
+/// (< 8 karakter) memakai pola aman 2+2 agar tetap tersensor tanpa duplikasi.
+String maskEmail(String email) {
+  final e = email.trim();
+  if (e.length < 8) {
+    if (e.length <= 2) return '*' * e.length;
+    return '${e.substring(0, 2)}${'*' * (e.length - 4)}'
+        '${e.substring(e.length - 2)}';
+  }
+  return '${e.substring(0, 3)}*****${e.substring(e.length - 5)}';
+}
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     super.key,
@@ -77,10 +91,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _message;
   bool _messageIsError = false;
 
+  /// Status verifikasi segar dari server (`getUser`). Null → pakai
+  /// `info.emailVerified` (cache sesi / inject test).
+  bool? _serverEmailVerified;
+
   @override
   void initState() {
     super.initState();
     _loadReminderState();
+    _refreshVerificationStatus();
+  }
+
+  /// Ambil status verifikasi terbaru dari server supaya benar-benar akurat
+  /// (bukan hanya snapshot sesi). Diam-diam: gagal → pakai cache sesi.
+  Future<void> _refreshVerificationStatus() async {
+    if (widget.info != null) return; // inject test → jangan panggil network.
+    try {
+      final response = await widget.supabase.auth.getUser();
+      final fresh = response.user?.emailConfirmedAt;
+      if (!mounted) return;
+      setState(() => _serverEmailVerified = fresh != null);
+    } catch (_) {
+      // Offline/error → biarkan status dari sesi cache.
+    }
   }
 
   Future<void> _loadReminderState() async {
@@ -312,6 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final info = _info;
+    final emailVerified = _serverEmailVerified ?? info.emailVerified;
     final initial = info.displayName.isNotEmpty
         ? info.displayName[0].toUpperCase()
         : '?';
@@ -346,7 +380,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       style: theme.textTheme.titleLarge,
                     ),
                     Text(
-                      info.email,
+                      maskEmail(info.email),
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -359,7 +393,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 16),
 
           // ── Warning email belum terverifikasi ────────────────────────────
-          if (!info.emailVerified) ...[
+          if (!emailVerified) ...[
             Card(
               color: theme.colorScheme.errorContainer,
               elevation: 0,
@@ -437,12 +471,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               children: [
                 ListTile(
-                  leading: const Icon(Icons.alternate_email),
-                  title: const Text('Email'),
-                  subtitle: Text(info.email),
-                ),
-                const Divider(height: 1),
-                ListTile(
                   leading: const Icon(Icons.edit_outlined),
                   title: const Text('Ganti email'),
                   subtitle: const Text('Memerlukan verifikasi OTP'),
@@ -452,16 +480,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const Divider(height: 1),
                 ListTile(
                   leading: Icon(
-                    info.emailVerified
+                    emailVerified
                         ? Icons.verified_outlined
                         : Icons.error_outline,
-                    color: info.emailVerified
+                    color: emailVerified
                         ? const Color(0xFF2E7D32)
                         : theme.colorScheme.error,
                   ),
                   title: const Text('Status email'),
                   subtitle: Text(
-                    info.emailVerified
+                    emailVerified
                         ? 'Terverifikasi'
                         : 'Belum diverifikasi',
                   ),
