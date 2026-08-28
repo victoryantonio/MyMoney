@@ -468,6 +468,11 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             children: [
               // ── Tipe ───────────────────────────────────────────────────────
               SegmentedButton<String>(
+                // Tanpa ikon di tiap segmen + tanpa ikon centang saat terpilih,
+                // supaya label 'Pengeluaran'/'Pemasukan'/'Transfer' tidak
+                // terpotong; expandedInsets membuat tombol memakai lebar penuh.
+                showSelectedIcon: false,
+                expandedInsets: EdgeInsets.zero,
                 segments: const [
                   ButtonSegment(
                     value: 'expense',
@@ -554,7 +559,10 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Dropdown hanya kode mata uang (mis. 'IDR'), lebih ramping
+                  // sehingga kolom Nominal (flex 3) mendapat porsi lebih besar.
                   Expanded(
+                    flex: 2,
                     child: DropdownButtonFormField<String>(
                       initialValue: _currency,
                       decoration: const InputDecoration(
@@ -565,7 +573,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                         for (final c in supportedCurrencies)
                           DropdownMenuItem(
                             value: c.code,
-                            child: Text('${c.code} · ${c.name}'),
+                            child: Text(c.code),
                           ),
                       ],
                       onChanged: _saving
@@ -577,6 +585,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
+                    flex: 3,
                     child: TextFormField(
                       controller: _amountCtrl,
                       enabled: !_amountFromItems,

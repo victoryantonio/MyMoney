@@ -95,7 +95,7 @@ def create_category(
     if _find_visible_duplicate(db, current_user.id, name, body.type) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Category '{name}' already exists",
+            detail="Kategori sudah ada",
         )
 
     category = Category(
@@ -150,7 +150,7 @@ def update_category(
     if dup is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Category '{new_name}' already exists",
+            detail="Kategori sudah ada",
         )
 
     old_value = {"name": category.name, "type": category.type}

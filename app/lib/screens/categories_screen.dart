@@ -83,6 +83,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 ),
                 const SizedBox(height: 16),
                 SegmentedButton<String>(
+                  // Tanpa ikon centang saat terpilih supaya label
+                  // 'Pengeluaran'/'Pemasukan' tidak terpotong.
+                  showSelectedIcon: false,
+                  expandedInsets: EdgeInsets.zero,
                   segments: const [
                     ButtonSegment(
                       value: 'expense',

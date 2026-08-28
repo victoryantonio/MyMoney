@@ -432,7 +432,16 @@ class ApiClient {
       return 'Tidak dapat terhubung ke server (${AppConfig.appBaseUrl})';
     }
     if (status == 401) return 'Sesi berakhir — silakan login ulang';
-    if (status != null) return 'Server error ($status)';
+    // Ambil pesan 'detail' yang dikirim backend (FastAPI) agar tampil ramah,
+    // mis. "Kategori sudah ada" alih-alih "Server error (409)".
+    if (status != null) {
+      final data = e.response?.data;
+      if (data is Map && data['detail'] is String) {
+        final detail = (data['detail'] as String).trim();
+        if (detail.isNotEmpty) return detail;
+      }
+      return 'Server error ($status)';
+    }
     return e.message ?? 'Network error';
   }
 }
