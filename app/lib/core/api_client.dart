@@ -146,6 +146,7 @@ class ApiClient {
   // ── Transaksi (list + CRUD) ────────────────────────────────────────────────
 
   /// GET /api/transactions — keyset pagination (`cursor` = next_cursor).
+  /// `sort` (newest|oldest|largest|smallest) disort server-side.
   /// `dateFrom`/`dateTo` (ISO-8601, opsional) membatasi rentang tanggal.
   Future<TransactionListResult> fetchTransactions({
     String? cursor,
@@ -154,6 +155,7 @@ class ApiClient {
     String? accountId,
     String? dateFrom,
     String? dateTo,
+    String? sort,
   }) async {
     final query = <String, dynamic>{};
     if (cursor != null) query['cursor'] = cursor;
@@ -162,6 +164,7 @@ class ApiClient {
     if (accountId != null) query['account_id'] = accountId;
     if (dateFrom != null) query['date_from'] = dateFrom;
     if (dateTo != null) query['date_to'] = dateTo;
+    if (sort != null) query['sort'] = sort;
     final data = await _get('/api/transactions', query);
     return TransactionListResult.fromJson(data);
   }
@@ -173,6 +176,7 @@ class ApiClient {
     String? type,
     String? categoryId,
     String? accountId,
+    String? sort,
     int maxItems = 2000,
   }) async {
     final all = <TransactionModel>[];
@@ -183,6 +187,7 @@ class ApiClient {
         type: type,
         categoryId: categoryId,
         accountId: accountId,
+        sort: sort,
       );
       all.addAll(page.items);
       cursor = page.nextCursor;

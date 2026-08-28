@@ -12,7 +12,14 @@ import '../core/api_client.dart';
 import '../core/app_colors.dart';
 import '../core/format.dart';
 import '../models/transaction_models.dart';
-import '../widgets/transaction_filters.dart';
+import '../widgets/transaction_filters.dart'
+    show
+        TransactionSort,
+        TransactionSortLabel,
+        categoryTypeLabel,
+        filterTransactions,
+        showTransactionFilterSheet,
+        sortTransactions;
 import 'transaction_form_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -41,6 +48,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Map<String, String> _categoryNames = {};
   Map<String, String> _accountLabels = {};
+
+  // Label kategori untuk chip filter aktif — nama sama tapi beda tipe
+  // (mis. "Other" expense vs income) diberi akhiran tipe agar tidak ambigu.
+  Map<String, String> _categoryLabels = {};
 
   // Filter & sortir (client-side, seperti filter akun di dashboard).
   List<AccountModel> _accounts = [];
@@ -93,7 +104,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       final results = await Future.wait<Object?>([
         _api.fetchCategories(),
         _api.fetchAccounts(),
-        _needsAllData ? _api.fetchAllTransactions() : _api.fetchTransactions(),
+        _needsAllData
+            ? _api.fetchAllTransactions(sort: _sort.apiValue)
+            : _api.fetchTransactions(sort: _sort.apiValue),
       ]);
       if (!mounted) return;
       final categories = results[0] as List<CategoryModel>;
@@ -101,6 +114,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       setState(() {
         _categoryNames = {for (final c in categories) c.id: c.name};
         _accountLabels = {for (final a in accounts) a.id: a.label};
+        // Nama kategori yang muncul lebih dari sekali (beda tipe) diberi
+        // akhiran "· Pengeluaran"/"· Pemasukan" di chip filter aktif.
+        final nameCounts = <String, int>{};
+        for (final c in categories) {
+          nameCounts[c.name] = (nameCounts[c.name] ?? 0) + 1;
+        }
+        _categoryLabels = {
+          for (final c in categories)
+            c.id: nameCounts[c.name]! > 1
+                ? '${c.name} · ${categoryTypeLabel(c.type)}'
+                : c.name,
+        };
         _categories = categories;
         _accounts = accounts;
         if (_needsAllData) {
@@ -138,18 +163,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
-  /// Perlu memuat SEMUA transaksi: ada filter akun/kategori, atau sortir
-  /// bukan tanggal-terbaru (default server) yang butuh data lintas halaman.
+  /// Perlu memuat SEMUA transaksi: hanya saat ada filter akun/kategori
+  /// (multi-checklist yang tidak bisa diwakili satu query param).
+  /// Sortir kini ditangani server-side (`sort=`), jadi mengubah urutan tidak
+  /// lagi memicu pemuatan semua data (perbaikan lag 1 detik).
   bool get _needsAllData =>
-      _selectedAccountIds.isNotEmpty ||
-      _selectedCategoryIds.isNotEmpty ||
-      _sort != TransactionSort.newest;
+      _selectedAccountIds.isNotEmpty || _selectedCategoryIds.isNotEmpty;
 
   Future<void> _loadMore() async {
     if (_loadingMore || _nextCursor == null || _allLoaded) return;
     setState(() => _loadingMore = true);
     try {
-      final page = await _api.fetchTransactions(cursor: _nextCursor);
+      final page = await _api.fetchTransactions(
+        cursor: _nextCursor,
+        sort: _sort.apiValue,
+      );
       if (!mounted) return;
       setState(() {
         _transactions.addAll(page.items);
@@ -195,22 +223,27 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   void _changeSort(TransactionSort sort) {
     if (sort == _sort) return;
     setState(() => _sort = sort);
-    // Sortir non-default butuh semua data (bisa jadi sebelumnya paginated).
-    if (_needsAllData && !_allLoaded) {
-      _load();
-    } else if (_allLoaded) {
+    if (_allLoaded) {
+      // Filter aktif → seluruh data sudah dimuat; urutkan ulang di klien
+      // (instan, tanpa request tambahan). Hitung dulu ke variabel lokal,
+      // baru timpa list — mencegah bug list kosong akibat cascade clear
+      // yang membaca list setelah dikosongkan.
+      final sorted = sortTransactions(
+        filterTransactions(
+          _transactions,
+          accountIds: _selectedAccountIds,
+          categoryIds: _selectedCategoryIds,
+        ),
+        _sort,
+      );
       setState(() {
         _transactions
           ..clear()
-          ..addAll(sortTransactions(
-            filterTransactions(
-              _transactions,
-              accountIds: _selectedAccountIds,
-              categoryIds: _selectedCategoryIds,
-            ),
-            _sort,
-          ));
+          ..addAll(sorted);
       });
+    } else {
+      // Sortir server-side: muat ulang halaman pertama dengan urutan baru.
+      _load();
     }
   }
 
@@ -515,9 +548,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             },
           ),
       for (final id in _selectedCategoryIds)
-        if (_categoryNames[id] != null)
+        if (_categoryLabels[id] != null)
           InputChip(
-            label: Text(_categoryNames[id]!),
+            label: Text(_categoryLabels[id]!),
             avatar:
                 Icon(Icons.category_outlined, size: 16, color: scheme.onSurfaceVariant),
             onDeleted: () {

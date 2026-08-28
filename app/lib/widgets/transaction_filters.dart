@@ -22,6 +22,14 @@ extension TransactionSortLabel on TransactionSort {
         TransactionSort.largest => 'Nominal terbesar',
         TransactionSort.smallest => 'Nominal terkecil',
       };
+
+  /// Nilai query param `sort` untuk backend (server-side sorting).
+  String get apiValue => switch (this) {
+        TransactionSort.newest => 'newest',
+        TransactionSort.oldest => 'oldest',
+        TransactionSort.largest => 'largest',
+        TransactionSort.smallest => 'smallest',
+      };
 }
 
 /// Hasil pilihan filter dari bottom sheet.
@@ -76,6 +84,84 @@ List<TransactionModel> filterTransactions(
         .toList();
   }
   return result;
+}
+
+// ── Grup pohon untuk filter (akun per tipe, kategori per tipe) ──────────────
+
+/// Urutan tampil grup akun: Cash → Bank → E-Wallet.
+const accountTypeOrder = ['cash', 'bank', 'ewallet'];
+
+/// Urutan tampil grup kategori: Pengeluaran → Pemasukan.
+const categoryTypeOrder = ['expense', 'income'];
+
+String accountTypeLabel(String type) => switch (type) {
+      'cash' => 'Cash',
+      'bank' => 'Bank',
+      'ewallet' => 'E-Wallet',
+      _ => type,
+    };
+
+String categoryTypeLabel(String type) => switch (type) {
+      'expense' => 'Pengeluaran',
+      'income' => 'Pemasukan',
+      _ => type,
+    };
+
+IconData accountTypeIcon(String type) => switch (type) {
+      'cash' => Icons.payments_outlined,
+      'bank' => Icons.account_balance_outlined,
+      'ewallet' => Icons.phone_android_outlined,
+      _ => Icons.account_balance_wallet_outlined,
+    };
+
+IconData categoryTypeIcon(String type) => switch (type) {
+      'expense' => Icons.arrow_downward,
+      'income' => Icons.arrow_upward,
+      _ => Icons.category_outlined,
+    };
+
+/// Kelompokkan akun per tipe (Cash → Bank → E-Wallet), nama ascending.
+/// Hanya tipe yang punya data yang disertakan.
+Map<String, List<AccountModel>> groupAccountsByType(
+  List<AccountModel> accounts,
+) {
+  final groups = <String, List<AccountModel>>{
+    for (final type in accountTypeOrder) type: <AccountModel>[],
+  };
+  for (final account in accounts) {
+    groups.putIfAbsent(account.accountType, () => []).add(account);
+  }
+  for (final list in groups.values) {
+    list.sort((a, b) => a.accountName
+        .toLowerCase()
+        .compareTo(b.accountName.toLowerCase()));
+  }
+  return {
+    for (final type in accountTypeOrder)
+      if (groups[type]!.isNotEmpty) type: groups[type]!,
+  };
+}
+
+/// Kelompokkan kategori per tipe (Pengeluaran → Pemasukan), nama ascending.
+/// Kategori dengan nama sama tapi tipe beda (mis. "Other" expense vs income)
+/// kini terpisah jelas di grupnya masing-masing.
+Map<String, List<CategoryModel>> groupCategoriesByType(
+  List<CategoryModel> categories,
+) {
+  final groups = <String, List<CategoryModel>>{
+    for (final type in categoryTypeOrder) type: <CategoryModel>[],
+  };
+  for (final category in categories) {
+    groups.putIfAbsent(category.type, () => []).add(category);
+  }
+  for (final list in groups.values) {
+    list.sort((a, b) =>
+        a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+  return {
+    for (final type in categoryTypeOrder)
+      if (groups[type]!.isNotEmpty) type: groups[type]!,
+  };
 }
 
 /// Tampilkan bottom sheet filter (akun + kategori, multi-checklist).
@@ -145,31 +231,71 @@ Future<TransactionFilterResult?> showTransactionFilterSheet({
                     controller: scrollController,
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                     children: [
-                      _FilterSection(
-                        icon: Icons.account_balance_wallet_outlined,
-                        title: 'Akun',
-                        children: [
-                          for (final account in accounts)
-                            FilterChip(
-                              label: Text(account.label),
-                              selected: selectedAccounts.contains(account.id),
-                              onSelected: (_) => toggleAccount(account.id),
+                      Text(
+                        'Pilih grup untuk memilih semua, atau centang per item.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
-                        ],
                       ),
-                      const SizedBox(height: 20),
-                      _FilterSection(
-                        icon: Icons.category_outlined,
-                        title: 'Kategori',
-                        children: [
-                          for (final category in categories)
-                            FilterChip(
-                              label: Text(category.name),
-                              selected: selectedCategories.contains(category.id),
-                              onSelected: (_) => toggleCategory(category.id),
-                            ),
-                        ],
-                      ),
+                      const SizedBox(height: 12),
+                      for (final entry in groupAccountsByType(accounts).entries) ...[
+                        _FilterGroup(
+                          icon: accountTypeIcon(entry.key),
+                          title: accountTypeLabel(entry.key),
+                          selectedCount: entry.value
+                              .where((a) => selectedAccounts.contains(a.id))
+                              .length,
+                          totalCount: entry.value.length,
+                          onToggleAll: () => setSheetState(() {
+                            final ids = entry.value.map((a) => a.id).toList();
+                            final allSelected = ids.every(selectedAccounts.contains);
+                            if (allSelected) {
+                              selectedAccounts.removeAll(ids);
+                            } else {
+                              selectedAccounts.addAll(ids);
+                            }
+                          }),
+                          children: [
+                            for (final account in entry.value)
+                              FilterChip(
+                                // Grup sudah menunjukkan tipe (Cash/Bank/
+                                // E-Wallet) di header → cukup nama akun.
+                                label: Text(account.accountName),
+                                selected: selectedAccounts.contains(account.id),
+                                onSelected: (_) => toggleAccount(account.id),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                      for (final entry in groupCategoriesByType(categories).entries) ...[
+                        _FilterGroup(
+                          icon: categoryTypeIcon(entry.key),
+                          title: categoryTypeLabel(entry.key),
+                          selectedCount: entry.value
+                              .where((c) => selectedCategories.contains(c.id))
+                              .length,
+                          totalCount: entry.value.length,
+                          onToggleAll: () => setSheetState(() {
+                            final ids = entry.value.map((c) => c.id).toList();
+                            final allSelected = ids.every(selectedCategories.contains);
+                            if (allSelected) {
+                              selectedCategories.removeAll(ids);
+                            } else {
+                              selectedCategories.addAll(ids);
+                            }
+                          }),
+                          children: [
+                            for (final category in entry.value)
+                              FilterChip(
+                                label: Text(category.name),
+                                selected: selectedCategories.contains(category.id),
+                                onSelected: (_) => toggleCategory(category.id),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                      ],
                     ],
                   ),
                 ),
@@ -197,40 +323,64 @@ Future<TransactionFilterResult?> showTransactionFilterSheet({
   );
 }
 
-class _FilterSection extends StatelessWidget {
-  const _FilterSection({
+/// Satu grup pohon di bottom sheet filter: header (icon + nama + checkbox
+/// select-all dengan indikator sebagian terpilih) + daftar chip item.
+class _FilterGroup extends StatelessWidget {
+  const _FilterGroup({
     required this.icon,
     required this.title,
+    required this.selectedCount,
+    required this.totalCount,
+    required this.onToggleAll,
     required this.children,
   });
 
   final IconData icon;
   final String title;
+  final int selectedCount;
+  final int totalCount;
+  final VoidCallback onToggleAll;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final checked = selectedCount > 0 && selectedCount == totalCount;
+    final indeterminate = selectedCount > 0 && selectedCount < totalCount;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+        InkWell(
+          onTap: onToggleAll,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(
+                  totalCount > 0 ? '$selectedCount/$totalCount' : '',
+                  style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+                Checkbox(
+                  value: indeterminate ? null : checked,
+                  tristate: true,
+                  onChanged: (_) => onToggleAll(),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              title,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ],
+          ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -238,9 +388,9 @@ class _FilterSection extends StatelessWidget {
               ? [
                   Text(
                     'Belum ada data',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ]
               : children,

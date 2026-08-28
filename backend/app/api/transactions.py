@@ -1,22 +1,24 @@
 """
 Transactions API routes.
 
-GET    /api/transactions         — list (keyset pagination, newest first)
+GET    /api/transactions         — list (keyset pagination; sortable)
 POST   /api/transactions         — create a manual transaction (with optional items)
 GET    /api/transactions/{id}    — get a single transaction with its items
 PUT    /api/transactions/{id}    — update a transaction (replaces items if provided)
 DELETE /api/transactions/{id}    — hard-delete a transaction
 
 Keyset (cursor-based) pagination — DATABASE.md §3.2:
-  Rows are ordered by (transaction_date DESC, id DESC); the cursor encodes
-  the last seen row as "{transaction_date_iso}|{id}". The next page fetches
-  rows strictly before that keyset, so inserts don't shift page boundaries
-  and ties on transaction_date are broken by id (no skips/duplicates).
-  Legacy cursors (a bare ISO timestamp) are still accepted.
+  The default sort is (transaction_date DESC, id DESC); the cursor encodes
+  the last seen row as "{transaction_date_iso}|{id}". For amount sorts the
+  cursor is "{total_amount}|{id}". The next page fetches rows strictly
+  before/after that keyset, so inserts don't shift page boundaries and ties
+  on the primary sort key are broken by id (no skips/duplicates).
+  Legacy cursors (a bare ISO timestamp) are still accepted for date sorts.
 """
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -45,34 +47,75 @@ router = APIRouter(prefix="/api/transactions", tags=["Transactions"])
 
 _PAGE_SIZE = 20
 
+_SORT_MODES = Literal["newest", "oldest", "largest", "smallest"]
 
-def _encode_cursor(tx: Transaction) -> str:
-    """Encode the last seen row's keyset as '{iso_date}|{id}'."""
+# Stable keyset ordering per sort mode: primary key desc/asc, then id as
+# tie-breaker. Must stay in sync with _encode_cursor / _apply_cursor.
+_SORT_ORDER = {
+    "newest": (Transaction.transaction_date.desc(), Transaction.id.desc()),
+    "oldest": (Transaction.transaction_date.asc(), Transaction.id.asc()),
+    "largest": (Transaction.total_amount.desc(), Transaction.id.desc()),
+    "smallest": (Transaction.total_amount.asc(), Transaction.id.asc()),
+}
+
+
+def _encode_cursor(tx: Transaction, sort: _SORT_MODES = "newest") -> str:
+    """
+    Encode the last seen row's keyset as '{sort_key}|{id}'.
+
+    - date sorts (newest/oldest): '{ISO transaction_date}|{id}'
+    - amount sorts (largest/smallest): '{total_amount}|{id}'
+    """
+    if sort in ("largest", "smallest"):
+        return f"{tx.total_amount}|{tx.id}"
     return f"{tx.transaction_date.isoformat()}|{tx.id}"
 
 
-def _apply_cursor(stmt, cursor: str | None):
+def _apply_cursor(stmt, cursor: str | None, sort: _SORT_MODES = "newest"):
     """
-    Apply the keyset filter (transaction_date, id) < (cursor_date, cursor_id)
-    — matching the ORDER BY so pagination is stable on ties (DATABASE.md §3.2).
+    Apply the keyset filter matching the requested ORDER BY so pagination is
+    stable on ties (DATABASE.md §3.2):
 
-    Legacy cursors (a bare ISO timestamp, no '|') fall back to the old
-    transaction_date <= ts behaviour.
+    - newest:  (transaction_date, id) < (cursor_date, cursor_id)
+    - oldest:  (transaction_date, id) > (cursor_date, cursor_id)
+    - largest: (total_amount, id) < (cursor_amount, cursor_id)
+    - smallest:(total_amount, id) > (cursor_amount, cursor_id)
+
+    Legacy cursors (a bare ISO timestamp, no '|') are accepted only for date
+    sorts (transaction_date <= ts); for amount sorts a mismatched cursor is
+    silently ignored so the client restarts from the beginning.
     """
     if not cursor:
         return stmt
     parts = cursor.split("|")
     try:
+        if sort in ("largest", "smallest"):
+            if len(parts) != 2:
+                return stmt  # legacy date-only cursor is meaningless here
+            cursor_amount = Decimal(parts[0])
+            cursor_id = uuid.UUID(parts[1])
+            if sort == "largest":
+                return stmt.where(
+                    tuple_(Transaction.total_amount, Transaction.id) < (cursor_amount, cursor_id)
+                )
+            return stmt.where(
+                tuple_(Transaction.total_amount, Transaction.id) > (cursor_amount, cursor_id)
+            )
         cursor_dt = datetime.fromisoformat(parts[0])
         if len(parts) == 2:
             cursor_id = uuid.UUID(parts[1])
+            if sort == "oldest":
+                return stmt.where(
+                    tuple_(Transaction.transaction_date, Transaction.id) > (cursor_dt, cursor_id)
+                )
             return stmt.where(
                 tuple_(Transaction.transaction_date, Transaction.id) < (cursor_dt, cursor_id)
             )
         # Legacy: timestamp-only cursor.
         return stmt.where(Transaction.transaction_date <= cursor_dt)
-    except (ValueError, AttributeError):
+    except (ValueError, TypeError, AttributeError, ArithmeticError):
         # Invalid cursor is silently ignored — returns from beginning.
+        # ArithmeticError covers decimal.InvalidOperation (Decimal('abc')).
         return stmt
 
 
@@ -157,7 +200,12 @@ def _verify_category_and_account(
 def list_transactions(
     cursor: str | None = Query(
         default=None,
-        description="Keyset of last seen item: '{ISO transaction_date}|{id}'",
+        description="Keyset of last seen item: '{ISO transaction_date}|{id}' "
+        "(date sorts) or '{total_amount}|{id}' (amount sorts)",
+    ),
+    sort: _SORT_MODES = Query(
+        default="newest",
+        description="Sort order: newest|oldest|largest|smallest",
     ),
     type: Literal["income", "expense"] | None = Query(default=None),
     category_id: uuid.UUID | None = Query(default=None),
@@ -174,9 +222,10 @@ def list_transactions(
     db: Session = Depends(get_db),
 ) -> TransactionListResponse:
     """
-    List transactions newest-first with keyset pagination
-    ((transaction_date, id) — DATABASE.md §3.2).
-    Supports optional filtering by type, category, account, and date range.
+    List transactions with keyset pagination and server-side sorting
+    (DATABASE.md §3.2). Supports optional filtering by type, category,
+    account, and date range. `sort` selects the stable ordering:
+    newest/oldest (by transaction_date) or largest/smallest (by total_amount).
     """
     # Count total for UI (runs before cursor filter)
     count_stmt = select(func.count()).where(Transaction.user_id == current_user.id)
@@ -192,12 +241,12 @@ def list_transactions(
         count_stmt = count_stmt.where(Transaction.transaction_date <= date_to)
     total_count = db.scalar(count_stmt) or 0
 
-    # Main query — keyset order: (transaction_date DESC, id DESC)
+    # Main query — keyset order per sort (see _SORT_ORDER)
     stmt = (
         select(Transaction)
         .where(Transaction.user_id == current_user.id)
         .options(selectinload(Transaction.items))
-        .order_by(Transaction.transaction_date.desc(), Transaction.id.desc())
+        .order_by(*_SORT_ORDER[sort])
         .limit(_PAGE_SIZE + 1)  # fetch one extra to determine if there's a next page
     )
 
@@ -212,14 +261,16 @@ def list_transactions(
     if date_to:
         stmt = stmt.where(Transaction.transaction_date <= date_to)
 
-    stmt = _apply_cursor(stmt, cursor)
+    stmt = _apply_cursor(stmt, cursor, sort)
 
     rows = list(db.scalars(stmt))
 
     has_next = len(rows) > _PAGE_SIZE
     page_items = rows[:_PAGE_SIZE]
 
-    next_cursor = _encode_cursor(page_items[-1]) if has_next and page_items else None
+    next_cursor = (
+        _encode_cursor(page_items[-1], sort) if has_next and page_items else None
+    )
 
     return TransactionListResponse(
         items=page_items,
