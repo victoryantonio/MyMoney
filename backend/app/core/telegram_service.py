@@ -72,14 +72,17 @@ def _format_report(summary: ReportSummaryResponse, label: str) -> str:
 
 async def _download_telegram_file(file_id: str) -> bytes | None:
     """Download a Telegram file (by file_id) as raw bytes via the Bot API."""
-    base = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    api_base = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
+    file_base = f"https://api.telegram.org/file/bot{settings.telegram_bot_token}"
+    timeout = httpx.Timeout(connect=15.0, read=90.0, write=30.0, pool=15.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
-            resp = await client.get(f"{base}/getFile", params={"file_id": file_id})
+            resp = await client.get(f"{api_base}/getFile", params={"file_id": file_id})
             resp.raise_for_status()
             data = resp.json()
             file_path = data["result"]["file_path"]
-            file_resp = await client.get(f"{base}/{file_path}")
+            # Telegram uses a separate /file/bot endpoint for binary content.
+            file_resp = await client.get(f"{file_base}/{file_path}")
             file_resp.raise_for_status()
             return file_resp.content
         except Exception as e:  # noqa: BLE001 — gateway must degrade gracefully
@@ -170,7 +173,7 @@ async def _handle_photo_message(db: Session, message: dict[str, Any], chat_id: i
     else:
         transaction_date = datetime.now(tz)
 
-    total = sum(item.qty * item.price for item in parsed.items)
+    total = sum(item.line_total or item.qty * item.price for item in parsed.items)
 
     tx = create_transaction_internal(
         db=db,
@@ -304,7 +307,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
 
         items = [item.model_dump() for item in parsed.items] or None
         total = (
-            Decimal(str(sum(item.qty * item.price for item in parsed.items)))
+            Decimal(str(sum(item.line_total or item.qty * item.price for item in parsed.items)))
             if items
             else parsed.amount
         )
@@ -385,7 +388,7 @@ async def process_telegram_update(db: Session, update: dict[str, Any]) -> str | 
     # Multi-item: total = sum of line totals; single amount used otherwise.
     items = [item.model_dump() for item in parsed.items] or None
     total = (
-        Decimal(str(sum(item.qty * item.price for item in parsed.items)))
+        Decimal(str(sum(item.line_total or item.qty * item.price for item in parsed.items)))
         if items
         else parsed.amount
     )

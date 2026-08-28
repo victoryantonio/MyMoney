@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # ── Supabase (v2) ─────────────────────────────────────────────────────────
     supabase_url: str = ""
     supabase_anon_key: str = ""
-    supabase_service_role_key: str = ""  # backend-only; NEVER in clients
+    supabase_service_role_key: str = ""  # backend-only; NEVERa in clients
     supabase_jwt_secret: str = ""  # fallback only; v2 verifies via JWKS RS256
     supabase_storage_bucket_receipts: str = "receipts"
 

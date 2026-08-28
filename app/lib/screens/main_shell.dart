@@ -1,7 +1,7 @@
 /// Shell utama setelah login: bottom navigation 4 tab.
 ///
-/// Setara v1 Kotlin `MainScreen.kt` — Dashboard / Transaksi / Notifikasi /
-/// Profil. Setiap tab punya Scaffold sendiri (AppBar + FAB masing-masing);
+/// Setara v1 Kotlin `MainScreen.kt` — Dashboard / Transaksi / Profil.
+/// Setiap tab punya Scaffold sendiri;
 /// IndexedStack menjaga state setiap tab saat berpindah.
 library;
 
@@ -9,11 +9,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/api_client.dart';
 import '../core/providers.dart';
 import '../core/theme_controller.dart';
 import 'dashboard_screen.dart';
-import 'notifications_screen.dart';
 import 'profile_screen.dart';
+import 'transaction_form_screen.dart';
 import 'transactions_screen.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -29,6 +30,7 @@ class _MainShellState extends ConsumerState<MainShell> {
   int _index = 0;
   int _dashboardRefreshToken = 0;
   final Set<int> _visitedTabs = {0};
+  late final ApiClient _api = ApiClient.instance(widget.supabase);
 
   Widget _tab(int index, ThemeController themeController) {
     if (!_visitedTabs.contains(index)) return const SizedBox.shrink();
@@ -41,8 +43,6 @@ class _MainShellState extends ConsumerState<MainShell> {
       case 1:
         return const TransactionsScreen();
       case 2:
-        return const NotificationsScreen();
-      case 3:
         return ProfileScreen(
           supabase: widget.supabase,
           themeController: themeController,
@@ -58,8 +58,18 @@ class _MainShellState extends ConsumerState<MainShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          for (var i = 0; i < 4; i++) _tab(i, themeController),
+          for (var i = 0; i < 3; i++) _tab(i, themeController),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'global-add-transaction',
+        tooltip: 'Tambah transaksi',
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => TransactionFormScreen(api: _api),
+          ),
+        ),
+        child: const Icon(Icons.add),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
@@ -78,11 +88,6 @@ class _MainShellState extends ConsumerState<MainShell> {
             icon: Icon(Icons.receipt_long_outlined),
             selectedIcon: Icon(Icons.receipt_long),
             label: 'Transaksi',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.notifications_outlined),
-            selectedIcon: Icon(Icons.notifications),
-            label: 'Notifikasi',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

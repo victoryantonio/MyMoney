@@ -74,12 +74,40 @@ class MyMoneyApp extends ConsumerWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _checkingSession = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshSession();
+  }
+
+  Future<void> _refreshSession() async {
+    try {
+      final client = Supabase.instance.client;
+      if (client.auth.currentSession != null) {
+        await client.auth.refreshSession();
+      }
+    } catch (_) {
+      // AuthGate below will show login if the refresh token is invalid.
+    }
+    if (mounted) setState(() => _checkingSession = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final client = Supabase.instance.client;
+    if (_checkingSession) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return StreamBuilder<AuthState>(
       stream: client.auth.onAuthStateChange,
       builder: (context, snapshot) {

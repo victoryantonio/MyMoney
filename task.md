@@ -1,7 +1,7 @@
 # task.md — MyMoney To-Do List
 
 > Phased execution checklist — **v2 stack** (Supabase + FastAPI + Flutter + Node bot).
-> Update status as you work. Current phase: **Fase 4**.
+> Update status as you work. Current phase: **Fase 4** (UI/UX + reliability follow-up).
 > Saat fase selesai, pindahkan item ke `## Done` dan unmute fase berikut.
 
 Legend: `[ ]` pending · `[x]` done · `[~]` in progress
@@ -14,9 +14,26 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 - [~] Widget/golden test 5 layar; CI iOS + TestFlight
 - [ ] Checkpoint: Android device OK; iOS CI hijau + tester eksternal ≥1x
 
+### Fase 4 follow-up — UX, performance, dan reliability
+- [x] Dashboard/form request paralel dan tab navigation lazy initialization
+- [x] Session Supabase di-refresh saat startup dan request 401 di-retry sekali
+- [x] Satu FAB `+` global untuk input transaksi dari Dashboard/Transaksi/Profile
+- [x] Scan Nota dipindahkan menjadi action di form Transaksi Baru; OCR memakai form review yang sama
+- [x] Form transaksi: tipe → merchant → tanggal → items → kategori → akun → catatan
+- [x] Nominal manual memakai thousand separator; total item tetap otomatis
+- [x] Reminder hourly dipindahkan ke Profile; tab Navigation Notifikasi dihapus
+- [x] Recent transactions memakai satu halaman ringan dan tidak mengunduh seluruh histori saat dashboard dibuka
+- [x] Custom period tidak request sebelum From/To lengkap; rentang To diperlakukan inklusif
+- [x] Filter akun menyaring summary, Cash Flow, donut, dan breakdown kategori
+- [x] Validasi Flutter: analyze bersih, 20 test lulus, release APK arm64 berhasil
+
 ## Fase 5 — OCR Foto Nota
-- [ ] `receipt_ocr` vision (env-driven) + Supabase Storage (signed URL)
-- [ ] UI Flutter capture/konfirmasi + bot foto
+- [x] `receipt_ocr` vision env-driven + Telegram photo flow + Flutter OCR endpoint
+- [x] Telegram binary download memakai endpoint `/file/bot` yang benar
+- [x] OCR multi-item dengan merchant, tanggal, qty, unit price, dan line total
+- [x] Nota laundry/service: dukung qty kg/pcs dan hitung harga unit dibulatkan
+- [~] UI Flutter capture/konfirmasi + bot foto: shared transaction form selesai; Supabase Storage signed URL masih terbuka
+- [ ] Verifikasi nyata foto laundry/restoran melalui Telegram dan dokumentasikan hasil OCR
 
 ## Fase 6 — UI/UX Polish (paralel)
 - [ ] Konsistensi DESIGN.md + anti-slop checklist

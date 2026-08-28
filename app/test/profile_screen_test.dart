@@ -79,6 +79,11 @@ void main() {
       ),
     ));
 
+    await tester.scrollUntilVisible(
+      find.text('Keluar'),
+      300,
+      scrollable: find.byType(Scrollable),
+    );
     expect(find.text('Keluar'), findsOneWidget);
     expect(find.byIcon(Icons.logout), findsOneWidget);
   });

@@ -11,18 +11,31 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/format.dart';
 import '../models/transaction_models.dart';
+import 'receipt_screen.dart';
 
 class TransactionFormScreen extends StatefulWidget {
   const TransactionFormScreen({
     super.key,
     required this.api,
     this.transaction,
+    this.initialType,
+    this.initialMerchant,
+    this.initialDate,
+    this.initialItems,
+    this.initialCategoryId,
+    this.initialAccountId,
   });
 
   final ApiClient api;
 
   /// Saat diisi → mode edit (PUT). Jika null → mode tambah (POST).
   final TransactionModel? transaction;
+  final String? initialType;
+  final String? initialMerchant;
+  final DateTime? initialDate;
+  final List<ReceiptItemModel>? initialItems;
+  final String? initialCategoryId;
+  final String? initialAccountId;
 
   @override
   State<TransactionFormScreen> createState() => _TransactionFormScreenState();
@@ -57,13 +70,15 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   void initState() {
     super.initState();
     final tx = widget.transaction;
-    _type = tx?.type ?? 'expense';
+    _type = tx?.type ?? widget.initialType ?? 'expense';
     _amountCtrl = TextEditingController(text: tx == null ? '' : _fmt(tx.totalAmount));
-    _merchantCtrl = TextEditingController(text: tx?.merchant ?? '');
+    _merchantCtrl = TextEditingController(
+      text: tx?.merchant ?? widget.initialMerchant ?? '',
+    );
     _noteCtrl = TextEditingController(text: tx?.note ?? '');
-    _date = tx?.transactionDate ?? DateTime.now();
-    _categoryId = tx?.categoryId;
-    _accountId = tx?.accountId;
+    _date = tx?.transactionDate ?? widget.initialDate ?? DateTime.now();
+    _categoryId = tx?.categoryId ?? widget.initialCategoryId;
+    _accountId = tx?.accountId ?? widget.initialAccountId;
     if (tx != null) {
       _items.addAll(
         tx.items
@@ -72,6 +87,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             )
             .toList(),
       );
+    } else if (widget.initialItems != null) {
+      _items.addAll(widget.initialItems!);
     }
     _loadOptions();
   }
@@ -101,6 +118,27 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       setState(() {
         _categories = results[0] as List<CategoryModel>;
         _accounts = results[1] as List<AccountModel>;
+        _categoryId ??= _categories
+              .where((c) => c.type == _type && c.isActive)
+              .firstWhere(
+                (c) => c.name.toLowerCase() == 'other',
+                orElse: () => _categories.firstWhere(
+                  (c) => c.type == _type && c.isActive,
+                  orElse: () => _categories.first,
+                ),
+              )
+                .id;
+              if (_accountId == null) {
+          final active = _accounts.where((a) => a.isActive).toList();
+          if (active.isNotEmpty) {
+            _accountId = active
+                .firstWhere(
+                  (a) => a.accountName.toLowerCase() == 'cash',
+                  orElse: () => active.first,
+                )
+                .id;
+          }
+        }
         _loadingOptions = false;
       });
     } on ApiException catch (e) {
@@ -299,6 +337,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       appBar: AppBar(
         title: Text(_isEdit ? 'Edit Transaksi' : 'Transaksi Baru'),
         actions: [
+          if (!_isEdit)
+            IconButton(
+              tooltip: 'Scan Nota',
+              onPressed: _saving ? null : _openReceiptScanner,
+              icon: const Icon(Icons.document_scanner_outlined),
+            ),
           IconButton(
             tooltip: 'Simpan',
             onPressed: _saving ? null : _save,
@@ -339,7 +383,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ── Nominal ────────────────────────────────────────────────────
+              // ── Nominal (opsional bila transaksi tidak memakai item) ───────
               TextFormField(
                 controller: _amountCtrl,
                 enabled: !_amountFromItems,
@@ -354,6 +398,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                       : null,
                   border: const OutlineInputBorder(),
                 ),
+                onChanged: _formatAmountInput,
                 validator: (v) {
                   if (_amountFromItems) return null;
                   final n = double.tryParse((v ?? '').replaceAll('.', ''));
@@ -361,42 +406,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                   return null;
                 },
               ),
-              const SizedBox(height: 16),
-
-              // ── Akun ──────────────────────────────────────────────────────
-              if (_loadingOptions)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (_optionsError != null)
-                Column(
-                  children: [
-                    Text(
-                      _optionsError!,
-                      style: TextStyle(color: theme.colorScheme.error),
-                    ),
-                    TextButton(
-                      onPressed: _loadOptions,
-                      child: const Text('Coba lagi'),
-                    ),
-                  ],
-                )
-              else ...[
-                DropdownButtonFormField<String>(
-                  initialValue: accountValid ? _accountId : null,
-                  decoration: const InputDecoration(
-                    labelText: 'Akun',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final a in accounts)
-                      DropdownMenuItem(value: a.id, child: Text(a.label)),
-                  ],
-                  onChanged:
-                      _saving ? null : (v) => setState(() => _accountId = v),
-                ),
-              ],
               const SizedBox(height: 16),
 
               // ── Merchant ──────────────────────────────────────────────────
@@ -409,8 +418,68 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ── Kategori ──────────────────────────────────────────────────
-              if (!_loadingOptions && _optionsError == null) ...[
+              // ── Tanggal ───────────────────────────────────────────────────
+              InkWell(
+                onTap: _pickDate,
+                borderRadius: BorderRadius.circular(4),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Tanggal',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.calendar_today_outlined),
+                  ),
+                  child: Text(formatDateDetail(_date)),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Items ─────────────────────────────────────────────────────
+              Row(
+                children: [
+                  Text(
+                    'Items',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _saving ? null : _addItem,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Tambah item'),
+                  ),
+                ],
+              ),
+              if (_items.isEmpty)
+                Text(
+                  'Opsional — gunakan untuk nota beritem. Total otomatis dihitung.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                )
+              else
+                _ItemsCard(
+                  items: _items,
+                  total: _itemsTotal,
+                  saving: _saving,
+                  onEdit: (item) => _editItem(item, isNew: false),
+                  onRemove: _removeItem,
+                ),
+              const SizedBox(height: 16),
+
+              // ── Kategori & akun ───────────────────────────────────────────
+              if (_loadingOptions)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_optionsError != null)
+                Column(
+                  children: [
+                    Text(_optionsError!, style: TextStyle(color: theme.colorScheme.error)),
+                    TextButton(onPressed: _loadOptions, child: const Text('Coba lagi')),
+                  ],
+                )
+              else ...[
                 DropdownButtonFormField<String>(
                   initialValue: categoryValid ? _categoryId : null,
                   decoration: const InputDecoration(
@@ -436,22 +505,24 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                     ),
                   ),
                 const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: accountValid ? _accountId : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Akun',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final a in accounts)
+                      DropdownMenuItem(value: a.id, child: Text(a.label)),
+                  ],
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() => _accountId = v),
+                ),
               ],
 
-              // ── Tanggal dan catatan ───────────────────────────────────────
-              InkWell(
-                onTap: _pickDate,
-                borderRadius: BorderRadius.circular(4),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Tanggal',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.calendar_today_outlined),
-                  ),
-                  child: Text(formatDateDetail(_date)),
-                ),
-              ),
               const SizedBox(height: 16),
+              // ── Catatan ───────────────────────────────────────────────────
               TextFormField(
                 controller: _noteCtrl,
                 maxLines: 3,
@@ -463,86 +534,6 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── Items editor (opsional) ────────────────────────────────────
-              Row(
-                children: [
-                  Text(
-                    'Items',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: _saving ? null : _addItem,
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Tambah item'),
-                  ),
-                ],
-              ),
-              if (_items.isEmpty)
-                Text(
-                  'Opsional — gunakan untuk nota beritem. Total otomatis dihitung.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                )
-              else
-                Card(
-                  margin: EdgeInsets.zero,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                  child: Column(
-                    children: [
-                      for (final item in _items)
-                        ListTile(
-                          dense: true,
-                          title: Text(item.name),
-                          subtitle: Text(
-                            '${_fmt(item.qty)} × ${formatRupiah(item.price)}',
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                formatRupiah(item.lineTotal),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined, size: 18),
-                                onPressed: _saving
-                                    ? null
-                                    : () => _editItem(item, isNew: false),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, size: 18),
-                                onPressed:
-                                    _saving ? null : () => _removeItem(item),
-                              ),
-                            ],
-                          ),
-                        ),
-                      const Divider(height: 1),
-                      ListTile(
-                        dense: true,
-                        title: const Text(
-                          'Total',
-                          style: TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        trailing: Text(
-                          formatRupiah(_itemsTotal),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 24),
-
               FilledButton.icon(
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save_outlined),
@@ -552,6 +543,93 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _openReceiptScanner() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => ReceiptScreen(api: widget.api),
+      ),
+    );
+    if (changed == true && mounted) Navigator.of(context).pop(true);
+  }
+
+  void _formatAmountInput(String value) {
+    final digits = value.replaceAll('.', '');
+    if (digits.isEmpty) return;
+    final number = int.tryParse(digits);
+    if (number == null) return;
+    final formatted = number.toString().replaceAllMapped(
+          RegExp(r'\B(?=(\d{3})+(?!\d))'),
+          (_) => '.',
+        );
+    if (formatted == value) return;
+    _amountCtrl.value = TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}
+
+class _ItemsCard extends StatelessWidget {
+  const _ItemsCard({
+    required this.items,
+    required this.total,
+    required this.saving,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  final List<ReceiptItemModel> items;
+  final double total;
+  final bool saving;
+  final ValueChanged<ReceiptItemModel> onEdit;
+  final ValueChanged<ReceiptItemModel> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      child: Column(
+        children: [
+          for (final item in items)
+            ListTile(
+              dense: true,
+              title: Text(item.name),
+              subtitle: Text(
+                '${item.qty == item.qty.roundToDouble() ? item.qty.toStringAsFixed(0) : item.qty} '
+                '× ${formatRupiah(item.price)}',
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(formatRupiah(item.lineTotal)),
+                  IconButton(
+                    tooltip: 'Edit item',
+                    onPressed: saving ? null : () => onEdit(item),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                  ),
+                  IconButton(
+                    tooltip: 'Hapus item',
+                    onPressed: saving ? null : () => onRemove(item),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                  ),
+                ],
+              ),
+            ),
+          const Divider(height: 1),
+          ListTile(
+            dense: true,
+            title: const Text('Total', style: TextStyle(fontWeight: FontWeight.w700)),
+            trailing: Text(
+              formatRupiah(total),
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
       ),
     );
   }

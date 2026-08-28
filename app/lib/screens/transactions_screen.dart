@@ -12,7 +12,6 @@ import '../core/api_client.dart';
 import '../core/app_colors.dart';
 import '../core/format.dart';
 import '../models/transaction_models.dart';
-import 'receipt_screen.dart';
 import 'transaction_form_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -115,22 +114,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Future<void> _refresh() => _load();
 
-  Future<void> _openAdd() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => TransactionFormScreen(api: _api),
-      ),
-    );
-    if (changed == true) _load();
-  }
-
-  Future<void> _openScanner() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => ReceiptScreen(api: _api)),
-    );
-    if (changed == true) _load();
-  }
-
   Future<void> _edit(TransactionModel tx) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -214,25 +197,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _buildBody(context),
-      ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'scan',
-            tooltip: 'Scan Nota',
-            onPressed: _openScanner,
-            child: const Icon(Icons.document_scanner_outlined),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton(
-            heroTag: 'add',
-            tooltip: 'Tambah transaksi',
-            onPressed: _openAdd,
-            child: const Icon(Icons.add),
-          ),
-        ],
       ),
     );
   }

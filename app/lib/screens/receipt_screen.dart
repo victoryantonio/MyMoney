@@ -15,6 +15,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/api_client.dart';
 import '../models/transaction_models.dart';
+import 'transaction_form_screen.dart';
 
 /// Hasil pemilihan gambar (kamera/galeri) sebagai bytes siap upload.
 class PickedReceiptImage {
@@ -67,11 +68,11 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   String _merchant = '';
   DateTime _date = DateTime.now();
   final List<ReceiptItemModel> _items = [];
-  List<CategoryModel> _categories = [];
-  List<AccountModel> _accounts = [];
+  final List<CategoryModel> _categories = [];
+  final List<AccountModel> _accounts = [];
   String? _categoryId;
   String? _accountId;
-  bool _loadingOptions = false;
+  final bool _loadingOptions = false;
   String? _optionsError;
 
   double get _total => _items.fold(0, (sum, i) => sum + i.lineTotal);
@@ -342,47 +343,22 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     try {
       final parsed = await widget.api.parseReceipt(bytes, _imageName);
       if (!mounted) return;
-      setState(() {
-        _processing = false;
-        _type = parsed.type;
-        _merchant = parsed.merchant ?? '';
-        _date = DateTime.tryParse(parsed.date ?? '') ?? DateTime.now();
-        _items
-          ..clear()
-          ..addAll(parsed.items);
-        _stage = _Stage.review;
-      });
-      await _loadOptions(parsed);
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => TransactionFormScreen(
+            api: widget.api,
+            initialType: parsed.type,
+            initialMerchant: parsed.merchant,
+            initialDate: DateTime.tryParse(parsed.date ?? ''),
+            initialItems: parsed.items,
+          ),
+        ),
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _processing = false;
         _error = e.message;
-      });
-    }
-  }
-
-  Future<void> _loadOptions(ParsedReceipt parsed) async {
-    setState(() {
-      _loadingOptions = true;
-      _optionsError = null;
-    });
-    try {
-      final categories = await widget.api.fetchCategories();
-      final accounts = await widget.api.fetchAccounts();
-      if (!mounted) return;
-      setState(() {
-        _categories = categories;
-        _accounts = accounts;
-        _categoryId = _matchCategory(parsed.category, categories);
-        _accountId = _matchAccount(parsed.account, accounts);
-        _loadingOptions = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadingOptions = false;
-        _optionsError = e.message;
       });
     }
   }
@@ -398,17 +374,6 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     // Fallback: kategori default global, lalu kategori aktif pertama.
     for (final c in active) {
       if (c.isDefault) return c.id;
-    }
-    return active.isEmpty ? null : active.first.id;
-  }
-
-  String? _matchAccount(String? name, List<AccountModel> accounts) {
-    final active = accounts.where((a) => a.isActive).toList();
-    if (name != null && name.isNotEmpty) {
-      final n = name.toLowerCase();
-      for (final a in active) {
-        if (a.accountName.toLowerCase() == n) return a.id;
-      }
     }
     return active.isEmpty ? null : active.first.id;
   }
@@ -523,6 +488,7 @@ class _ItemEditorRowState extends State<_ItemEditorRow> {
   }
 
   void _update() {
+    widget.item.lineTotalOverride = null;
     widget.item.name = _name.text.trim();
     widget.item.qty = double.tryParse(_qty.text.replaceAll(',', '.')) ?? 0;
     widget.item.price = double.tryParse(_price.text.replaceAll(',', '.')) ?? 0;

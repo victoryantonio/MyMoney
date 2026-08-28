@@ -51,6 +51,25 @@ class ApiClient {
           }
           handler.next(options);
         },
+        onError: (error, handler) async {
+          if (error.response?.statusCode == 401 &&
+              error.requestOptions.extra['authRetry'] != true) {
+            try {
+              final response = await supabase.auth.refreshSession();
+              final token = response.session?.accessToken;
+              if (token != null) {
+                final request = error.requestOptions;
+                request.extra['authRetry'] = true;
+                request.headers['Authorization'] = 'Bearer $token';
+                final retry = await dio.fetch<dynamic>(request);
+                return handler.resolve(retry);
+              }
+            } catch (_) {
+              // Fall through to the original 401 so AuthGate can sign out.
+            }
+          }
+          handler.next(error);
+        },
       ),
     );
     return dio;
@@ -99,6 +118,7 @@ class ApiClient {
       final res = await _dio.post<Map<String, dynamic>>(
         '/api/receipts/ocr',
         data: form,
+        options: Options(receiveTimeout: const Duration(seconds: 90)),
       );
       return ParsedReceipt.fromJson(res.data ?? const {});
     } on DioException catch (e) {

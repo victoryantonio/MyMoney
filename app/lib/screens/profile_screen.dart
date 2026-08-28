@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/theme_controller.dart';
+import '../core/notification_service.dart';
 import 'accounts_screen.dart';
 import 'categories_screen.dart';
 
@@ -66,8 +67,47 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _sending = false;
+  bool? _hourlyReminder;
+  bool _reminderBusy = false;
   String? _message;
   bool _messageIsError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReminderState();
+  }
+
+  Future<void> _loadReminderState() async {
+    try {
+      final enabled = await NotificationService.instance.isHourlyReminderScheduled();
+      if (mounted) setState(() => _hourlyReminder = enabled);
+    } catch (_) {
+      if (mounted) setState(() => _hourlyReminder = false);
+    }
+  }
+
+  Future<void> _setReminder(bool enabled) async {
+    setState(() => _reminderBusy = true);
+    try {
+      if (enabled) {
+        final granted = await NotificationService.instance.requestPermission();
+        if (!granted) throw StateError('permission');
+        await NotificationService.instance.scheduleHourlyReminder();
+      } else {
+        await NotificationService.instance.cancelHourlyReminder();
+      }
+      if (mounted) setState(() => _hourlyReminder = enabled);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pengaturan pengingat gagal diubah.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _reminderBusy = false);
+    }
+  }
 
   /// Snapshot info (dihitung ulang tiap build bila widget.info null).
   ProfileInfo get _info {
@@ -460,6 +500,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 24),
+
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
+            child: SwitchListTile(
+              secondary: const Icon(Icons.schedule_outlined),
+              title: const Text('Pengingat per jam'),
+              subtitle: const Text('Ingatkan saya mencatat transaksi setiap jam'),
+              value: _hourlyReminder ?? false,
+              onChanged: _reminderBusy ? null : _setReminder,
+            ),
+          ),
+          const SizedBox(height: 16),
 
           OutlinedButton.icon(
             onPressed: _signOut,

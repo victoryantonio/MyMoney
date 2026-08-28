@@ -80,18 +80,23 @@ class ReceiptItemModel {
     required this.name,
     required this.qty,
     required this.price,
+    this.lineTotalOverride,
   });
 
   String name;
   double qty;
   double price;
+  double? lineTotalOverride;
 
-  double get lineTotal => qty * price;
+  double get lineTotal => lineTotalOverride ?? qty * price;
 
   factory ReceiptItemModel.fromJson(Map<String, dynamic> json) => ReceiptItemModel(
         name: json['name'] as String,
         qty: _toDouble(json['qty']),
         price: _toDouble(json['price']),
+        lineTotalOverride: json['line_total'] == null
+          ? null
+          : _toDouble(json['line_total']),
       );
 
   Map<String, dynamic> toJson() => {
