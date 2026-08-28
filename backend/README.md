@@ -69,23 +69,23 @@ tests/               # pytest test suite
 
 ---
 
-## Production / Operasional
+## Production / Operations
 
-### Mode production
+### Production mode
 
-`APP_ENV` di `.env` menentukan perilaku:
-- `development` — `/docs` & `/redoc` aktif, CORS `*`, verbose errors.
-- `production` — **dokumentasi API disembunyikan** (`/docs` → 404), CORS dibatasi
-  ke `APP_BASE_URL`, hanya error generik yang dikembalikan.
+`APP_ENV` in `.env` controls behavior:
+- `development` — `/docs` & `/redoc` enabled, CORS `*`, verbose errors.
+- `production` — **API documentation is hidden** (`/docs` → 404), CORS is
+  restricted to `APP_BASE_URL`, and only generic errors are returned.
 
 ```bash
 APP_ENV=production
 ```
 
-Verifikasi: `curl https://api.mymoneyofficial.online/health` → `{"status":"ok","env":"production"}`.
+Verify: `curl https://api.mymoneyofficial.online/health` → `{"status":"ok","env":"production"}`.
 
-> ⚠️ Perubahan `.env` membutuhkan **recreate** container (bukan sekadar restart)
-> karena env vars dibaca saat container dibuat:
+> ⚠️ Changing `.env` requires a **container recreate** (not just a restart),
+> because env vars are read when the container is created:
 > ```bash
 > docker compose up -d backend
 > ```
@@ -95,32 +95,32 @@ Verifikasi: `curl https://api.mymoneyofficial.online/health` → `{"status":"ok"
 ```bash
 cd /root/project
 docker compose up -d --build backend tunnel
-docker compose exec backend alembic upgrade head   # migrasi DB (jika ada versi baru)
+docker compose exec backend alembic upgrade head   # DB migrations (if a new version exists)
 curl -s http://localhost:8000/health
 ```
 
-Arsitektur: `backend` (FastAPI, port 8000) + `cloudflared` (tunnel publik
-`api.mymoneyofficial.online`). Keduanya `restart: unless-stopped`.
+Architecture: `backend` (FastAPI, port 8000) + `cloudflared` (public tunnel at
+`api.mymoneyofficial.online`). Both run with `restart: unless-stopped`.
 
-### Backup database (WAJIB terjadwal)
+### Database backups (MANDATORY — scheduled)
 
-DB adalah PostgreSQL ter-manage (Supabase). Backup otomatis harian pukul 03:00
-sudah terpasang via cron:
+The DB is managed PostgreSQL (Supabase). A daily automated backup at 03:00 is
+installed via cron:
 
 ```bash
-# One-shot backup (tersimpan di /root/backups/mymoney/, rotasi 14 file terbaru)
+# One-shot backup (stored in /root/backups/mymoney/, keeps the 14 newest files)
 ./scripts/backup_db.sh
 
-# Uji konektivitas tanpa menyimpan file
+# Connectivity check without saving a file
 ./scripts/backup_db.sh --test
 
-# Daftar backup yang ada
+# List existing backups
 ./scripts/backup_db.sh --list
 ```
 
-Cron yang terpasang (`crontab -l`): `0 3 * * * /root/project/scripts/backup_db.sh >> /var/log/mymoney-backup.log 2>&1`
+Installed cron (`crontab -l`): `0 3 * * * /root/project/scripts/backup_db.sh >> /var/log/mymoney-backup.log 2>&1`
 
-**Restore** (jika DB rusak/terhapus):
+**Restore** (if the DB is corrupted/deleted):
 
 ```bash
 pg_restore -h <host> -p 5432 -U <user> -d <db> --no-owner --no-privileges \
@@ -129,39 +129,39 @@ pg_restore -h <host> -p 5432 -U <user> -d <db> --no-owner --no-privileges \
 
 ### Rate limiting
 
-Semua endpoint mutasi dibatasi per IP (slowapi):
+All mutation endpoints are limited per IP (slowapi):
 
 | Endpoint | Limit |
 |---|---|
-| `POST /api/transactions`, `PUT/DELETE /{id}` | 30/menit |
-| `POST /api/categories`, `PUT/DELETE /{id}` | 20/menit |
-| `POST /api/accounts`, `PUT /{id}`, `POST /{id}/deactivate` | 20/menit |
-| `POST /api/receipts/ocr` | 10/menit |
-| `POST /api/telegram/link/confirm` | 10/menit |
-| `POST /api/telegram/webhook` | 20/menit |
+| `POST /api/transactions`, `PUT/DELETE /{id}` | 30/minute |
+| `POST /api/categories`, `PUT/DELETE /{id}` | 20/minute |
+| `POST /api/accounts`, `PUT /{id}`, `POST /{id}/deactivate` | 20/minute |
+| `POST /api/receipts/ocr` | 10/minute |
+| `POST /api/telegram/link/confirm` | 10/minute |
+| `POST /api/telegram/webhook` | 20/minute |
 
-Melebihi limit → `429 Too Many Requests`.
+Exceeding the limit → `429 Too Many Requests`.
 
 ### Monitoring & troubleshooting
 
-- **Health check**: `GET /health` — pastikan `"status":"ok"`.
-- **Log**: `docker compose logs -f backend` (struktured JSON via structlog).
-- **Log rotation**: json-file, max 10 MB × 5 file (diatur di `docker-compose.yml`).
-- **Tunnel bermasalah**: `docker compose logs -f tunnel`; cek `CLOUDFLARE_TUNNEL_TOKEN`
-  di `.env` (Cloudflare Zero Trust → Networks → Tunnels).
-- **Rate limit palsu (429)**: semua user di balik IP publik sama (NAT operator)
-  berbagi kuota per-IP; jika sering kena, naikkan limit di `app/api/*.py`.
+- **Health check**: `GET /health` — make sure `"status":"ok"`.
+- **Logs**: `docker compose logs -f backend` (structured JSON via structlog).
+- **Log rotation**: json-file, max 10 MB × 5 files (configured in `docker-compose.yml`).
+- **Tunnel issues**: `docker compose logs -f tunnel`; check `CLOUDFLARE_TUNNEL_TOKEN`
+  in `.env` (Cloudflare Zero Trust → Networks → Tunnels).
+- **Unexpected 429s**: all users behind the same public IP (carrier NAT) share
+  the per-IP quota; if 429s happen often, raise the limits in `app/api/*.py`.
 
-### Env vars penting
+### Key environment variables
 
-| Variabel | Keterangan |
+| Variable | Description |
 |---|---|
 | `APP_ENV` | `development` / `production` |
-| `APP_BASE_URL` | URL publik API (mis. `https://api.mymoneyofficial.online`) |
+| `APP_BASE_URL` | Public API URL (e.g. `https://api.mymoneyofficial.online`) |
 | `DATABASE_URL` | Supabase PostgreSQL connection string |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Auth & admin Supabase |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase auth & admin |
 | `LLM_PROVIDER` | `auto` / `openrouter` / `deepseek` |
-| `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY` | Kunci LLM untuk OCR & NLU |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `BOT_PUBLIC_URL`, `BOT_SERVICE_TOKEN` | Bot Telegram |
-| `CLOUDFLARE_TUNNEL_TOKEN` | Token tunnel cloudflared (dibaca docker-compose) |
+| `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY` | LLM keys for OCR & NLU |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `BOT_PUBLIC_URL`, `BOT_SERVICE_TOKEN` | Telegram bot |
+| `CLOUDFLARE_TUNNEL_TOKEN` | cloudflared tunnel token (read by docker-compose) |
 

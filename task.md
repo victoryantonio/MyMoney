@@ -2,6 +2,7 @@
 
 > Phased execution checklist — **v2 stack** (Supabase + FastAPI + Flutter + Node bot).
 > Update status as you work. Current phase: **Fase 4** (UI/UX + reliability follow-up).
+> Fase 7 (Deploy Produksi) sebagian selesai 2026-08-28 (commit `f827db8`) — detail di Done.
 > Saat fase selesai, pindahkan item ke `## Done` dan unmute fase berikut.
 
 Legend: `[ ]` pending · `[x]` done · `[~]` in progress
@@ -38,13 +39,22 @@ Legend: `[ ]` pending · `[x]` done · `[~]` in progress
 ## Fase 6 — UI/UX Polish (paralel)
 - [ ] Konsistensi DESIGN.md + anti-slop checklist
 
-## Fase 7 — Deploy Produksi
-- [ ] Railway/Render backend & bot; Supabase production
-- [ ] Flutter Web → Vercel/Netlify; review keamanan RLS
+## Fase 7 — Deploy Produksi (sisa terbuka)
+- [ ] Flutter Web → Vercel/Netlify
+- [ ] Supabase production project terpisah (opsional — saat ini pakai DB yang sama, per keputusan user)
+- [ ] Review keamanan: CVE check (pip-audit, npm audit, dart pub outdated)
 
 ---
 
 ## Done
+
+### Fase 7 — Deploy Produksi (sebagian) ✅ (2026-08-28, commit `f827db8`)
+- [x] Backend production mode (`APP_ENV=production`) — `/docs` hidden, CORS terbatas; deploy di VPS + Cloudflare tunnel yang ada (bukan Railway/Render, per keputusan user)
+- [x] Rate limit semua endpoint mutasi (slowapi): transaksi 30/min, kategori & akun 20/min — burst test 20×201 + 1×429; `pytest` 165 passed
+- [x] Backup DB otomatis harian — `scripts/backup_db.sh` (pg_dump `-Fc`, rotasi 14, di luar repo) + cron `0 3 * * *`
+- [x] Android release signing — keystore produksi `/root/keystore/mymoney/release.jks` (alias `mymoney`), `app/android/key.properties` (gitignored), fallback debug jika file tidak ada
+- [x] Versi `1.1.0+2` + `CHANGELOG.md`; `README.md` tabel Tech Stack (EN); `backend/README.md` runbook produksi (EN)
+- [x] Verifikasi end-to-end publik: `/health` → `env:production`, `/docs` → 404, `/api/categories` → 200, APK signed (CN=MyMoney)
 
 ### Fase 4 — Performance & UX follow-up ✅ (2026-08-27, commits `d784e9d`, `2ab9b41`)
 - [x] Dashboard loading diparalelkan; transaksi lengkap lazy-load hanya saat filter akun atau summary card dipakai

@@ -7,9 +7,10 @@
 
 **Current Phase: Fase 4 — Flutter App: Android + iOS + Web**
 
-> Status update 2026-08-27: implementasi UI/UX dan performance follow-up
-> sudah selesai pada commit `d784e9d` dan `2ab9b41`. Fase 4 tetap aktif untuk
-> checkpoint Android device, iOS CI, dan tester eksternal TestFlight.
+> Status update 2026-08-28: **Fase 6 (Deploy Produksi) selesai** (commit
+> `f827db8`) — production mode aktif, rate limit + backup DB otomatis, release
+> signing keystore, versi `1.1.0+2`, docs produksi (EN). Fase 4 tetap aktif
+> untuk checkpoint Android device, iOS CI, dan tester eksternal TestFlight.
 
 ---
 
@@ -128,13 +129,21 @@ menunggu review user.
 
 ---
 
-## Fase 6 — Deploy Produksi (target 2-3 hari)
+## Fase 6 — Deploy Produksi ✅ DONE (2026-08-28, commit `f827db8`)
 
-- [ ] Railway/Render: backend & bot (auto-deploy dari GitHub push) — ganti VPS + Cloudflare tunnel
-- [ ] Supabase **production** project (terpisah dari dev)
-- [ ] Env production: SUPABASE_SERVICE_ROLE_KEY, LLM key, BOT_SERVICE_TOKEN
-- [ ] Flutter Web → Vercel/Netlify
-- [ ] Review keamanan: RLS production, tidak ada key ter-commit; CVE check (pip-audit, npm audit, dart pub outdated)
+> Keputusan user: deploy di infrastruktur yang ada (VPS + Cloudflare tunnel,
+> bukan Railway/Render) dan pakai DB saat ini (tanpa Supabase production
+> project terpisah).
+
+**Hasil (terverifikasi):**
+- [x] Production mode aktif: `APP_ENV=production` — `/docs` → 404, CORS = `APP_BASE_URL`; verifikasi publik `/health` → `env:production`
+- [x] Rate limit semua endpoint mutasi (30/min transaksi, 20/min kategori & akun) — burst test 20×201 + 1×429; `pytest` 165 passed
+- [x] Backup DB otomatis harian: `scripts/backup_db.sh` (pg_dump, rotasi 14, di luar repo) + cron `0 3 * * *`
+- [x] Android release signing: keystore `/root/keystore/mymoney/release.jks` + `app/android/key.properties` (gitignored) — APK signed produksi (CN=MyMoney)
+- [x] Versi `1.1.0+2` + `CHANGELOG.md`; README tabel Tech Stack (EN); `backend/README.md` runbook produksi (EN)
+- [x] Keamanan: docs API disembunyikan, CORS dibatasi, tidak ada key ter-commit (`.env`, `key.properties`, `*.jks` di gitignore)
+- [ ] Flutter Web → Vercel/Netlify (masih terbuka)
+- [ ] CVE check: pip-audit, npm audit, dart pub outdated (masih terbuka)
 
 ---
 

@@ -1,9 +1,42 @@
 # walkthrough.md — MyMoney v2 Execution Guide
 
 > ✅ **Pivot v2 (2026-08-26)**: stack baru Supabase + FastAPI + Flutter + Node bot.
-> Panduan aktif: **Fase 4 (implementasi selesai; checkpoint device/iOS masih terbuka)** di bawah. Fase 0, 1, 1.5, 2, 3, 3.5 selesai (rekam di bagian bawah).
+> Panduan aktif: **Fase 4 (implementasi selesai; checkpoint device/iOS masih terbuka)** di bawah. Fase 0, 1, 1.5, 2, 3, 3.5, 7 (deploy produksi) selesai (rekam di bagian bawah).
 > Guide fase berikutnya diisi saat fase dimulai (placeholder di bawah).
 > Rekam historis v1 ada di git history + `_archive/`.
+
+---
+
+## Fase 7 — Deploy Produksi ✅ DONE (2026-08-28, commit `f827db8`)
+
+**Tujuan:** production mode backend, hardening keamanan, release signing APK, backup DB otomatis, dokumentasi operasional.
+**Hasil:** production aktif & terverifikasi publik; rate limit + backup cron + keystore + v1.1.0+2 + docs ter-update.
+
+### Step 1 — Mode production
+- `.env`: `APP_ENV=production`. Perilaku: `/docs` & `/redoc` → 404, CORS dibatasi ke `APP_BASE_URL`, error generik.
+- **PENTING**: ubah env butuh **recreate** container (`docker compose up -d backend`), bukan `restart`.
+- Verifikasi: `/health` → `{"status":"ok","env":"production"}`; `/docs` → 404; kategori API tetap 200 (409 "Kategori sudah ada" untuk duplikat).
+
+### Step 2 — Hardening: rate limit & backup DB
+- Rate limit (slowapi) di semua endpoint mutasi: transaksi 30/menit, kategori & akun 20/menit. Setiap endpoint ber-limit wajib punya parameter `request: Request`.
+- Verifikasi: burst test 21 request → 20×201 + 1×429; `pytest` 165 passed (docker cp + container).
+- `scripts/backup_db.sh`: `pg_dump -Fc` ke `/root/backups/mymoney/` (di luar repo), rotasi 14 file, mode `--test` & `--list`; cron harian `0 3 * * *`.
+- **Bug ditemukan**: regex parsing `DATABASE_URL` menukar group port vs dbname → diperbaiki sebelum dipakai.
+
+### Step 3 — Android release signing
+- Keystore: `/root/keystore/mymoney/release.jks` (PKCS12, alias `mymoney`, RSA 2048, valid 10000 hari); password acak di `keystore-pass.txt`. **WAJIB backup permanen** (Play Store butuh key yang sama).
+- `app/android/app/build.gradle.kts`: baca `key.properties` → `signingConfig release`; fallback debug bila file tidak ada.
+- **PENTING**: `key.properties` harus di `app/android/key.properties` (root project Gradle Flutter = `app/android`, BUKAN `/root/project/android/`). APK pertama masih debug-signed karena salah lokasi → dipindah & rebuild.
+- Verifikasi: `apksigner verify --print-certs` → CN=MyMoney, SHA-256 `357522a1...dc72` cocok.
+
+### Step 4 — Versi & dokumentasi
+- `pubspec.yaml`: `1.1.0+2`; `CHANGELOG.md` baru.
+- `README.md`: tabel Tech Stack (EN) + status produksi.
+- `backend/README.md`: seluruh bagian produksi/operasional dalam bahasa Inggris.
+
+### Step 5 — Verifikasi end-to-end (publik)
+- `/health` → `env:production` ✅ · `/docs` → 404 ✅ · `/api/categories` → 200 ✅ · APK release signed produksi ✅
+- Commit `f827db8` → origin/migration.
 
 ---
 
