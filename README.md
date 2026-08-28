@@ -62,12 +62,20 @@ The repository is in the v2 migration branch, `migration`.
 - Direct Android device checkpoint on Samsung S23+
 - iOS CI/TestFlight and external tester checkpoint
 - Widget and golden tests for the five critical screens
-- Production deployment of backend, bot, and Flutter Web
+- Flutter Web deployment (backend production already live)
 - Supabase Storage integration for retaining original receipt images
 - A public, anonymized evaluation dataset and parser benchmark
 
 The detailed phase status is tracked in [task.md](task.md),
 [ROADMAP.md](ROADMAP.md), and [walkthrough.md](walkthrough.md).
+
+### Production status (2026-08-28)
+
+- Backend live in **production mode** (`APP_ENV=production`, docs disabled,
+  CORS restricted): `https://api.mymoneyofficial.online`
+- Rate limiting active on all mutation endpoints; daily automated DB backups
+  (`scripts/backup_db.sh` + cron) — see [backend/README.md](backend/README.md)
+- Android release APK signed with a production keystore (v1.1.0+2)
 
 ## Architecture
 
@@ -92,6 +100,23 @@ Backend remains the source of truth for transaction business rules. The
 Flutter client uses Supabase Auth for sessions and calls the backend REST API
 for transaction/report operations. It does not write complex business data
 directly to Supabase.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Mobile / Web app | Flutter 3.47 (Dart) · Riverpod (state management) · supabase_flutter · Dio (HTTP) · fl_chart (charts) · flutter_local_notifications |
+| Backend API | Python 3.12 · FastAPI 0.115 · SQLAlchemy 2.0 (ORM) · Pydantic v2 (schemas/validation) · Alembic (migrations) |
+| Database | PostgreSQL (Supabase managed) |
+| Authentication | Supabase Auth — JWT verified by the backend via JWKS (RS256 + ES256) |
+| Telegram bot | Node.js + TypeScript + Telegraf — a thin webhook proxy that forwards updates to the REST API |
+| LLM gateway | Provider-agnostic `call_llm()` — OpenRouter and/or DeepSeek, env-driven (`LLM_PROVIDER`) |
+| AI features | Receipt OCR (vision) + natural-language transaction parsing → structured output validated with Pydantic |
+| Rate limiting | slowapi — per-IP limits on every mutation endpoint |
+| Logging | structlog — structured JSON logs |
+| Deployment | Docker Compose (backend + cloudflared tunnel) → public API at `api.mymoneyofficial.online` |
+| CI | GitHub Actions — backend (ruff, black, pytest), Flutter (analyze, test), Node (lint, typecheck) |
+| Backups | Daily `pg_dump` via cron (`scripts/backup_db.sh`, 14-file rotation) |
 
 ## Quick Start
 

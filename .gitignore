@@ -76,3 +76,18 @@ receipts/
 # Logs
 *.log
 logs/
+ARCHITECTURE.md
+CODING_RULES.md
+DATABASE.md
+DESIGN.md
+IMPLEMENTATION_PLAN.md
+REQUIREMENTS.md
+ROADMAP.md
+SKILL.md
+task.md
+walkthrough.md
+.github/workflows/copilot-instructions.md
+# Android release signing (never commit)
+key.properties
+*.jks
+*.keystore

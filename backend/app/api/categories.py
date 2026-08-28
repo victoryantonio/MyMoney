@@ -13,12 +13,13 @@ DELETE /api/categories/{id}    — soft-delete a category. Global defaults are
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_active_user
 from app.core.audit_service import record_audit
+from app.core.rate_limit import limiter
 from app.models.category import Category, category_visible_clause
 from app.models.profile import Profile
 from app.schemas.category import (
@@ -80,7 +81,9 @@ def list_categories(
 
 
 @router.post("", response_model=CategoryResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 def create_category(
+    request: Request,
     body: CategoryCreateRequest,
     current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
@@ -112,7 +115,9 @@ def create_category(
 
 
 @router.put("/{category_id}", response_model=CategoryResponse)
+@limiter.limit("20/minute")
 def update_category(
+    request: Request,
     category_id: uuid.UUID,
     body: CategoryUpdateRequest,
     current_user: Profile = Depends(require_active_user),
@@ -172,7 +177,9 @@ def update_category(
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("20/minute")
 def delete_category(
+    request: Request,
     category_id: uuid.UUID,
     current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),

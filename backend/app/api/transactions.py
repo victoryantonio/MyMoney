@@ -19,11 +19,12 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_db, require_active_user
+from app.core.rate_limit import limiter
 from app.core.transaction_service import (
     create_transaction_internal,
     delete_transaction_internal,
@@ -212,7 +213,9 @@ def list_transactions(
 
 
 @router.post("", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 def create_transaction(
+    request: Request,
     body: TransactionCreateRequest,
     current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
@@ -270,7 +273,9 @@ def get_transaction(
 
 
 @router.put("/{transaction_id}", response_model=TransactionResponse)
+@limiter.limit("30/minute")
 def update_transaction(
+    request: Request,
     transaction_id: uuid.UUID,
     body: TransactionUpdateRequest,
     current_user: Profile = Depends(require_active_user),
@@ -337,7 +342,9 @@ def update_transaction(
 
 
 @router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("30/minute")
 def delete_transaction(
+    request: Request,
     transaction_id: uuid.UUID,
     current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),

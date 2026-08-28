@@ -25,12 +25,13 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_active_user
 from app.core.audit_service import record_audit
+from app.core.rate_limit import limiter
 from app.models.account import Account
 from app.models.profile import Profile
 from app.models.transaction import Transaction
@@ -153,7 +154,9 @@ def list_accounts(
 
 
 @router.post("", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 def create_account(
+    request: Request,
     body: AccountCreateRequest,
     current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
@@ -192,7 +195,9 @@ def get_account(
 
 
 @router.put("/{account_id}", response_model=AccountResponse)
+@limiter.limit("20/minute")
 def update_account(
+    request: Request,
     account_id: uuid.UUID,
     body: AccountUpdateRequest,
     current_user: Profile = Depends(require_active_user),
@@ -220,7 +225,9 @@ def update_account(
 
 
 @router.post("/{account_id}/deactivate", response_model=AccountResponse)
+@limiter.limit("20/minute")
 def deactivate_account(
+    request: Request,
     account_id: uuid.UUID,
     body: AccountDeactivateRequest,
     current_user: Profile = Depends(require_active_user),
