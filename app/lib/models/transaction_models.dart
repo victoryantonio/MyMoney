@@ -176,6 +176,8 @@ class TransactionModel {
     required this.source,
     required this.transactionDate,
     required this.createdAt,
+    this.originalCurrency = 'IDR',
+    this.exchangeRate = 1.0,
     this.toAccountId,
     this.merchant,
     this.note,
@@ -186,7 +188,12 @@ class TransactionModel {
 
   final String id;
   final String type; // 'income' | 'expense' | 'transfer'
+  // SELALU dalam IDR — basis laporan/saldo (migrasi 0009).
   final double totalAmount;
+  /// Mata uang asli saat input (ISO 4217, default 'IDR').
+  final String originalCurrency;
+  /// 1 unit originalCurrency berapa IDR (default 1).
+  final double exchangeRate;
   final String? categoryId; // null untuk transfer
   final String accountId;
   final String? toAccountId; // hanya terisi saat type == 'transfer'
@@ -199,11 +206,17 @@ class TransactionModel {
   final DateTime createdAt;
   final List<TransactionItem> items;
 
+  /// Nominal asli di mata uang asal (totalAmount dibagi kurs).
+  double get originalAmount =>
+      exchangeRate > 0 ? totalAmount / exchangeRate : totalAmount;
+
   factory TransactionModel.fromJson(Map<String, dynamic> json) =>
       TransactionModel(
         id: json['id'] as String,
         type: json['type'] as String,
         totalAmount: _toDouble(json['total_amount']),
+        originalCurrency: json['original_currency'] as String? ?? 'IDR',
+        exchangeRate: _toDouble(json['exchange_rate'] ?? 1),
         categoryId: json['category_id'] as String?,
         accountId: json['account_id'] as String,
         toAccountId: json['to_account_id'] as String?,

@@ -30,6 +30,14 @@ class Transaction(Base):
             "confidence IN ('high', 'medium', 'low') OR confidence IS NULL",
             name="transactions_confidence_check",
         ),
+        CheckConstraint(
+            "char_length(original_currency) = 3",
+            name="transactions_currency_length",
+        ),
+        CheckConstraint(
+            "exchange_rate > 0",
+            name="transactions_exchange_rate_positive",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -39,6 +47,14 @@ class Transaction(Base):
     type: Mapped[str] = mapped_column(String(10), nullable=False)
     # Use NUMERIC, not FLOAT — mandatory for financial values to avoid floating-point errors
     total_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    # Mata uang asli saat input (ISO 4217); total_amount SELALU dalam IDR.
+    # exchange_rate = 1 unit original_currency berapa IDR (default 1 → IDR).
+    original_currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, server_default="IDR", default="IDR"
+    )
+    exchange_rate: Mapped[Decimal] = mapped_column(
+        Numeric(18, 6), nullable=False, server_default="1", default=Decimal("1")
+    )
     # NULL untuk transaksi transfer — transfer tidak memakai kategori
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True

@@ -57,6 +57,15 @@ def test_create_duplicate_conflict(auth):
     assert resp.status_code == 409
 
 
+def test_create_duplicate_case_insensitive_conflict(auth):
+    """'Kuliner' lalu 'kuliner' → 409 — nama unik per user case-insensitive
+    (dijamin API via lower() dan di level DB oleh index migrasi 0009)."""
+    headers = auth("cat_ci")
+    assert _create(headers, "Kuliner").status_code == 201
+    resp = _create(headers, "kuliner")  # beda kapital, nama sama
+    assert resp.status_code == 409
+
+
 def test_create_shadowing_global_conflict(auth):
     """A custom category must not shadow a global default of the same name."""
     headers = auth("cat_shadow")
@@ -90,6 +99,19 @@ def test_put_rename(auth):
     assert data["name"] == "NewName"
     assert data["type"] == "expense"
     assert data["id"] == created["id"]
+
+
+def test_put_rename_case_insensitive_conflict(auth):
+    """Rename ke nama yang sudah ada (beda kapital) → 409."""
+    headers = auth("cat_rename_ci")
+    assert _create(headers, "Kuliner").status_code == 201
+    other = _create(headers, "Hobi").json()
+    resp = client.put(
+        f"/api/categories/{other['id']}",
+        json={"name": "KULINER"},
+        headers=headers,
+    )
+    assert resp.status_code == 409
 
 
 def test_put_change_type(auth):

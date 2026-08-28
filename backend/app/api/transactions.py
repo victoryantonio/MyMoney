@@ -244,6 +244,8 @@ def create_transaction(
         merchant=body.merchant.strip() if body.merchant else None,
         transaction_date=body.transaction_date,
         items=[item.model_dump() for item in body.items],
+        original_currency=body.original_currency,
+        exchange_rate=body.exchange_rate,
     )
 
 
@@ -323,6 +325,14 @@ def update_transaction(
         ),
         transaction_date=body.transaction_date or transaction.transaction_date,
         items=[item.model_dump() for item in body.items] if body.items is not None else None,
+        original_currency=(
+            body.original_currency
+            if body.original_currency is not None
+            else transaction.original_currency
+        ),
+        exchange_rate=(
+            body.exchange_rate if body.exchange_rate is not None else transaction.exchange_rate
+        ),
     )
 
 

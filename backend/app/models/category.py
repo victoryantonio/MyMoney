@@ -58,10 +58,12 @@ class Category(Base):
         CheckConstraint("type IN ('income', 'expense', 'transfer')", name="categories_type_check"),
         # Partial (WHERE is_active = TRUE) — migrasi 0008 — supaya baris shadow
         # per-user (is_active=FALSE) tidak bentrok dengan kategori custom baru.
+        # lower(name) — migrasi 0009 — nama unik per user bersifat
+        # case-insensitive ('Kuliner' vs 'kuliner' tidak boleh sama).
         Index(
             "idx_categories_user_name_type",
             func.coalesce("user_id", _GLOBAL_OWNER_UUID),
-            "name",
+            func.lower("name"),
             "type",
             unique=True,
             postgresql_where=text("is_active = TRUE"),

@@ -1661,12 +1661,26 @@ class _RecentTransactionRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              '${isTransfer ? '' : isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${isTransfer ? '' : isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+                if (tx.originalCurrency != 'IDR')
+                  Text(
+                    tx.originalCurrency,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+              ],
             ),
           ],
         ),

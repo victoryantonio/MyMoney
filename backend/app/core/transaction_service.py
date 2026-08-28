@@ -127,6 +127,8 @@ def create_transaction_internal(
     items: list[dict] | None = None,
     audit_ip_address: str | None = None,
     pending: PendingTransaction | None = None,
+    original_currency: str = "IDR",
+    exchange_rate: Decimal = Decimal("1"),
 ) -> Transaction:
     """Core logic for creating a transaction (audited).
 
@@ -150,6 +152,8 @@ def create_transaction_internal(
         note=note,
         transaction_date=transaction_date,
         confidence=confidence,
+        original_currency=original_currency,
+        exchange_rate=exchange_rate,
     )
     for item_data in items or []:
         transaction.items.append(
@@ -170,6 +174,8 @@ def create_transaction_internal(
         new_value={
             "type": type,
             "total_amount": str(total_amount),
+            "original_currency": original_currency,
+            "exchange_rate": str(exchange_rate),
             "category_id": str(category_id) if category_id else None,
             "account_id": str(account_id),
             "to_account_id": str(to_account_id) if to_account_id else None,
@@ -200,6 +206,8 @@ def update_transaction_internal(
     items: list[dict] | None = None,
     audit_ip_address: str | None = None,
     pending: PendingTransaction | None = None,
+    original_currency: str | None = None,
+    exchange_rate: Decimal | None = None,
 ) -> Transaction:
     """Core logic for updating a transaction (audited).
 
@@ -210,6 +218,8 @@ def update_transaction_internal(
     old_value = {
         "type": transaction.type,
         "total_amount": str(transaction.total_amount),
+        "original_currency": transaction.original_currency,
+        "exchange_rate": str(transaction.exchange_rate),
         "category_id": str(transaction.category_id) if transaction.category_id else None,
         "account_id": str(transaction.account_id),
         "to_account_id": str(transaction.to_account_id) if transaction.to_account_id else None,
@@ -221,6 +231,10 @@ def update_transaction_internal(
     }
     transaction.type = type
     transaction.total_amount = total_amount
+    if original_currency is not None:
+        transaction.original_currency = original_currency
+    if exchange_rate is not None:
+        transaction.exchange_rate = exchange_rate
     transaction.category_id = category_id if type != "transfer" else None
     if to_account_id is not None or type == "transfer":
         transaction.to_account_id = to_account_id
@@ -255,6 +269,8 @@ def update_transaction_internal(
         new_value={
             "type": type,
             "total_amount": str(total_amount),
+            "original_currency": transaction.original_currency,
+            "exchange_rate": str(transaction.exchange_rate),
             "category_id": str(transaction.category_id) if transaction.category_id else None,
             "account_id": str(transaction.account_id),
             "to_account_id": (

@@ -9,6 +9,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/currency_controller.dart';
+import '../core/exchange_rate.dart';
 import '../core/format.dart';
 import '../models/transaction_models.dart';
 import 'receipt_screen.dart';
@@ -59,6 +61,10 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   String? _categoryId;
   String? _accountId;
   String? _toAccountId; // hanya untuk tipe transfer
+  String _currency = 'IDR'; // mata uang input (ISO 4217)
+  late final TextEditingController _rateCtrl;
+  bool _rateLoading = false;
+  String? _rateError;
   bool _loadingOptions = true;
   String? _optionsError;
   bool _saving = false;
@@ -72,7 +78,13 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     super.initState();
     final tx = widget.transaction;
     _type = tx?.type ?? widget.initialType ?? 'expense';
-    _amountCtrl = TextEditingController(text: tx == null ? '' : _fmt(tx.totalAmount));
+    // total_amount tersimpan SELALU dalam IDR — nominal asli = total / kurs.
+    final rate = tx?.exchangeRate ?? 1.0;
+    _amountCtrl = TextEditingController(
+      text: tx == null ? '' : _fmt(tx.totalAmount / (rate > 0 ? rate : 1)),
+    );
+    _currency = tx?.originalCurrency ?? 'IDR';
+    _rateCtrl = TextEditingController(text: _fmtRate(rate));
     _merchantCtrl = TextEditingController(
       text: tx?.merchant ?? widget.initialMerchant ?? '',
     );
@@ -98,11 +110,29 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   String _fmt(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
+  String _fmtRate(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(4);
+
+  double get _rateValue =>
+      double.tryParse(_rateCtrl.text.replaceAll(' ', '')) ?? 0;
+
+  double get _nominalValue =>
+      double.tryParse(_amountCtrl.text.replaceAll('.', '')) ?? 0;
+
+  /// Simbol mata uang terpilih (dari [supportedCurrencies]); fallback kode.
+  String get _currencySymbol {
+    for (final c in supportedCurrencies) {
+      if (c.code == _currency) return c.symbol;
+    }
+    return _currency;
+  }
+
   @override
   void dispose() {
     _amountCtrl.dispose();
     _merchantCtrl.dispose();
     _noteCtrl.dispose();
+    _rateCtrl.dispose();
     super.dispose();
   }
 
@@ -164,6 +194,46 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       if (type != 'transfer') _toAccountId = null;
     });
     _loadOptions();
+  }
+
+  void _changeCurrency(String code) {
+    if (code == _currency) return;
+    setState(() {
+      _currency = code;
+      _rateError = null;
+      if (code == 'IDR') {
+        _rateCtrl.text = '1';
+      }
+    });
+    if (code != 'IDR') _fetchRate();
+  }
+
+  /// Ambil kurs 1 [_currency] = ? IDR dari open.er-api.com.
+  Future<void> _fetchRate() async {
+    setState(() {
+      _rateLoading = true;
+      _rateError = null;
+    });
+    try {
+      final rate = await fetchExchangeRate(_currency, 'IDR');
+      if (!mounted) return;
+      setState(() {
+        _rateCtrl.text = _fmtRate(rate);
+        _rateLoading = false;
+      });
+    } on ExchangeRateException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _rateError = e.message;
+        _rateLoading = false;
+      });
+    } on Exception {
+      if (!mounted) return;
+      setState(() {
+        _rateError = 'Gagal ambil kurs — periksa koneksi internet.';
+        _rateLoading = false;
+      });
+    }
   }
 
   void _syncAmountFromItems() {
@@ -277,6 +347,17 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       );
       return;
     }
+    final rate = _currency == 'IDR' ? 1.0 : _rateValue;
+    if (_currency != 'IDR' && rate <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Isi kurs yang valid (lebih dari 0)')),
+      );
+      return;
+    }
+    // Backend menyimpan total_amount SELALU dalam IDR (basis laporan).
+    final idrAmount = _currency == 'IDR'
+        ? amount
+        : double.parse((amount * rate).toStringAsFixed(2));
     if (_type != 'transfer' && _categoryId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pilih kategori terlebih dahulu')),
@@ -312,7 +393,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
         await widget.api.updateTransaction(
           widget.transaction!.id,
           type: _type,
-          totalAmount: amount,
+          totalAmount: idrAmount,
           categoryId: _categoryId,
           accountId: _accountId,
           toAccountId: _toAccountId,
@@ -320,11 +401,13 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
           note: note.isEmpty ? null : note,
           transactionDate: _date,
           items: _items.map((i) => i).toList(),
+          originalCurrency: _currency,
+          exchangeRate: rate,
         );
       } else {
         await widget.api.createTransaction(
           type: _type,
-          totalAmount: amount,
+          totalAmount: idrAmount,
           categoryId: _categoryId,
           accountId: _accountId!,
           toAccountId: _toAccountId,
@@ -332,6 +415,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
           note: note.isEmpty ? null : note,
           transactionDate: _date,
           items: _items.map((i) => i).toList(),
+          originalCurrency: _currency,
+          exchangeRate: rate,
         );
       }
       if (!mounted) return;
@@ -357,6 +442,11 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     final accountValid = accounts.any((a) => a.id == _accountId);
     final toAccountValid =
         _toAccountId != null && accounts.any((a) => a.id == _toAccountId);
+    // Perhitungan total tersimpan (IDR) untuk helper kurs.
+    final rateValue = _rateValue;
+    final nominalInput = _amountFromItems ? _itemsTotal : _nominalValue;
+    final totalIdr =
+        rateValue > 0 && nominalInput > 0 ? nominalInput * rateValue : 0.0;
 
     return Scaffold(
       appBar: AppBar(
@@ -460,29 +550,99 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                 ),
               const SizedBox(height: 16),
 
-              // ── Nominal (opsional bila transaksi tidak memakai item) ───────
-              TextFormField(
-                controller: _amountCtrl,
-                enabled: !_amountFromItems,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Nominal',
-                  prefixText: '$currencySymbol ',
-                  helperText: _amountFromItems
-                      ? 'Otomatis dari total item'
-                      : null,
-                  border: const OutlineInputBorder(),
-                ),
-                onChanged: _formatAmountInput,
-                validator: (v) {
-                  if (_amountFromItems) return null;
-                  final n = double.tryParse((v ?? '').replaceAll('.', ''));
-                  if (n == null || n <= 0) return 'Nominal harus lebih dari 0';
-                  return null;
-                },
+              // ── Mata uang & Nominal (opsional bila pakai item) ────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _currency,
+                      decoration: const InputDecoration(
+                        labelText: 'Mata uang',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (final c in supportedCurrencies)
+                          DropdownMenuItem(
+                            value: c.code,
+                            child: Text('${c.code} · ${c.name}'),
+                          ),
+                      ],
+                      onChanged: _saving
+                          ? null
+                          : (v) {
+                              if (v != null) _changeCurrency(v);
+                            },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _amountCtrl,
+                      enabled: !_amountFromItems,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'Nominal',
+                        prefixText: '$_currencySymbol ',
+                        helperText: _amountFromItems
+                            ? 'Otomatis dari total item'
+                            : null,
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: _formatAmountInput,
+                      validator: (v) {
+                        if (_amountFromItems) return null;
+                        final n =
+                            double.tryParse((v ?? '').replaceAll('.', ''));
+                        if (n == null || n <= 0) {
+                          return 'Nominal harus lebih dari 0';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
               ),
+              if (_currency != 'IDR') ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _rateCtrl,
+                  enabled: !_saving,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Kurs (1 $_currency = ... IDR)',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: _rateLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : IconButton(
+                            tooltip: 'Muat ulang kurs',
+                            onPressed: _fetchRate,
+                            icon: const Icon(Icons.refresh),
+                          ),
+                    helperText: _rateError ??
+                        (totalIdr > 0
+                            ? 'Tersimpan: ${formatRupiah(totalIdr)} (IDR)'
+                            : 'Nominal × kurs = total yang tersimpan (IDR)'),
+                    errorText: _rateError != null && _rateValue <= 0
+                        ? 'Kurs harus lebih dari 0'
+                        : null,
+                  ),
+                  onChanged: (_) => setState(() {
+                    _rateError = null;
+                  }),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // ── Kategori & akun ───────────────────────────────────────────

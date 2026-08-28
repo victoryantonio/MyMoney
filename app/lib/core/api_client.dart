@@ -208,6 +208,8 @@ class ApiClient {
     String? note,
     DateTime? transactionDate,
     List<ReceiptItemModel>? items,
+    String? originalCurrency,
+    double? exchangeRate,
   }) async {
     try {
       final data = <String, dynamic>{};
@@ -224,6 +226,10 @@ class ApiClient {
       if (items != null) {
         data['items'] = items.map((i) => i.toJson()).toList();
       }
+      if (originalCurrency != null) {
+        data['original_currency'] = originalCurrency;
+      }
+      if (exchangeRate != null) data['exchange_rate'] = exchangeRate;
       await _dio.put<void>('/api/transactions/$id', data: data);
     } on DioException catch (e) {
       throw ApiException(_dioMessage(e));
@@ -383,6 +389,7 @@ class ApiClient {
 
   /// POST /api/transactions — simpan transaksi (hasil review Scan Nota).
   /// `categoryId` null untuk tipe transfer; `toAccountId` hanya untuk transfer.
+  /// `originalCurrency`/`exchangeRate` opsional — default backend 'IDR'/1.
   Future<void> createTransaction({
     required String type,
     required double totalAmount,
@@ -393,6 +400,8 @@ class ApiClient {
     String? note,
     required DateTime transactionDate,
     required List<ReceiptItemModel> items,
+    String? originalCurrency,
+    double? exchangeRate,
   }) async {
     try {
       await _dio.post<void>(
@@ -407,6 +416,8 @@ class ApiClient {
           'note': note,
           'transaction_date': transactionDate.toIso8601String(),
           'items': items.map((i) => i.toJson()).toList(),
+          'original_currency': ?originalCurrency,
+          'exchange_rate': ?exchangeRate,
         },
       );
     } on DioException catch (e) {

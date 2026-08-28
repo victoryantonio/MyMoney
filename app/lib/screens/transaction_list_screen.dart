@@ -118,9 +118,30 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: Text(
-                      formatRupiah(tx.totalAmount),
-                      style: TextStyle(color: color, fontWeight: FontWeight.w700),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          formatRupiah(tx.totalAmount),
+                          style: TextStyle(
+                            color: color,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (tx.originalCurrency != 'IDR')
+                          Text(
+                            tx.originalCurrency,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
+                                ),
+                          ),
+                      ],
                     ),
                   ),
                 );

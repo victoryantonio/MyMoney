@@ -11,7 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ── Item sub-schemas ─────────────────────────────────────────────────────────
 
@@ -31,10 +31,30 @@ class TransactionItemResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Currency helpers ─────────────────────────────────────────────────────────
+
+
+def _normalize_currency(value: str) -> str:
+    """Uppercase + trim → ISO 4217 (mis. 'idr' → 'IDR')."""
+    return value.strip().upper()
+
+
+class CurrencyMixin(BaseModel):
+    """Kolom currency bersama (create & update)."""
+
+    original_currency: str = Field(default="IDR", min_length=3, max_length=3)
+    exchange_rate: Decimal = Field(default=Decimal("1"), gt=0)
+
+    @field_validator("original_currency")
+    @classmethod
+    def _norm_currency(cls, v: str) -> str:
+        return _normalize_currency(v)
+
+
 # ── Transaction request schemas ───────────────────────────────────────────────
 
 
-class TransactionCreateRequest(BaseModel):
+class TransactionCreateRequest(CurrencyMixin):
     type: Literal["income", "expense", "transfer"]
     total_amount: Decimal = Field(gt=0)
     # Wajib untuk income/expense; NULL untuk transfer.
@@ -48,8 +68,12 @@ class TransactionCreateRequest(BaseModel):
     items: list[TransactionItemCreate] = Field(default_factory=list)
 
 
-class TransactionUpdateRequest(BaseModel):
-    """All fields optional — PATCH semantics."""
+class TransactionUpdateRequest(CurrencyMixin):
+    """All fields optional — PATCH semantics.
+
+    `original_currency`/`exchange_rate` hanya diupdate bila dikirim eksplisit
+    (mixin memberi default, tapi di sini default = None agar PATCH benar).
+    """
 
     type: Literal["income", "expense", "transfer"] | None = None
     total_amount: Decimal | None = Field(default=None, gt=0)
@@ -60,6 +84,15 @@ class TransactionUpdateRequest(BaseModel):
     note: str | None = None
     transaction_date: datetime | None = None
     items: list[TransactionItemCreate] | None = None
+    original_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    exchange_rate: Decimal | None = Field(default=None, gt=0)
+
+    @field_validator("original_currency")
+    @classmethod
+    def _norm_currency(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return _normalize_currency(v)
 
 
 # ── Transaction response schemas ──────────────────────────────────────────────
@@ -69,6 +102,8 @@ class TransactionResponse(BaseModel):
     id: uuid.UUID
     type: str
     total_amount: Decimal
+    original_currency: str
+    exchange_rate: Decimal
     category_id: uuid.UUID | None  # NULL untuk transfer
     account_id: uuid.UUID
     to_account_id: uuid.UUID | None  # hanya terisi saat transfer
