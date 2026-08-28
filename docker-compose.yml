@@ -1,22 +1,4 @@
 services:
-  db:
-    image: postgres:16-alpine
-    mem_limit: 2.5g
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-    networks:
-      - mymoney_net
-
   backend:
     build: ./backend
     mem_limit: 1.5g
@@ -26,9 +8,6 @@ services:
       - ./receipts:/app/receipts
     ports:
       - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
     restart: unless-stopped
     user: "1000:1000"
     security_opt:
@@ -53,9 +32,6 @@ services:
       - mymoney_net
     depends_on:
       - backend
-
-volumes:
-  pgdata:
 
 networks:
   mymoney_net:

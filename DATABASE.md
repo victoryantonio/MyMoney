@@ -255,24 +255,23 @@ engine = create_engine(
 ### 4.3 Docker Compose — resource limit eksplisit
 ```yaml
 services:
-  db:
-    image: postgres:16-alpine
-    mem_limit: 2.5g
-    environment:
-      POSTGRES_DB: mymoney
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-
   backend:
     build: ./backend
     mem_limit: 1.5g
-    depends_on:
-      - db
+    env_file:
+      - .env            # DATABASE_URL → Supabase Postgres
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  tunnel:                # opsional — Cloudflare Tunnel (api.<domain> → backend)
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     restart: unless-stopped
 ```
+Catatan: postgres lokal sudah TIDAK dipakai — backend dan alembic memakai
+Supabase (connection string dari `.env` → `DATABASE_URL`). Service `db` dan
+volume `pgdata` dihapus dari `docker-compose.yml`.
 
 ## 5. Migration Strategy
 

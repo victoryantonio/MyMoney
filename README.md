@@ -112,10 +112,11 @@ cp .env.example .env
 Fill in Supabase, database, LLM, Telegram, and service-token values in `.env`.
 Never commit `.env`, Supabase service-role keys, or LLM keys.
 
-The root `.env` is the single local source of configuration. `backend/app/core/config.py`
+The root `.env` is the **single** source of configuration. `backend/app/core/config.py`
 does not contain credentials; it is only a typed validation/access layer for
 `.env` and exposes values through `settings.*` so backend modules do not read
 environment variables independently. The Node bot reads the same root `.env`.
+`docker-compose.yml` loads it via `env_file` — there is no separate `backend/.env`.
 Flutter cannot read a server-side `.env` at runtime, so its public client
 values are forwarded explicitly at build/run time with `--dart-define`.
 

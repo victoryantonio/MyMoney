@@ -1,0 +1,14 @@
+# Secrets — never bake into image layers
+.env
+.env.*
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+htmlcov/
+
+# Tests & tooling (image only needs runtime code)
+tests/
