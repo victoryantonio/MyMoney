@@ -62,7 +62,20 @@ class _AuthScreenState extends State<AuthScreen> {
           data: {'display_name': fullName},
         );
         if (res.session == null && res.user != null) {
-          // Email confirmation aktif di project: beri tahu user cek email.
+          // GoTrue anti-enumeration: kalau email SUDAH terdaftar, respons
+          // mengembalikan user dengan identities KOSONG & tanpa session —
+          // dan TIDAK ada email verifikasi baru yang dikirim. Tolak.
+          final isNewSignup = res.user!.identities?.isNotEmpty ?? false;
+          if (!isNewSignup) {
+            if (mounted) {
+              setState(() {
+                _error = 'Email sudah terdaftar. Silakan login dengan '
+                    'password Anda.';
+              });
+            }
+            return;
+          }
+          // Email baru + confirmation aktif: beri tahu user cek email.
           if (mounted) {
             setState(() {
               _success =
