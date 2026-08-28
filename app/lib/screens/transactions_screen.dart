@@ -12,10 +12,15 @@ import '../core/api_client.dart';
 import '../core/app_colors.dart';
 import '../core/format.dart';
 import '../models/transaction_models.dart';
+import '../widgets/transaction_filters.dart';
 import 'transaction_form_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
-  const TransactionsScreen({super.key});
+  const TransactionsScreen({super.key, this.refreshToken = 0});
+
+  /// Dinaikkan oleh MainShell saat transaksi baru dibuat/diubah dari luar
+  /// tab ini → memicu reload ulang daftar.
+  final int refreshToken;
 
   @override
   State<TransactionsScreen> createState() => _TransactionsScreenState();
@@ -37,11 +42,30 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Map<String, String> _categoryNames = {};
   Map<String, String> _accountLabels = {};
 
+  // Filter & sortir (client-side, seperti filter akun di dashboard).
+  List<AccountModel> _accounts = [];
+  List<CategoryModel> _categories = [];
+  final Set<String> _selectedAccountIds = {};
+  final Set<String> _selectedCategoryIds = {};
+  TransactionSort _sort = TransactionSort.newest;
+
+  /// Saat filter/sortir non-default aktif, seluruh transaksi dimuat sekaligus
+  /// (bukan pagination) supaya penyaringan & pengurutan akurat lintas halaman.
+  bool _allLoaded = false;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      _load();
+    }
   }
 
   @override
@@ -69,19 +93,38 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       final results = await Future.wait<Object?>([
         _api.fetchCategories(),
         _api.fetchAccounts(),
-        _api.fetchTransactions(),
+        _needsAllData ? _api.fetchAllTransactions() : _api.fetchTransactions(),
       ]);
       if (!mounted) return;
       final categories = results[0] as List<CategoryModel>;
       final accounts = results[1] as List<AccountModel>;
-      final page = results[2] as TransactionListResult;
       setState(() {
         _categoryNames = {for (final c in categories) c.id: c.name};
         _accountLabels = {for (final a in accounts) a.id: a.label};
-        _transactions
-          ..clear()
-          ..addAll(page.items);
-        _nextCursor = page.nextCursor;
+        _categories = categories;
+        _accounts = accounts;
+        if (_needsAllData) {
+          final all = results[2] as List<TransactionModel>;
+          _transactions
+            ..clear()
+            ..addAll(sortTransactions(
+              filterTransactions(
+                all,
+                accountIds: _selectedAccountIds,
+                categoryIds: _selectedCategoryIds,
+              ),
+              _sort,
+            ));
+          _nextCursor = null;
+          _allLoaded = true;
+        } else {
+          final page = results[2] as TransactionListResult;
+          _transactions
+            ..clear()
+            ..addAll(page.items);
+          _nextCursor = page.nextCursor;
+          _allLoaded = false;
+        }
         _loadedOnce = true;
         _loading = false;
       });
@@ -95,8 +138,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
+  /// Perlu memuat SEMUA transaksi: ada filter akun/kategori, atau sortir
+  /// bukan tanggal-terbaru (default server) yang butuh data lintas halaman.
+  bool get _needsAllData =>
+      _selectedAccountIds.isNotEmpty ||
+      _selectedCategoryIds.isNotEmpty ||
+      _sort != TransactionSort.newest;
+
   Future<void> _loadMore() async {
-    if (_loadingMore || _nextCursor == null) return;
+    if (_loadingMore || _nextCursor == null || _allLoaded) return;
     setState(() => _loadingMore = true);
     try {
       final page = await _api.fetchTransactions(cursor: _nextCursor);
@@ -113,6 +163,69 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   Future<void> _refresh() => _load();
+
+  /// Buka bottom sheet filter akun + kategori. Saat berubah → reload penuh
+  /// (memuat semua transaksi) supaya hasil filter akurat.
+  Future<void> _openFilter() async {
+    final result = await showTransactionFilterSheet(
+      context: context,
+      accounts: _accounts,
+      categories: _categories,
+      selectedAccountIds: _selectedAccountIds,
+      selectedCategoryIds: _selectedCategoryIds,
+    );
+    if (result == null) return;
+    if (result.accountIds.length == _selectedAccountIds.length &&
+        result.accountIds.containsAll(_selectedAccountIds) &&
+        result.categoryIds.length == _selectedCategoryIds.length &&
+        result.categoryIds.containsAll(_selectedCategoryIds)) {
+      return; // tidak berubah
+    }
+    setState(() {
+      _selectedAccountIds
+        ..clear()
+        ..addAll(result.accountIds);
+      _selectedCategoryIds
+        ..clear()
+        ..addAll(result.categoryIds);
+    });
+    _load();
+  }
+
+  void _changeSort(TransactionSort sort) {
+    if (sort == _sort) return;
+    setState(() => _sort = sort);
+    // Sortir non-default butuh semua data (bisa jadi sebelumnya paginated).
+    if (_needsAllData && !_allLoaded) {
+      _load();
+    } else if (_allLoaded) {
+      setState(() {
+        _transactions
+          ..clear()
+          ..addAll(sortTransactions(
+            filterTransactions(
+              _transactions,
+              accountIds: _selectedAccountIds,
+              categoryIds: _selectedCategoryIds,
+            ),
+            _sort,
+          ));
+      });
+    }
+  }
+
+  /// Hapus semua filter aktif → reload pagination normal.
+  void _clearFilters() {
+    if (_selectedAccountIds.isEmpty && _selectedCategoryIds.isEmpty) return;
+    setState(() {
+      _selectedAccountIds.clear();
+      _selectedCategoryIds.clear();
+    });
+    _load();
+  }
+
+  int get _activeFilterCount =>
+      _selectedAccountIds.length + _selectedCategoryIds.length;
 
   Future<void> _edit(TransactionModel tx) async {
     final changed = await Navigator.of(context).push<bool>(
@@ -192,8 +305,46 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final filterCount = _activeFilterCount;
     return Scaffold(
-      appBar: AppBar(title: const Text('Transaksi')),
+      appBar: AppBar(
+        title: const Text('Transaksi'),
+        actions: [
+          IconButton(
+            tooltip: 'Filter akun & kategori',
+            onPressed: _openFilter,
+            icon: Badge(
+              isLabelVisible: filterCount > 0,
+              label: Text('$filterCount'),
+              child: const Icon(Icons.filter_list),
+            ),
+          ),
+          PopupMenuButton<TransactionSort>(
+            tooltip: 'Urutkan',
+            initialValue: _sort,
+            onSelected: _changeSort,
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: TransactionSort.newest,
+                child: Text('Tanggal terbaru'),
+              ),
+              PopupMenuItem(
+                value: TransactionSort.oldest,
+                child: Text('Tanggal terlama'),
+              ),
+              PopupMenuItem(
+                value: TransactionSort.largest,
+                child: Text('Nominal terbesar'),
+              ),
+              PopupMenuItem(
+                value: TransactionSort.smallest,
+                child: Text('Nominal terkecil'),
+              ),
+            ],
+            icon: const Icon(Icons.sort),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _buildBody(context),
@@ -229,87 +380,178 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     if (_transactions.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 160),
-          Icon(Icons.receipt_long_outlined, size: 56),
-          SizedBox(height: 12),
-          Center(child: Text('Belum ada transaksi')),
-          SizedBox(height: 4),
+        children: [
+          if (_activeFilterCount > 0 || _sort != TransactionSort.newest)
+            _filterBar(),
+          const SizedBox(height: 160),
+          Icon(
+            _activeFilterCount > 0
+                ? Icons.filter_alt_off_outlined
+                : Icons.receipt_long_outlined,
+            size: 56,
+          ),
+          const SizedBox(height: 12),
           Center(
             child: Text(
-              'Tekan "+" untuk mencatat pemasukan/pengeluaran',
+              _activeFilterCount > 0
+                  ? 'Tidak ada transaksi yang cocok'
+                  : 'Belum ada transaksi',
+            ),
+          ),
+          const SizedBox(height: 4),
+          Center(
+            child: Text(
+              _activeFilterCount > 0
+                  ? 'Coba ubah filter atau reset pilihan'
+                  : 'Tekan "+" untuk mencatat pemasukan/pengeluaran',
               style: TextStyle(fontSize: 12),
             ),
           ),
+          if (_activeFilterCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Center(
+                child: OutlinedButton.icon(
+                  onPressed: _clearFilters,
+                  icon: const Icon(Icons.filter_alt_off),
+                  label: const Text('Reset filter'),
+                ),
+              ),
+            ),
         ],
       );
     }
 
     final groups = _groupByDay();
-    return ListView.builder(
-      controller: _scrollController,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-      itemCount: groups.length + 1,
-      itemBuilder: (context, i) {
-        if (i == groups.length) {
-          if (_loadingMore) {
-            return const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          return const SizedBox(height: 16);
-        }
-        final (label, items) = groups[i];
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-            ),
-            Card(
-              margin: EdgeInsets.zero,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(
-                  color: Theme.of(context).colorScheme.outlineVariant,
-                ),
-              ),
-              child: Column(
+    return Column(
+      children: [
+        if (_activeFilterCount > 0 || _sort != TransactionSort.newest)
+          _filterBar(),
+        Expanded(
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+            itemCount: groups.length + 1,
+            itemBuilder: (context, i) {
+              if (i == groups.length) {
+                if (_loadingMore) {
+                  return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return const SizedBox(height: 16);
+              }
+              final (label, items) = groups[i];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  for (var j = 0; j < items.length; j++) ...[
-                    if (j > 0)
-                      Divider(
-                        height: 1,
-                        indent: 16,
-                        endIndent: 16,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  Card(
+                    margin: EdgeInsets.zero,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(
                         color: Theme.of(context).colorScheme.outlineVariant,
                       ),
-                    _TransactionTile(
-                      tx: items[j],
-                      categoryName: items[j].type == 'transfer'
-                          ? 'Transfer'
-                          : _categoryNames[items[j].categoryId] ?? '—',
-                      accountLabel:
-                          _accountLabels[items[j].accountId] ?? '',
-                      onTap: () => _edit(items[j]),
-                      onDelete: () => _confirmDelete(items[j]),
                     ),
-                  ],
+                    child: Column(
+                      children: [
+                        for (var j = 0; j < items.length; j++) ...[
+                          if (j > 0)
+                            Divider(
+                              height: 1,
+                              indent: 16,
+                              endIndent: 16,
+                              color: Theme.of(context).colorScheme.outlineVariant,
+                            ),
+                          _TransactionTile(
+                            tx: items[j],
+                            categoryName: items[j].type == 'transfer'
+                                ? 'Transfer'
+                                : _categoryNames[items[j].categoryId] ?? '—',
+                            accountLabel:
+                                _accountLabels[items[j].accountId] ?? '',
+                            onTap: () => _edit(items[j]),
+                            onDelete: () => _confirmDelete(items[j]),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Baris chip filter/sortir aktif — bisa langsung dihapus per chip.
+  Widget _filterBar() {
+    final scheme = Theme.of(context).colorScheme;
+    final chips = <Widget>[
+      for (final id in _selectedAccountIds)
+        if (_accountLabels[id] != null)
+          InputChip(
+            label: Text(_accountLabels[id]!),
+            avatar: Icon(Icons.account_balance_wallet_outlined,
+                size: 16, color: scheme.onSurfaceVariant),
+            onDeleted: () {
+              setState(() => _selectedAccountIds.remove(id));
+              _load();
+            },
+          ),
+      for (final id in _selectedCategoryIds)
+        if (_categoryNames[id] != null)
+          InputChip(
+            label: Text(_categoryNames[id]!),
+            avatar:
+                Icon(Icons.category_outlined, size: 16, color: scheme.onSurfaceVariant),
+            onDeleted: () {
+              setState(() => _selectedCategoryIds.remove(id));
+              _load();
+            },
+          ),
+      if (_sort != TransactionSort.newest)
+        InputChip(
+          label: Text(_sort.label),
+          avatar: Icon(Icons.sort, size: 16, color: scheme.onSurfaceVariant),
+          onDeleted: () => _changeSort(TransactionSort.newest),
+        ),
+    ];
+    return Container(
+      width: double.infinity,
+      color: scheme.surfaceContainerLow,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            ...chips,
+            if (_activeFilterCount > 0) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Reset semua filter',
+                onPressed: _clearFilters,
+                icon: const Icon(Icons.filter_alt_off, size: 20),
               ),
-            ),
+            ],
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }

@@ -22,6 +22,10 @@ class AccountCreateRequest(BaseModel):
 class AccountUpdateRequest(BaseModel):
     account_name: str | None = Field(default=None, min_length=1, max_length=100)
     account_type: Literal["cash", "ewallet", "bank"] | None = None
+    # Edit saldo awal (nilai tetap saat akun dibuat). Mengubah ini menggeser
+    # current_balance (initial + SUM transaksi) — digunakan untuk mengoreksi
+    # saldo awal yang salah input.
+    initial_balance: Decimal | None = Field(default=None, ge=0)
 
 
 class AccountDeactivateRequest(BaseModel):

@@ -31,6 +31,7 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   int _index = 0;
   int _dashboardRefreshToken = 0;
+  int _transactionsRefreshToken = 0;
   final Set<int> _visitedTabs = {0};
   late final ApiClient _api = ApiClient.instance(widget.supabase);
 
@@ -47,7 +48,7 @@ class _MainShellState extends ConsumerState<MainShell> {
           refreshToken: _dashboardRefreshToken,
         );
       case 1:
-        return const TransactionsScreen();
+        return TransactionsScreen(refreshToken: _transactionsRefreshToken);
       case 2:
         return ProfileScreen(
           supabase: widget.supabase,
@@ -94,11 +95,17 @@ class _MainShellState extends ConsumerState<MainShell> {
         }
         return;
       }
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
+      final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
           builder: (_) => TransactionFormScreen(api: _api),
         ),
       );
+      if (changed == true && mounted) {
+        setState(() {
+          _dashboardRefreshToken++;
+          _transactionsRefreshToken++;
+        });
+      }
     } on ApiException catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -77,7 +77,7 @@ class NotificationService {
     await init();
     await _plugin.periodicallyShow(
       _reminderId,
-      'Ingat mencatat!',
+      'Ayo catat transaksimu!',
       'Jangan lupa catat pengeluaran/pemasukan Anda.',
       RepeatInterval.hourly,
       const NotificationDetails(

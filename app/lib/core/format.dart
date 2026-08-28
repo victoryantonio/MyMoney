@@ -42,11 +42,12 @@ const _hari = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
 /// "12 Agu" untuk label sumbu chart (ringkas).
 String formatDateShort(DateTime d) => '${d.day} ${_bulan[d.month - 1]}';
 
-/// "Agu 12" — label sumbu dengan tahun bila berbeda dari tahun sekarang.
+/// "12 Agu" — label sumbu dengan tahun bila berbeda dari tahun sekarang
+/// (tanggal dulu, baru bulan — sesuai preferensi pengguna).
 String formatAxisLabel(DateTime d, {DateTime? today}) {
   final t = today ?? DateTime.now();
-  if (d.year != t.year) return '${_bulan[d.month - 1]} ${d.year}';
-  return '${_bulan[d.month - 1]} ${d.day}';
+  if (d.year != t.year) return '${d.day} ${_bulan[d.month - 1]} ${d.year}';
+  return '${d.day} ${_bulan[d.month - 1]}';
 }
 
 /// "Sen, 12 Agu 2026" untuk panel detail / header tanggal.

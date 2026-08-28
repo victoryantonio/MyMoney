@@ -162,13 +162,21 @@ def list_transactions(
     type: Literal["income", "expense"] | None = Query(default=None),
     category_id: uuid.UUID | None = Query(default=None),
     account_id: uuid.UUID | None = Query(default=None),
+    date_from: datetime | None = Query(
+        default=None,
+        description="Only transactions on/after this date (inclusive)",
+    ),
+    date_to: datetime | None = Query(
+        default=None,
+        description="Only transactions on/before this date (inclusive)",
+    ),
     current_user: Profile = Depends(require_active_user),
     db: Session = Depends(get_db),
 ) -> TransactionListResponse:
     """
     List transactions newest-first with keyset pagination
     ((transaction_date, id) — DATABASE.md §3.2).
-    Supports optional filtering by type, category, and account.
+    Supports optional filtering by type, category, account, and date range.
     """
     # Count total for UI (runs before cursor filter)
     count_stmt = select(func.count()).where(Transaction.user_id == current_user.id)
@@ -178,6 +186,10 @@ def list_transactions(
         count_stmt = count_stmt.where(Transaction.category_id == category_id)
     if account_id:
         count_stmt = count_stmt.where(Transaction.account_id == account_id)
+    if date_from:
+        count_stmt = count_stmt.where(Transaction.transaction_date >= date_from)
+    if date_to:
+        count_stmt = count_stmt.where(Transaction.transaction_date <= date_to)
     total_count = db.scalar(count_stmt) or 0
 
     # Main query — keyset order: (transaction_date DESC, id DESC)
@@ -195,6 +207,10 @@ def list_transactions(
         stmt = stmt.where(Transaction.category_id == category_id)
     if account_id:
         stmt = stmt.where(Transaction.account_id == account_id)
+    if date_from:
+        stmt = stmt.where(Transaction.transaction_date >= date_from)
+    if date_to:
+        stmt = stmt.where(Transaction.transaction_date <= date_to)
 
     stmt = _apply_cursor(stmt, cursor)
 
@@ -298,7 +314,13 @@ def update_transaction(
 
     new_type = body.type if body.type is not None else transaction.type
     new_account_id = body.account_id or transaction.account_id
-    new_category_id = body.category_id if body.category_id is not None else transaction.category_id
+    # Saat tipe berubah menjadi transfer, kategori HARUS di-null-kan — tidak
+    # boleh jatuh ke kategori lama via PATCH fallback (transfer tanpa kategori).
+    new_category_id = (
+        None
+        if new_type == "transfer"
+        else (body.category_id if body.category_id is not None else transaction.category_id)
+    )
     new_to_account_id = (
         body.to_account_id if body.to_account_id is not None else transaction.to_account_id
     )

@@ -146,17 +146,22 @@ class ApiClient {
   // ── Transaksi (list + CRUD) ────────────────────────────────────────────────
 
   /// GET /api/transactions — keyset pagination (`cursor` = next_cursor).
+  /// `dateFrom`/`dateTo` (ISO-8601, opsional) membatasi rentang tanggal.
   Future<TransactionListResult> fetchTransactions({
     String? cursor,
     String? type,
     String? categoryId,
     String? accountId,
+    String? dateFrom,
+    String? dateTo,
   }) async {
     final query = <String, dynamic>{};
     if (cursor != null) query['cursor'] = cursor;
     if (type != null) query['type'] = type;
     if (categoryId != null) query['category_id'] = categoryId;
     if (accountId != null) query['account_id'] = accountId;
+    if (dateFrom != null) query['date_from'] = dateFrom;
+    if (dateTo != null) query['date_to'] = dateTo;
     final data = await _get('/api/transactions', query);
     return TransactionListResult.fromJson(data);
   }
@@ -215,7 +220,13 @@ class ApiClient {
       final data = <String, dynamic>{};
       if (type != null) data['type'] = type;
       if (totalAmount != null) data['total_amount'] = totalAmount;
-      if (categoryId != null) data['category_id'] = categoryId;
+      // Transfer tidak memakai kategori: kirim null EKSPLISIT agar backend
+      // tidak jatuh ke kategori lama via PATCH fallback.
+      if (type == 'transfer') {
+        data['category_id'] = null;
+      } else if (categoryId != null) {
+        data['category_id'] = categoryId;
+      }
       if (accountId != null) data['account_id'] = accountId;
       if (toAccountId != null) data['to_account_id'] = toAccountId;
       if (merchant != null) data['merchant'] = merchant;
@@ -325,11 +336,13 @@ class ApiClient {
     String id, {
     String? accountName,
     String? accountType,
+    double? initialBalance,
   }) async {
     try {
       final data = <String, dynamic>{};
       if (accountName != null) data['account_name'] = accountName;
       if (accountType != null) data['account_type'] = accountType;
+      if (initialBalance != null) data['initial_balance'] = initialBalance;
       final res = await _dio.put<Map<String, dynamic>>(
         '/api/accounts/$id',
         data: data,

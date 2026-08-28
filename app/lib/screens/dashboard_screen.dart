@@ -145,7 +145,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     try {
       final accounts = _api.fetchAccounts();
       final categories = _api.fetchCategories();
-      final recent = _api.fetchTransactions(); // 1 halaman (20 item), ringan
+      // Recent transactions difilter sesuai periode aktif di SERVER
+      // (date_from/date_to) — payload jauh lebih kecil & langsung benar,
+      // terutama saat period = Today (hanya transaksi hari ini).
+      final recent = _api.fetchTransactions(
+        dateFrom: _customStartIso ?? '${_fmtDate(_periodStart)}T00:00:00',
+        dateTo: _customEndIso ?? '${_fmtDate(_periodEnd)}T23:59:59',
+      );
       final futures = <Future<Object?>>[accounts, categories, recent];
       // Kalau filter akun sudah pernah dipakai, refresh cache-nya juga
       // (best-effort, paralel — tidak memperlambat layar).
@@ -247,6 +253,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           transactions: transactions,
           categoryNames: {for (final c in _categories) c.id: c.name},
           accountLabels: {for (final a in _accounts) a.id: a.label},
+          accounts: _accounts,
+          categories: _categories,
           onTransactionTap: _editTransaction,
         ),
       ),
@@ -343,7 +351,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _CategoryBreakdownCard(
           summary: summary,
           categories: _filteredCategories,
-          recentTransactions: _recentTx,
+          recentTransactions: _periodRecentTx,
           categoryNames: categoryNames,
           selectedCategoryName: _selectedCategoryName,
           onCategorySelect: (name) => setState(() {
@@ -354,6 +362,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           donutIncome: _filteredIncome,
           donutExpense: _filteredExpense,
           accountFilterActive: _activeAccountFilter != null,
+          amountsHidden: _amountsHidden,
         ),
       ],
     );
@@ -409,6 +418,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   List<TransactionModel> get _filteredTxs => _accountFilteredTxs
       .where((tx) => _inPeriod(tx.transactionDate))
       .toList();
+
+  /// Transaksi terbaru dalam periode aktif untuk section
+  /// "Recent transactions" — ambil dari cache 1 halaman (20 terbaru);
+  /// halaman diurutkan terbaru dulu sehingga transaksi periode pasti ada.
+  /// Saat period = Today, hanya transaksi hari ini yang muncul.
+  List<TransactionModel> get _periodRecentTx =>
+      _recentTx.where((tx) => _inPeriod(tx.transactionDate)).toList();
 
   List<CategoryTotal> get _filteredCategories {
     if (_activeAccountFilter == null) return _summary?.categories ?? const [];
@@ -1091,7 +1107,7 @@ class _TrendCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              'Tren harian pemasukan vs pengeluaran',
+              'Tren harian expense vs income',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -1238,6 +1254,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
     required this.donutIncome,
     required this.donutExpense,
     required this.accountFilterActive,
+    required this.amountsHidden,
   });
 
   final ReportSummary summary;
@@ -1250,6 +1267,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
   final double donutIncome;
   final double donutExpense;
   final bool accountFilterActive;
+  final bool amountsHidden;
 
   @override
   Widget build(BuildContext context) {
@@ -1289,6 +1307,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
               expense: accountFilterActive ? donutExpense : summary.totalExpense,
               net: (accountFilterActive ? donutIncome : summary.totalIncome) -
                   (accountFilterActive ? donutExpense : summary.totalExpense),
+              hidden: amountsHidden,
             ),
             const SizedBox(height: 12),
 
@@ -1351,7 +1370,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
             else
               ..._recentRows(
                 context,
-                filtered.take(5).toList(),
+                filtered.take(10).toList(),
                 nameOf,
               ),
           ],
@@ -1361,7 +1380,8 @@ class _CategoryBreakdownCard extends StatelessWidget {
   }
 
   /// Baris transaksi terbaru dikelompokkan per tanggal: header tanggal
-  /// ditampilkan saat tanggal berganti (mis. "Kamis, 27 Juli 2026").
+  /// ditampilkan saat tanggal berganti. Hari ini ditulis "Hari ini"
+  /// (kemarin → "Kemarin"), sisanya format "Kamis, 27 Juli 2026".
   List<Widget> _recentRows(
     BuildContext context,
     List<TransactionModel> txs,
@@ -1377,7 +1397,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 8, bottom: 4),
             child: Text(
-              formatDateDetail(day),
+              _dayLabel(day),
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w700,
@@ -1394,10 +1414,21 @@ class _CategoryBreakdownCard extends StatelessWidget {
               ? 'Transfer'
               : nameOf[tx.categoryId] ?? '—',
           onTap: () => onTransactionTap(tx),
+          hidden: amountsHidden,
         ),
       );
     }
     return rows;
+  }
+
+  /// Label header tanggal: "Hari ini" / "Kemarin" / format lengkap.
+  String _dayLabel(DateTime day) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (day == today) return 'Hari ini';
+    final yesterday = today.subtract(const Duration(days: 1));
+    if (day == yesterday) return 'Kemarin';
+    return formatDateDetail(day);
   }
 
   List<Widget> _categoryRows(
@@ -1415,6 +1446,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
           max: max,
           selected: selectedCategoryName == cat.name,
           onClick: () => onCategorySelect(cat.name),
+          hidden: amountsHidden,
         ),
     ];
   }
@@ -1426,11 +1458,15 @@ class _IncomeExpenseDonut extends StatelessWidget {
     required this.income,
     required this.expense,
     required this.net,
+    required this.hidden,
   });
 
   final double income;
   final double expense;
   final double net;
+  final bool hidden;
+
+  static const _maskedDonut = 'Rp ••••••';
 
   @override
   Widget build(BuildContext context) {
@@ -1478,12 +1514,18 @@ class _IncomeExpenseDonut extends StatelessWidget {
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    formatRupiah(net),
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w800),
+                  SizedBox(
+                    width: 76,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        hidden ? _maskedDonut : formatRupiah(net),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
                   ),
                   Text(
                     'Net',
@@ -1519,6 +1561,7 @@ class _CategoryRow extends StatelessWidget {
     required this.max,
     required this.selected,
     required this.onClick,
+    required this.hidden,
   });
 
   final String name;
@@ -1527,6 +1570,9 @@ class _CategoryRow extends StatelessWidget {
   final double max;
   final bool selected;
   final VoidCallback onClick;
+  final bool hidden;
+
+  static const _maskedCategory = 'Rp ••••••';
 
   @override
   Widget build(BuildContext context) {
@@ -1572,7 +1618,7 @@ class _CategoryRow extends StatelessWidget {
             SizedBox(
               width: 90,
               child: Text(
-                formatRupiah(total),
+                hidden ? _maskedCategory : formatRupiah(total),
                 textAlign: TextAlign.end,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1594,11 +1640,13 @@ class _RecentTransactionRow extends StatelessWidget {
     required this.tx,
     required this.categoryName,
     required this.onTap,
+    required this.hidden,
   });
 
   final TransactionModel tx;
   final String categoryName;
   final VoidCallback onTap;
+  final bool hidden;
 
   @override
   Widget build(BuildContext context) {
@@ -1666,7 +1714,9 @@ class _RecentTransactionRow extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${isTransfer ? '' : isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
+                  hidden
+                      ? 'Rp ••••••'
+                      : '${isTransfer ? '' : isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
                   style: TextStyle(
                     fontWeight: FontWeight.w600,
                     color: color,

@@ -64,6 +64,19 @@ class _AccountsScreenState extends State<AccountsScreen> {
     }
   }
 
+  /// Format angka bulat dengan thousand separator titik (mis. "1.500.000"),
+  /// konsisten dengan input saldo yang strip '.' saat parse.
+  static String _fmtAmount(double v) {
+    final s = v == v.roundToDouble()
+        ? v.toStringAsFixed(0)
+        : v.toStringAsFixed(2);
+    if (v != v.roundToDouble()) return s;
+    return s.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => '.',
+    );
+  }
+
   Future<void> _openAdd() async {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
@@ -111,7 +124,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
-                  labelText: 'Saldo awal',
+                  labelText: 'Saldo Awal',
                   prefixText: 'Rp ',
                   border: OutlineInputBorder(),
                 ),
@@ -166,6 +179,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
   Future<void> _openEdit(AccountModel account) async {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: account.accountName);
+    final balanceCtrl = TextEditingController(
+      text: _fmtAmount(account.initialBalance),
+    );
     String selType = account.accountType;
 
     final saved = await showDialog<bool>(
@@ -202,6 +218,25 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   onChanged: (v) => setDialogState(() => selType = v!),
                 ),
               ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: balanceCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Saldo awal',
+                  prefixText: 'Rp ',
+                  helperText:
+                      'Saldo saat ini: ${formatRupiah(account.currentBalance)}',
+                  border: const OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final n = double.tryParse((v ?? '').replaceAll('.', ''));
+                  if (n == null || n < 0) return 'Saldo tidak valid';
+                  return null;
+                },
+              ),
             ],
           ),
         ),
@@ -214,6 +249,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
               final name = nameCtrl.text.trim();
+              final balance =
+                  double.tryParse(balanceCtrl.text.replaceAll('.', '')) ??
+                      account.initialBalance;
               final messenger = ScaffoldMessenger.of(context);
               Navigator.of(context).pop(true);
               try {
@@ -221,6 +259,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   account.id,
                   accountName: name,
                   accountType: selType,
+                  initialBalance: balance,
                 );
                 messenger.showSnackBar(
                   const SnackBar(content: Text('Akun diperbarui')),

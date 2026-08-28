@@ -218,6 +218,8 @@ def update_account(
         account.account_name = body.account_name.strip()
     if body.account_type is not None:
         account.account_type = body.account_type
+    if body.initial_balance is not None:
+        account.initial_balance = body.initial_balance
 
     db.commit()
     db.refresh(account)
@@ -287,7 +289,7 @@ def deactivate_account(
 
     # Pindahkan sisa saldo lewat SATU transaksi transfer (type='transfer',
     # migrasi 0008): saldo keluar dari akun asal dan masuk ke akun tujuan —
-    # netral di laporan pemasukan/pengeluaran. Dibuat inline (bukan via
+    # netral di laporan income/expense. Dibuat inline (bukan via
     # create_transaction_internal) agar seluruh deaktivasi — transfer + flag
     # + audit — commit atomik dalam SATU transaksi.
     if balance != Decimal("0.00") and target is not None:

@@ -213,8 +213,8 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
               Expanded(
                 child: SegmentedButton<String>(
                   segments: const [
-                    ButtonSegment(value: 'expense', label: Text('Pengeluaran')),
-                    ButtonSegment(value: 'income', label: Text('Pemasukan')),
+                    ButtonSegment(value: 'expense', label: Text('Expense')),
+                    ButtonSegment(value: 'income', label: Text('Income')),
                   ],
                   selected: {_type},
                   onSelectionChanged: (s) => _onTypeChanged(s.first),

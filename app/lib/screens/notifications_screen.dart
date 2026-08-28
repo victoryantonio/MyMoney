@@ -1,7 +1,7 @@
 /// Tab Notifikasi — setara v1 Kotlin `NotificationsScreen`.
 ///
 /// Fitur: pengingat per jam ("Setiap jam tepat di jam mengingatkan Anda
-/// mencatat pengeluaran/pemasukan") via notifikasi lokal
+/// mencatat expense/income") via notifikasi lokal
 /// (flutter_local_notifications) + permintaan izin POST_NOTIFICATIONS
 /// (Android 13+) / iOS. Daftar notifikasi masih placeholder (belum ada
 /// tabel notifikasi di backend) — sama seperti v1.

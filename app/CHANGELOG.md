@@ -4,6 +4,55 @@ All notable changes to the MyMoney app are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.1+5] — 2026-08-28
+
+### Changed
+- **Format tanggal line chart** — label sumbu bawah kini menampilkan tanggal
+  dulu baru bulan (mis. `12 Agu`, bukan `Agu 12`); tetap menyertakan tahun
+  bila berbeda dari tahun berjalan.
+- Version number: `1.2.0+4` → `1.2.1+5`.
+
+## [1.2.0+4] — 2026-08-28
+
+### Added
+- **Filter & sortir menu Transaksi** — filter multi-checklist akun + kategori
+  (ikon filter di AppBar, dengan badge jumlah pilihan) dan sortir berdasarkan
+  tanggal (terbaru/terlama) maupun nominal (terbesar/terkecil); chip filter
+  aktif tampil di atas daftar dan bisa dihapus satu per satu.
+- **Edit saldo awal akun** — dialog edit akun kini menyertakan kolom "Saldo
+  awal" (dengan helper saldo saat ini); mengubahnya langsung menyesuaikan
+  current balance (initial + SUM transaksi).
+
+### Changed
+- **Daftar Income/Expense/Net dari dashboard** — halaman hasil tap summary
+  card kini juga bisa difilter akun/kategori (multi-checklist) & disortir
+  tanggal/nominal sehingga daftar lebih ringkas.
+- Version number: `1.1.1+3` → `1.2.0+4`.
+
+## [1.1.1+3] — 2026-08-28
+
+### Fixed
+- **Donut chart teks terpotong** — nilai net di tengah doughnut sekarang
+  otomatis dikecilkan (FittedBox) sehingga nominal panjang tidak lagi terpotong.
+- **Hide saldo ikut menyembunyikan donut** — saat mata saldo di-hide, nilai di
+  tengah doughnut chart, total per kategori, dan nominal di recent transactions
+  ikut tertutup (Rp ••••••) bersama income/expense.
+- **Daftar transaksi tidak langsung update** — setelah tambah/edit transaksi,
+  tab Transaksi kini langsung di-refresh (refresh token antar tab).
+- **Thousand separator** — prefill nominal saat edit transaksi kini memakai
+  format ribuan (mis. `1.500.000`), konsisten dengan input form.
+- **Error "Transfer transactions do not use a category"** — saat mengubah
+  transaksi menjadi transfer, kategori sekarang dikosongkan eksplisit di
+  request sehingga tidak lagi memicu 422 dari backend.
+
+### Changed
+- **Recent transactions dashboard** — hanya menampilkan transaksi dalam periode
+  aktif (Today = hanya "Hari ini", bukan tanggal lain); label tanggal memakai
+  "Hari ini" / "Kemarin"; jumlah item dinaikkan dari 5 menjadi 10.
+- **Optimasi performa** — transaksi terbaru dashboard difilter tanggal di
+  SERVER (`date_from`/`date_to`), payload lebih kecil & dashboard lebih cepat.
+- Version number: `1.1.0+2` → `1.1.1+3`.
+
 ## [1.1.0+2] — 2026-08-28
 
 ### Added
@@ -24,7 +73,7 @@ and versioning follows [Semantic Versioning](https://semver.org/).
   - Release APK signed with the production keystore (no longer debug).
 
 ### Fixed
-- **SegmentedButton truncation** (Pengeluaran/Pemasukan/Transfer clipped) in the
+- **SegmentedButton truncation** (Expense/Income/Transfer clipped) in the
   transaction form and category management — segment icons removed &
   `showSelectedIcon` disabled so labels are no longer cut off.
 - **Currency dropdown** — now shows only the currency code (e.g. `USD`) so the

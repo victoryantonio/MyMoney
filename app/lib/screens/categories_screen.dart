@@ -84,17 +84,17 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 const SizedBox(height: 16),
                 SegmentedButton<String>(
                   // Tanpa ikon centang saat terpilih supaya label
-                  // 'Pengeluaran'/'Pemasukan' tidak terpotong.
+                  // 'Expense'/'Income' tidak terpotong.
                   showSelectedIcon: false,
                   expandedInsets: EdgeInsets.zero,
                   segments: const [
                     ButtonSegment(
                       value: 'expense',
-                      label: Text('Pengeluaran'),
+                      label: Text('Expense'),
                     ),
                     ButtonSegment(
                       value: 'income',
-                      label: Text('Pemasukan'),
+                      label: Text('Income'),
                     ),
                   ],
                   selected: {type},
@@ -155,15 +155,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Hapus kategori?'),
-        content: Text(
-          category.isDefault
-              ? 'Kategori default "${category.name}" hanya disembunyikan '
-                  'untuk kamu. Transaksi lama tetap tersimpan dan pengguna '
-                  'lain tetap melihat kategori ini.'
-              : 'Kategori "${category.name}" akan dinonaktifkan. '
-                  'Transaksi lama tetap tersimpan.',
-        ),
+        title: const Text('Apakah anda yakin?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -241,9 +233,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
       children: [
-        _section(context, 'Pengeluaran', expenses, AppColors.expense(context)),
+        _section(context, 'Expense', expenses, AppColors.expense(context)),
         const SizedBox(height: 16),
-        _section(context, 'Pemasukan', incomes, AppColors.income(context)),
+        _section(context, 'Income', incomes, AppColors.income(context)),
         const SizedBox(height: 16),
         Card(
           margin: EdgeInsets.zero,

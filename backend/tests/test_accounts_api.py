@@ -211,7 +211,7 @@ def test_deactivate_moves_balance_to_target(auth):
     assert tgt["current_balance"] == "40000.00"
 
     # SATU transaksi transfer: saldo keluar dari sumber, masuk ke tujuan.
-    # Netral di laporan pemasukan/pengeluaran, tanpa kategori (migrasi 0008).
+    # Netral di laporan income/expense, tanpa kategori (migrasi 0008).
     txs = client.get("/api/transactions", headers=headers).json()["items"]
     transfer_txs = [t for t in txs if t["note"] and "Saldo dipindah" in t["note"]]
     assert len(transfer_txs) == 1

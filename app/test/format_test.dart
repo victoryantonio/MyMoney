@@ -40,6 +40,14 @@ void main() {
       expect(formatDateShort(DateTime(2026, 8, 12)), '12 Agu');
     });
 
+    test('formatAxisLabel tanggal dulu baru bulan', () {
+      expect(formatAxisLabel(DateTime(2026, 8, 12)), '12 Agu');
+    });
+
+    test('formatAxisLabel menyertakan tahun saat beda tahun', () {
+      expect(formatAxisLabel(DateTime(2025, 12, 3)), '3 Des 2025');
+    });
+
     test('formatDateDetail menyertakan tahun', () {
       // 2026-08-12 adalah hari Rabu.
       expect(formatDateDetail(DateTime(2026, 8, 12)), 'Rabu, 12 Agu 2026');

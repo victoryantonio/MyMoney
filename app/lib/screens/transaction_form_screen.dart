@@ -81,7 +81,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     // total_amount tersimpan SELALU dalam IDR — nominal asli = total / kurs.
     final rate = tx?.exchangeRate ?? 1.0;
     _amountCtrl = TextEditingController(
-      text: tx == null ? '' : _fmt(tx.totalAmount / (rate > 0 ? rate : 1)),
+      text: tx == null ? '' : _fmtAmount(tx.totalAmount / (rate > 0 ? rate : 1)),
     );
     _currency = tx?.originalCurrency ?? 'IDR';
     _rateCtrl = TextEditingController(text: _fmtRate(rate));
@@ -109,6 +109,18 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
   String _fmt(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  /// Format nominal untuk kolom input: thousand separator titik saat nilai
+  /// bulat (konsisten dengan [_formatAmountInput] & parser yang strip '.');
+  /// nilai pecahan dibiarkan apa adanya agar parsing desimal tetap benar.
+  String _fmtAmount(double v) {
+    final s = _fmt(v);
+    if (v != v.roundToDouble()) return s;
+    return s.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => '.',
+    );
+  }
 
   String _fmtRate(double v) =>
       v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(4);
@@ -238,7 +250,8 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
   void _syncAmountFromItems() {
     if (_items.isNotEmpty) {
-      _amountCtrl.text = _fmt(_itemsTotal);
+      final formatted = _fmtAmount(_itemsTotal);
+      if (formatted != _amountCtrl.text) _amountCtrl.text = formatted;
     }
   }
 
@@ -469,19 +482,19 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               // ── Tipe ───────────────────────────────────────────────────────
               SegmentedButton<String>(
                 // Tanpa ikon di tiap segmen + tanpa ikon centang saat terpilih,
-                // supaya label 'Pengeluaran'/'Pemasukan'/'Transfer' tidak
+                // supaya label 'Expense'/'Income'/'Transfer' tidak
                 // terpotong; expandedInsets membuat tombol memakai lebar penuh.
                 showSelectedIcon: false,
                 expandedInsets: EdgeInsets.zero,
                 segments: const [
                   ButtonSegment(
                     value: 'expense',
-                    label: Text('Pengeluaran'),
+                    label: Text('Expense'),
                     icon: Icon(Icons.arrow_downward),
                   ),
                   ButtonSegment(
                     value: 'income',
-                    label: Text('Pemasukan'),
+                    label: Text('Income'),
                     icon: Icon(Icons.arrow_upward),
                   ),
                   ButtonSegment(
