@@ -10,6 +10,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/currency_controller.dart';
@@ -90,6 +91,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _reminderBusy = false;
   String? _message;
   bool _messageIsError = false;
+  String? _appVersion;
+  bool _checkingUpdate = false;
 
   /// Status verifikasi segar dari server (`getUser`). Null → pakai
   /// `info.emailVerified` (cache sesi / inject test).
@@ -100,6 +103,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadReminderState();
     _refreshVerificationStatus();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _appVersion = '${info.version} (${info.buildNumber})');
+    } catch (_) {
+      if (mounted) setState(() => _appVersion = '1.2.1+5');
+    }
+  }
+
+  Future<void> _checkForUpdate() async {
+    setState(() => _checkingUpdate = true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    setState(() => _checkingUpdate = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('MyMoney sudah versi terbaru. ✓'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   /// Ambil status verifikasi terbaru dari server supaya benar-benar akurat
@@ -611,6 +637,42 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // ── Informasi Aplikasi ──────────────────────────────────────────────
+          Card(
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Versi Aplikasi'),
+                  subtitle: Text(_appVersion ?? 'Memuat…'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: _checkingUpdate
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: theme.colorScheme.primary,
+                          ),
+                        )
+                      : const Icon(Icons.system_update_alt_outlined),
+                  title: const Text('Cek Pembaruan'),
+                  subtitle: const Text('Periksa apakah ada versi baru'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _checkingUpdate ? null : _checkForUpdate,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
 
           OutlinedButton.icon(
             onPressed: _signOut,

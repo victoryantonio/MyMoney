@@ -66,7 +66,12 @@ List<TransactionModel> sortTransactions(
   return result;
 }
 
+/// Sentinel ID khusus untuk jenis 'transfer' (tidak punya categoryId).
+const _kTransferSentinelId = '__transfer__';
+
 /// Terapkan filter akun + kategori (multi-checklist; kosong = semua).
+/// Transaksi 'transfer' (categoryId == null) dicocokkan dengan sentinel ID
+/// `__transfer__` agar bisa disertakan / dikecualikan lewat filter kategori.
 List<TransactionModel> filterTransactions(
   List<TransactionModel> txs, {
   Set<String> accountIds = const {},
@@ -79,9 +84,13 @@ List<TransactionModel> filterTransactions(
         .toList();
   }
   if (categoryIds.isNotEmpty) {
-    result = result
-        .where((tx) => tx.categoryId != null && categoryIds.contains(tx.categoryId))
-        .toList();
+    result = result.where((tx) {
+      if (tx.type == 'transfer') {
+        // Transfer tidak punya categoryId — cocokkan dgn sentinel
+        return categoryIds.contains(_kTransferSentinelId);
+      }
+      return tx.categoryId != null && categoryIds.contains(tx.categoryId);
+    }).toList();
   }
   return result;
 }
@@ -296,6 +305,37 @@ Future<TransactionFilterResult?> showTransactionFilterSheet({
                         ),
                         const SizedBox(height: 20),
                       ],
+                      // ── Grup Transfer (sentinel, tidak pakai kategori) ──
+                      _FilterGroup(
+                        icon: Icons.swap_horiz,
+                        title: 'Transfer',
+                        selectedCount:
+                            selectedCategories.contains(_kTransferSentinelId) ? 1 : 0,
+                        totalCount: 1,
+                        onToggleAll: () => setSheetState(() {
+                          if (selectedCategories.contains(_kTransferSentinelId)) {
+                            selectedCategories.remove(_kTransferSentinelId);
+                          } else {
+                            selectedCategories.add(_kTransferSentinelId);
+                          }
+                        }),
+                        children: [
+                          FilterChip(
+                            label: const Text('Transfer antar akun'),
+                            selected:
+                                selectedCategories.contains(_kTransferSentinelId),
+                            onSelected: (_) => setSheetState(() {
+                              if (selectedCategories
+                                  .contains(_kTransferSentinelId)) {
+                                selectedCategories.remove(_kTransferSentinelId);
+                              } else {
+                                selectedCategories.add(_kTransferSentinelId);
+                              }
+                            }),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
                     ],
                   ),
                 ),

@@ -233,7 +233,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   }
 
   void _selectAllAccounts() {
-    setState(() => _selectedAccountIds.clear());
+    setState(() {
+      if (_selectedAccountIds.isEmpty) {
+        _selectedAccountIds.addAll(_accounts.map((a) => a.id));
+      } else {
+        _selectedAccountIds.clear();
+      }
+    });
   }
 
   Future<void> _openTransactionList(String? type) async {
@@ -842,6 +848,7 @@ class _AccountMenuItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MenuItemButton(
+      closeOnActivate: false,
       leadingIcon: SizedBox(
         width: 24,
         child: Icon(
