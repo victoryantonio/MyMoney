@@ -4,6 +4,20 @@ All notable changes to the MyMoney app are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.2+6] — 2026-08-31
+
+### Added
+- **Informasi Aplikasi di Menu Profil** — Menambahkan informasi versi aplikasi secara dinamis (`package_info_plus`) dan tombol "Cek Pembaruan" pada tab Profil.
+
+### Fixed
+- **Filter Transaksi Kategori Transfer** — Transaksi transfer kini otomatis ditampilkan ketika akun asal (`accountId`) atau akun tujuan (`toAccountId`) dipilih pada filter akun.
+- **UX Multi-Checklist Filter Dashboard** — Menu filter akun tidak lagi tertutup otomatis saat memilih/membatalkan pilihan akun (`closeOnActivate: false`), dan toggle "Select All" kini berfungsi dengan benar.
+- **Robustness OCR Nota** — Prompt OCR Telegram ditingkatkan dengan fallback dummy item total bila baris produk buram tetapi nominal total terbaca (mencegah error "couldn't read nota").
+- **Domain Konfigurasi Produksi** — Pembaruan URL bot & auth ke domain resmi `https://mymoneyofficial.online`.
+
+### Changed
+- Version number: `1.2.1+5` → `1.2.2+6`.
+
 ## [1.2.1+5] — 2026-08-28
 
 ### Changed
