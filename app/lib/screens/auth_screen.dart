@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/config.dart';
+
 /// Layar Auth minimal (Fase 0 checkpoint): login/register via Supabase Auth.
 /// Client bisa di-inject untuk widget test; default memakai Supabase.instance.
 class AuthScreen extends StatefulWidget {
@@ -60,6 +62,7 @@ class _AuthScreenState extends State<AuthScreen> {
           email: _email.text.trim(),
           password: _password.text,
           data: {'display_name': fullName},
+          emailRedirectTo: AppConfig.botPublicUrl,
         );
         if (res.session == null && res.user != null) {
           // GoTrue anti-enumeration: kalau email SUDAH terdaftar, respons
@@ -150,7 +153,10 @@ class _AuthScreenState extends State<AuthScreen> {
       _success = null;
     });
     try {
-      await _client.auth.resetPasswordForEmail(email);
+      await _client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: AppConfig.botPublicUrl,
+      );
       if (!mounted) return;
       setState(() {
         _loading = false;

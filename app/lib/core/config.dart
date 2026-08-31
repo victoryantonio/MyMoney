@@ -21,6 +21,9 @@ class AppConfig {
   static const appBaseUrl = String.fromEnvironment(
     'APP_BASE_URL',
   );
+  static const botPublicUrl = String.fromEnvironment(
+    'BOT_PUBLIC_URL',
+  );
 
   static bool get isConfigured =>
       supabaseUrl.isNotEmpty &&

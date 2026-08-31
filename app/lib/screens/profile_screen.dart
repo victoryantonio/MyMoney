@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/config.dart';
 import '../core/currency_controller.dart';
 import '../core/theme_controller.dart';
 import '../core/notification_service.dart';
@@ -199,6 +200,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await widget.supabase.auth.resend(
           type: OtpType.signup,
           email: _info.email,
+          emailRedirectTo: AppConfig.botPublicUrl,
         );
         ok = true;
       }
@@ -263,6 +265,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       await widget.supabase.auth.updateUser(
         UserAttributes(email: requestedEmail),
+        emailRedirectTo: AppConfig.botPublicUrl,
       );
       if (!mounted) return;
       final otpCtrl = TextEditingController();
