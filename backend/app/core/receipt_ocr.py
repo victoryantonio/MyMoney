@@ -80,8 +80,8 @@ Rules:
     is an available semantic category; otherwise return `Other`.
 - If a line shows a single amount with no quantity (e.g. "SPC EBIKTSU R ... 29,960"),
     treat it as qty 1 and price = that amount.
-- If individual items are illegible or too blurry but you can read the TOTAL amount, 
-    return a dummy item: {"name": "Produk", "qty": 1, "price": <TOTAL>, "line_total": <TOTAL>}. 
+- If individual items are illegible or too blurry but you can read the TOTAL amount,
+    return a dummy item: {"name": "Produk", "qty": 1, "price": <TOTAL>, "line_total": <TOTAL>}.
     DO NOT return an error just because items are blurry if a total exists.
 - If the receipt is completely unreadable or not a receipt, return {"error": "unrecognized"}.
 - If ANY product text or total is legible, always return a valid items list.
@@ -117,7 +117,7 @@ def _coerce_qty(value) -> Decimal | None:
     """
     if value is None:
         return Decimal(1)
-    if isinstance(value, (int, float, Decimal)):
+    if isinstance(value, int | float | Decimal):
         qty = Decimal(str(value))
         return qty if qty > 0 else None
     if isinstance(value, str):
@@ -137,7 +137,7 @@ def _coerce_money(value) -> Decimal | None:
     """
     if value is None:
         return None
-    if isinstance(value, (int, float, Decimal)):
+    if isinstance(value, int | float | Decimal):
         return Decimal(str(value))
     if not isinstance(value, str):
         return None
@@ -293,7 +293,10 @@ async def parse_receipt_image(
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Best-effort: extract the receipt details from this photo."},
+                        {
+                            "type": "text",
+                            "text": "Best-effort: extract the receipt details from this photo.",
+                        },
                         {"type": "image_url", "image_url": {"url": data_url}},
                     ],
                 },

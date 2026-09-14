@@ -110,9 +110,9 @@ def test_oldest_orders_by_date_asc(auth):
 def test_newest_is_default(auth):
     headers = auth("sort_newest_default")
     _seed(headers)
-    explicit = client.get(
-        "/api/transactions", params={"sort": "newest"}, headers=headers
-    ).json()["items"]
+    explicit = client.get("/api/transactions", params={"sort": "newest"}, headers=headers).json()[
+        "items"
+    ]
     implicit = client.get("/api/transactions", headers=headers).json()["items"]
     assert [i["id"] for i in explicit] == [i["id"] for i in implicit]
 
@@ -150,9 +150,7 @@ def test_amount_cursor_is_ignored_for_date_sort(auth):
     _seed(headers)
 
     # Get an amount-sort cursor, then reuse it on the default date sort.
-    data = client.get(
-        "/api/transactions", params={"sort": "largest"}, headers=headers
-    ).json()
+    data = client.get("/api/transactions", params={"sort": "largest"}, headers=headers).json()
     amount_cursor = data["next_cursor"]
     assert amount_cursor
 

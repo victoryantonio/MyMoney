@@ -268,9 +268,7 @@ def list_transactions(
     has_next = len(rows) > _PAGE_SIZE
     page_items = rows[:_PAGE_SIZE]
 
-    next_cursor = (
-        _encode_cursor(page_items[-1], sort) if has_next and page_items else None
-    )
+    next_cursor = _encode_cursor(page_items[-1], sort) if has_next and page_items else None
 
     return TransactionListResponse(
         items=page_items,
