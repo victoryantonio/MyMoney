@@ -31,10 +31,12 @@ load_dotenv(_BACKEND_DIR.parent / ".env")
 
 @pytest.fixture(scope="session", autouse=True)
 def _prepared_database():
-    """Ensure the `auth` schema + a minimal `auth.users` mimic exist, then run migrations.
+    """Ensure the Supabase `auth` mimic exists, then run migrations to head.
 
-    On Supabase the mimic is a no-op (schema + table already exist); on a plain
-    local Postgres (CI) it gives migration 0005/0006 the FK target they need.
+    On Supabase the mimic is a no-op (schema, `auth.users` and `auth.uid()`
+    already exist); on a plain local Postgres (CI) it supplies the FK target
+    for migrations 0005/0006 plus the `auth.uid()` helper used by the eight
+    RLS policies created in migration 0005.
     """
     from alembic import command
     from alembic.config import Config
@@ -42,17 +44,51 @@ def _prepared_database():
 
     with engine.begin() as conn:
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth"))
-        # Di Supabase auth.users sudah dikelola Supabase; role postgres tidak
-        # punya izin CREATE di schema auth. Cek keberadaan dulu — hanya buat
-        # mimic jika belum ada (CI: Postgres lokal kosong).
-        exists = conn.execute(text("SELECT to_regclass('auth.users') IS NOT NULL")).scalar()
-        if not exists:
+
+        # Kehadiran auth.uid() menandai apakah kita di Supabase (sudah ada)
+        # atau Postgres polos (perlu mimic). Di Supabase role `postgres` tidak
+        # punya izin CREATE di schema auth, jadi jangan sentuh apa pun di sana.
+        has_auth_uid = conn.execute(
+            text(
+                "SELECT EXISTS ("
+                " SELECT 1 FROM pg_proc p"
+                " JOIN pg_namespace n ON n.oid = p.pronamespace"
+                " WHERE n.nspname = 'auth' AND p.proname = 'uid')"
+            )
+        ).scalar()
+
+        if not has_auth_uid:
+            # Mirror minimal Supabase untuk Postgres polos (CI).
+            if not conn.execute(text("SELECT to_regclass('auth.users') IS NOT NULL")).scalar():
+                conn.execute(
+                    text(
+                        "CREATE TABLE auth.users ("
+                        " id uuid PRIMARY KEY,"
+                        " email text,"
+                        " raw_user_meta_data jsonb,"
+                        " created_at timestamptz DEFAULT now())"
+                    )
+                )
+            else:
+                # Mirror lama (dibuat versi sebelumnya) belum punya kolom ini,
+                # padahal trigger `handle_new_user` di migrasi 0005 membacanya.
+                conn.execute(
+                    text(
+                        "ALTER TABLE auth.users "
+                        "ADD COLUMN IF NOT EXISTS raw_user_meta_data jsonb"
+                    )
+                )
+
+            # Definisi mengikuti Supabase: ambil `sub` dari JWT claim.
             conn.execute(
                 text(
-                    "CREATE TABLE auth.users ("
-                    " id uuid PRIMARY KEY,"
-                    " email text,"
-                    " created_at timestamptz DEFAULT now())"
+                    "CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid "
+                    "LANGUAGE sql STABLE AS $$ "
+                    "SELECT COALESCE("
+                    " NULLIF(current_setting('request.jwt.claim.sub', true), ''),"
+                    " (NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')"
+                    ")::uuid "
+                    "$$"
                 )
             )
 
