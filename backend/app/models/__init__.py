@@ -3,7 +3,9 @@
 from app.models.account import Account
 from app.models.audit_log import AuditLog
 from app.models.category import Category
+from app.models.merchant_alias import MerchantAlias
 from app.models.pending_transaction import PendingTransaction
+from app.models.processed_update import ProcessedUpdate
 from app.models.profile import Profile
 from app.models.telegram_link import TelegramLink
 from app.models.transaction import Transaction
@@ -18,4 +20,6 @@ __all__ = [
     "TransactionItem",
     "AuditLog",
     "PendingTransaction",
+    "ProcessedUpdate",
+    "MerchantAlias",
 ]

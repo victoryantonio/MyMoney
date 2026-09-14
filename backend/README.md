@@ -140,6 +140,12 @@ All mutation endpoints are limited per IP (slowapi):
 | `POST /api/telegram/link/confirm` | 10/minute |
 | `POST /api/telegram/webhook` | 20/minute |
 
+`POST /api/telegram/webhook` authenticates via `X-Bot-Token` or
+`X-Telegram-Bot-Api-Secret-Token`, claims `update_id` in `processed_updates`
+(`INSERT … ON CONFLICT DO NOTHING`), then processes in a FastAPI background
+task with its own DB session. Duplicate deliveries return `200 {"status":"ok"}`
+without running the pipeline again.
+
 Exceeding the limit → `429 Too Many Requests`.
 
 ### Monitoring & troubleshooting

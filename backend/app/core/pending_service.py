@@ -48,6 +48,7 @@ def create_pending_transaction(
     action: Literal["create", "update"] = "create",
     note: str | None = None,
     merchant: str | None = None,
+    account_id: uuid.UUID | None = None,
     confidence: str | None = None,
     raw_input: str | None = None,
     items: list[dict] | None = None,
@@ -70,6 +71,7 @@ def create_pending_transaction(
         source=source,
         note=note,
         merchant=merchant,
+        account_id=account_id,
         confidence=confidence,
         raw_input=raw_input,
         items=items,
@@ -133,7 +135,6 @@ def confirm_pending_transaction(
     if pending.action == "update":
         target = db.get(Transaction, pending.target_transaction_id)
         if target is None:
-            # Target was deleted meanwhile — drop the stale pending row.
             db.delete(pending)
             db.commit()
             raise ValueError("target transaction no longer exists")
@@ -150,14 +151,16 @@ def confirm_pending_transaction(
             pending=pending,
         )
     else:
-        account = get_or_create_default_account(db, user_id)
+        account_id = pending.account_id
+        if account_id is None:
+            account_id = get_or_create_default_account(db, user_id).id
         transaction = create_transaction_internal(
             db=db,
             user_id=user_id,
             type=pending.type,  # type: ignore[arg-type]
             total_amount=pending.total_amount,
             category_id=pending.category_id,
-            account_id=account.id,
+            account_id=account_id,
             source=pending.source,
             note=pending.note,
             merchant=pending.merchant,
