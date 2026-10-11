@@ -2,16 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'core/api_client.dart';
 import 'core/config.dart';
 import 'core/currency_controller.dart';
 import 'core/notification_service.dart';
 import 'core/providers.dart';
 import 'core/theme_controller.dart';
+import 'core/timezones.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
+import 'screens/timezone_onboarding_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Database timezone IANA (Req 5) — dipakai untuk interpretasi waktu
+  // per-transaksi; storage tetap UTC.
+  initializeTimezoneDatabase();
 
   final themeController = await ThemeController.load();
   final currencyController = await CurrencyController.load();
@@ -120,7 +126,15 @@ class _AuthGateState extends State<AuthGate> {
       builder: (context, snapshot) {
         final session = client.auth.currentSession;
         if (session != null) {
-          return MainShell(supabase: client);
+          // Req 5: gerbang onboarding zona waktu sebelum masuk aplikasi.
+          final api = ApiClient.instance(client);
+          return TimezoneGate(
+            loadProfile: api.fetchProfileSettings,
+            saveTimezone: (timezone) async {
+              await api.updateProfileSettings(timezone: timezone);
+            },
+            child: MainShell(supabase: client),
+          );
         }
         return const AuthScreen();
       },

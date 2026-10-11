@@ -5,6 +5,8 @@
 /// hapus via menu trailing dengan konfirmasi. FAB: tambah manual + scan nota.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -17,6 +19,8 @@ import '../widgets/transaction_filters.dart'
         TransactionSort,
         TransactionSortLabel,
         categoryTypeLabel,
+        dayEndIso,
+        dayStartIso,
         filterTransactions,
         showTransactionFilterSheet,
         sortTransactions;
@@ -58,6 +62,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   List<CategoryModel> _categories = [];
   final Set<String> _selectedAccountIds = {};
   final Set<String> _selectedCategoryIds = {};
+
+  // Rentang tanggal (between, inklusif) — dikirim server-side sebagai
+  // `date_from`/`date_to` sehingga pagination tetap efisien.
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+
+  // Pencarian teks (merchant/keterangan + nama item) — server-side `search=`.
+  final _searchController = TextEditingController();
+  bool _searchActive = false;
+  String _searchQuery = '';
+  Timer? _searchDebounce;
+
   TransactionSort _sort = TransactionSort.newest;
 
   /// Saat filter/sortir non-default aktif, seluruh transaksi dimuat sekaligus
@@ -81,9 +97,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
+
+  /// Batas rentang tanggal sebagai instant UTC (lihat `dayStartIso`/`dayEndIso`).
+  String? get _dateFromIso => _dateFrom == null ? null : dayStartIso(_dateFrom!);
+  String? get _dateToIso => _dateTo == null ? null : dayEndIso(_dateTo!);
 
   void _onScroll() {
     if (_scrollController.position.pixels >=
@@ -105,8 +127,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         _api.fetchCategories(),
         _api.fetchAccounts(),
         _needsAllData
-            ? _api.fetchAllTransactions(sort: _sort.apiValue)
-            : _api.fetchTransactions(sort: _sort.apiValue),
+            ? _api.fetchAllTransactions(
+                sort: _sort.apiValue,
+                dateFrom: _dateFromIso,
+                dateTo: _dateToIso,
+                search: _searchQuery,
+              )
+            : _api.fetchTransactions(
+                sort: _sort.apiValue,
+                dateFrom: _dateFromIso,
+                dateTo: _dateToIso,
+                search: _searchQuery,
+              ),
       ]);
       if (!mounted) return;
       final categories = results[0] as List<CategoryModel>;
@@ -177,6 +209,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       final page = await _api.fetchTransactions(
         cursor: _nextCursor,
         sort: _sort.apiValue,
+        dateFrom: _dateFromIso,
+        dateTo: _dateToIso,
+        search: _searchQuery,
       );
       if (!mounted) return;
       setState(() {
@@ -201,14 +236,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       categories: _categories,
       selectedAccountIds: _selectedAccountIds,
       selectedCategoryIds: _selectedCategoryIds,
+      dateFrom: _dateFrom,
+      dateTo: _dateTo,
     );
     if (result == null) return;
-    if (result.accountIds.length == _selectedAccountIds.length &&
+    final unchanged = result.accountIds.length == _selectedAccountIds.length &&
         result.accountIds.containsAll(_selectedAccountIds) &&
         result.categoryIds.length == _selectedCategoryIds.length &&
-        result.categoryIds.containsAll(_selectedCategoryIds)) {
-      return; // tidak berubah
-    }
+        result.categoryIds.containsAll(_selectedCategoryIds) &&
+        result.dateFrom == _dateFrom &&
+        result.dateTo == _dateTo;
+    if (unchanged) return;
     setState(() {
       _selectedAccountIds
         ..clear()
@@ -216,6 +254,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       _selectedCategoryIds
         ..clear()
         ..addAll(result.categoryIds);
+      _dateFrom = result.dateFrom;
+      _dateTo = result.dateTo;
     });
     _load();
   }
@@ -247,18 +287,82 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
-  /// Hapus semua filter aktif → reload pagination normal.
+  /// Hapus semua filter aktif (akun, kategori, rentang tanggal) beserta
+  /// pencarian → reload pagination normal.
   void _clearFilters() {
-    if (_selectedAccountIds.isEmpty && _selectedCategoryIds.isEmpty) return;
+    if (_selectedAccountIds.isEmpty &&
+        _selectedCategoryIds.isEmpty &&
+        _dateFrom == null &&
+        _dateTo == null &&
+        _searchQuery.isEmpty) {
+      return;
+    }
+    _searchDebounce?.cancel();
+    _searchController.clear();
     setState(() {
       _selectedAccountIds.clear();
       _selectedCategoryIds.clear();
+      _dateFrom = null;
+      _dateTo = null;
+      _searchQuery = '';
+      _searchActive = false;
     });
     _load();
   }
 
+  /// Alias eksplisit untuk kejelasan; dipakai tombol reset di bar filter.
+  void _clearFiltersAndSearch() => _clearFilters();
+
+  /// Chip filter dihitung: akun + kategori (per item) + rentang tanggal
+  /// sebagai satu chip.
   int get _activeFilterCount =>
-      _selectedAccountIds.length + _selectedCategoryIds.length;
+      _selectedAccountIds.length +
+      _selectedCategoryIds.length +
+      (_dateFrom != null || _dateTo != null ? 1 : 0);
+
+  /// Bar chip filter tampil bila ada filter, sortir non-default, atau
+  /// pencarian aktif.
+  bool get _showFilterBar =>
+      _activeFilterCount > 0 ||
+      _sort != TransactionSort.newest ||
+      _searchQuery.isNotEmpty;
+
+  String get _dateRangeLabel {
+    String fmt(DateTime d) => '${d.day.toString().padLeft(2, '0')}/'
+        '${d.month.toString().padLeft(2, '0')}/${d.year}';
+    if (_dateFrom != null && _dateTo != null) {
+      return '${fmt(_dateFrom!)} – ${fmt(_dateTo!)}';
+    }
+    if (_dateFrom != null) return '≥ ${fmt(_dateFrom!)}';
+    return '≤ ${fmt(_dateTo!)}';
+  }
+
+  /// Buka/tutup mode pencarian. Menutup mode juga membersihkan query.
+  void _toggleSearch() {
+    setState(() {
+      _searchActive = !_searchActive;
+      if (!_searchActive) {
+        _searchDebounce?.cancel();
+        _searchController.clear();
+        if (_searchQuery.isNotEmpty) {
+          _searchQuery = '';
+          _load();
+        }
+      }
+    });
+  }
+
+  /// Debounce 350 ms agar tidak memanggil API di setiap ketukan tombol.
+  void _onSearchChanged(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      final q = value.trim();
+      if (q == _searchQuery) return;
+      setState(() => _searchQuery = q);
+      _load();
+    });
+  }
 
   Future<void> _edit(TransactionModel tx) async {
     final changed = await Navigator.of(context).push<bool>(
@@ -317,7 +421,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
     final groups = <(String, List<TransactionModel>)>[];
     for (final tx in _transactions) {
-      final d = tx.transactionDate;
+      // Interpretasi waktu per-transaksi (snapshot timezone, Req 5).
+      final d = tx.localDateTime;
       final day = DateTime(d.year, d.month, d.day);
       String label;
       if (day == today) {
@@ -341,10 +446,41 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final filterCount = _activeFilterCount;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Transaksi'),
+        title: _searchActive
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  hintText: 'Cari merchant, keterangan, atau item…',
+                  border: InputBorder.none,
+                ),
+                onChanged: _onSearchChanged,
+                onSubmitted: (value) {
+                  _searchDebounce?.cancel();
+                  final q = value.trim();
+                  if (q != _searchQuery) {
+                    setState(() => _searchQuery = q);
+                    _load();
+                  }
+                },
+              )
+            : const Text('Transaksi'),
         actions: [
+          if (_searchActive)
+            IconButton(
+              tooltip: 'Tutup pencarian',
+              onPressed: _toggleSearch,
+              icon: const Icon(Icons.close),
+            )
+          else
+            IconButton(
+              tooltip: 'Cari merchant, keterangan, atau item',
+              onPressed: _toggleSearch,
+              icon: const Icon(Icons.search),
+            ),
           IconButton(
-            tooltip: 'Filter akun & kategori',
+            tooltip: 'Filter akun, kategori & tanggal',
             onPressed: _openFilter,
             icon: Badge(
               isLabelVisible: filterCount > 0,
@@ -414,11 +550,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          if (_activeFilterCount > 0 || _sort != TransactionSort.newest)
-            _filterBar(),
+          if (_showFilterBar) _filterBar(),
           const SizedBox(height: 160),
           Icon(
-            _activeFilterCount > 0
+            _showFilterBar
                 ? Icons.filter_alt_off_outlined
                 : Icons.receipt_long_outlined,
             size: 56,
@@ -426,7 +561,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           const SizedBox(height: 12),
           Center(
             child: Text(
-              _activeFilterCount > 0
+              _showFilterBar
                   ? 'Tidak ada transaksi yang cocok'
                   : 'Belum ada transaksi',
             ),
@@ -434,18 +569,18 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           const SizedBox(height: 4),
           Center(
             child: Text(
-              _activeFilterCount > 0
-                  ? 'Coba ubah filter atau reset pilihan'
+              _showFilterBar
+                  ? 'Coba ubah filter/pencarian atau reset pilihan'
                   : 'Tekan "+" untuk mencatat pemasukan/pengeluaran',
               style: TextStyle(fontSize: 12),
             ),
           ),
-          if (_activeFilterCount > 0)
+          if (_showFilterBar)
             Padding(
               padding: const EdgeInsets.only(top: 12),
               child: Center(
                 child: OutlinedButton.icon(
-                  onPressed: _clearFilters,
+                  onPressed: _clearFiltersAndSearch,
                   icon: const Icon(Icons.filter_alt_off),
                   label: const Text('Reset filter'),
                 ),
@@ -458,8 +593,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final groups = _groupByDay();
     return Column(
       children: [
-        if (_activeFilterCount > 0 || _sort != TransactionSort.newest)
-          _filterBar(),
+        if (_showFilterBar) _filterBar(),
         Expanded(
           child: ListView.builder(
             controller: _scrollController,
@@ -564,6 +698,30 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           avatar: Icon(Icons.sort, size: 16, color: scheme.onSurfaceVariant),
           onDeleted: () => _changeSort(TransactionSort.newest),
         ),
+      if (_dateFrom != null || _dateTo != null)
+        InputChip(
+          label: Text(_dateRangeLabel),
+          avatar: Icon(Icons.date_range_outlined,
+              size: 16, color: scheme.onSurfaceVariant),
+          onDeleted: () {
+            setState(() {
+              _dateFrom = null;
+              _dateTo = null;
+            });
+            _load();
+          },
+        ),
+      if (_searchQuery.isNotEmpty)
+        InputChip(
+          label: Text('Cari: $_searchQuery'),
+          avatar: Icon(Icons.search, size: 16, color: scheme.onSurfaceVariant),
+          onDeleted: () {
+            _searchDebounce?.cancel();
+            _searchController.clear();
+            setState(() => _searchQuery = '');
+            _load();
+          },
+        ),
     ];
     return Container(
       width: double.infinity,
@@ -574,11 +732,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         child: Row(
           children: [
             ...chips,
-            if (_activeFilterCount > 0) ...[
+            if (_showFilterBar) ...[
               const SizedBox(width: 4),
               IconButton(
-                tooltip: 'Reset semua filter',
-                onPressed: _clearFilters,
+                tooltip: 'Reset semua filter & pencarian',
+                onPressed: _clearFiltersAndSearch,
                 icon: const Icon(Icons.filter_alt_off, size: 20),
               ),
             ],
@@ -617,6 +775,8 @@ class _TransactionTile extends StatelessWidget {
         ? tx.merchant!
         : (isTransfer ? 'Transfer' : categoryName);
     final subtitle = [
+      // Jam transaksi (Req 8); memakai zona waktu snapshot transaksi.
+      formatClock(tx.localDateTime),
       if (tx.merchant?.isNotEmpty == true && !isTransfer) categoryName,
       if (tx.merchant?.isNotEmpty == true && isTransfer) 'Transfer',
       if (accountLabel.isNotEmpty) accountLabel,

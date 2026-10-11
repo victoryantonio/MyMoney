@@ -22,7 +22,7 @@ from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import get_db, require_active_user
@@ -36,6 +36,7 @@ from app.models.account import Account
 from app.models.category import Category, category_visible_clause
 from app.models.profile import Profile
 from app.models.transaction import Transaction
+from app.models.transaction_item import TransactionItem
 from app.schemas.transaction import (
     TransactionCreateRequest,
     TransactionListResponse,
@@ -196,6 +197,30 @@ def _verify_category_and_account(
         )
 
 
+def _search_clause(search: str | None):
+    """
+    Predikat pencarian teks bebas untuk `GET /api/transactions?search=`.
+
+    Mencocokkan (case-insensitive) pada `merchant`, `note`, **atau** nama
+    item (`transaction_items.name`) — sehingga "cari nama item" juga
+    menemukan transaksi nota beritem. Karakter wildcard LIKE (`%`, `_`) pada
+    input pengguna di-escape agar diperlakukan sebagai teks literal.
+    Mengembalikan `None` bila pencarian kosong (tanpa filter).
+    """
+    if search is None:
+        return None
+    q = search.strip()
+    if not q:
+        return None
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    return or_(
+        Transaction.merchant.ilike(pattern, escape="\\"),
+        Transaction.note.ilike(pattern, escape="\\"),
+        Transaction.items.any(TransactionItem.name.ilike(pattern, escape="\\")),
+    )
+
+
 @router.get("", response_model=TransactionListResponse)
 def list_transactions(
     cursor: str | None = Query(
@@ -210,6 +235,11 @@ def list_transactions(
     type: Literal["income", "expense"] | None = Query(default=None),
     category_id: uuid.UUID | None = Query(default=None),
     account_id: uuid.UUID | None = Query(default=None),
+    search: str | None = Query(
+        default=None,
+        max_length=100,
+        description="Cari teks pada merchant/keterangan dan nama item (ILIKE).",
+    ),
     date_from: datetime | None = Query(
         default=None,
         description="Only transactions on/after this date (inclusive)",
@@ -224,9 +254,12 @@ def list_transactions(
     """
     List transactions with keyset pagination and server-side sorting
     (DATABASE.md §3.2). Supports optional filtering by type, category,
-    account, and date range. `sort` selects the stable ordering:
+    account, date range, and free-text search (`search` matches merchant,
+    note, or item name). `sort` selects the stable ordering:
     newest/oldest (by transaction_date) or largest/smallest (by total_amount).
     """
+    search_clause = _search_clause(search)
+
     # Count total for UI (runs before cursor filter)
     count_stmt = select(func.count()).where(Transaction.user_id == current_user.id)
     if type:
@@ -239,6 +272,8 @@ def list_transactions(
         count_stmt = count_stmt.where(Transaction.transaction_date >= date_from)
     if date_to:
         count_stmt = count_stmt.where(Transaction.transaction_date <= date_to)
+    if search_clause is not None:
+        count_stmt = count_stmt.where(search_clause)
     total_count = db.scalar(count_stmt) or 0
 
     # Main query — keyset order per sort (see _SORT_ORDER)
@@ -260,6 +295,8 @@ def list_transactions(
         stmt = stmt.where(Transaction.transaction_date >= date_from)
     if date_to:
         stmt = stmt.where(Transaction.transaction_date <= date_to)
+    if search_clause is not None:
+        stmt = stmt.where(search_clause)
 
     stmt = _apply_cursor(stmt, cursor, sort)
 
@@ -314,6 +351,8 @@ def create_transaction(
         items=[item.model_dump() for item in body.items],
         original_currency=body.original_currency,
         exchange_rate=body.exchange_rate,
+        # Snapshot timezone user saat transaksi dibuat (Req 5).
+        user_timezone=current_user.timezone,
     )
 
 
@@ -409,6 +448,9 @@ def update_transaction(
         exchange_rate=(
             body.exchange_rate if body.exchange_rate is not None else transaction.exchange_rate
         ),
+        # Tanggal diinput ulang oleh user → interpretasi (timezone) di-snapshot
+        # ulang dengan setelan yang berlaku sekarang.
+        user_timezone=current_user.timezone if body.transaction_date is not None else None,
     )
 
 

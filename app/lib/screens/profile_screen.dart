@@ -16,7 +16,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config.dart';
 import '../core/currency_controller.dart';
 import '../core/theme_controller.dart';
+import '../core/timezones.dart';
 import '../core/notification_service.dart';
+import '../models/profile_settings.dart';
+import '../widgets/timezone_picker.dart';
 import 'accounts_screen.dart';
 import 'categories_screen.dart';
 
@@ -67,6 +70,8 @@ class ProfileScreen extends StatefulWidget {
     this.resendVerification,
     this.themeController,
     this.currencyController,
+    this.loadProfile,
+    this.saveProfile,
   });
 
   final SupabaseClient supabase;
@@ -81,6 +86,11 @@ class ProfileScreen extends StatefulWidget {
 
   /// Kontrol mata uang; di-inject dari shell. Null (test) → bagian disembunyikan.
   final CurrencyController? currencyController;
+
+  /// GET/PATCH `/api/profile` (Req 5, zona waktu). Null (test) → bagian
+  /// "Zona waktu" disembunyikan sehingga widget test tetap offline.
+  final Future<ProfileSettings> Function()? loadProfile;
+  final Future<ProfileSettings> Function({String? timezone})? saveProfile;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -99,12 +109,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// `info.emailVerified` (cache sesi / inject test).
   bool? _serverEmailVerified;
 
+  /// Zona waktu aktif (Req 5). Null → belum dimuat / tidak tersedia (test).
+  String? _timezone;
+  bool _savingTimezone = false;
+
   @override
   void initState() {
     super.initState();
     _loadReminderState();
     _refreshVerificationStatus();
     _loadAppVersion();
+    _loadTimezone();
+  }
+
+  Future<void> _loadTimezone() async {
+    final loader = widget.loadProfile;
+    if (loader == null) return;
+    try {
+      final settings = await loader();
+      if (mounted) setState(() => _timezone = settings.timezone);
+    } catch (_) {
+      // Offline → bagian zona waktu memakai nilai default kolom backend.
+      if (mounted) setState(() => _timezone ??= fallbackTimezone);
+    }
+  }
+
+  /// Buka picker zona waktu lalu simpan via `PATCH /api/profile` (Req 5).
+  Future<void> _pickTimezone() async {
+    final saver = widget.saveProfile;
+    if (saver == null) return;
+    final current = _timezone ?? fallbackTimezone;
+    final chosen = await showTimezonePickerSheet(context, current: current);
+    if (chosen == null || chosen == current || !mounted) return;
+    setState(() => _savingTimezone = true);
+    try {
+      final updated = await saver(timezone: chosen);
+      if (!mounted) return;
+      setState(() {
+        _savingTimezone = false;
+        _timezone = updated.timezone;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Zona waktu disimpan: ${updated.timezone}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _savingTimezone = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal menyimpan zona waktu. Coba lagi.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _loadAppVersion() async {
@@ -593,6 +653,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _pickCurrency,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // ── Zona waktu (Req 5) ───────────────────────────────────────────
+          if (widget.saveProfile != null) ...[
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: theme.colorScheme.outlineVariant),
+              ),
+              child: ListTile(
+                leading: _savingTimezone
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.public),
+                title: const Text('Zona waktu'),
+                subtitle: Text(
+                  timezoneLabel(_timezone ?? fallbackTimezone),
+                  maxLines: 2,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _savingTimezone ? null : _pickTimezone,
               ),
             ),
             const SizedBox(height: 16),

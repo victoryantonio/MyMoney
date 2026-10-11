@@ -52,6 +52,12 @@ class Profile(Base):
     )
     display_name: Mapped[str] = mapped_column(String(100), nullable=False, default="User")
     timezone: Mapped[str] = mapped_column(String(50), nullable=False, server_default="Asia/Jakarta")
+    # False → user belum pernah memilih timezone; app menampilkan form timezone
+    # (default timezone perangkat) saat pertama login. Set true saat PATCH
+    # /api/profile mengirim `timezone` (migration 0012).
+    timezone_confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

@@ -307,6 +307,7 @@ def deactivate_account(
             source="app",
             note=transfer_note,
             transaction_date=now,
+            timezone=current_user.timezone,
         )
         db.add(transfer_tx)
 

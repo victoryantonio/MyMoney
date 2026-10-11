@@ -54,6 +54,12 @@ class _MainShellState extends ConsumerState<MainShell> {
           supabase: widget.supabase,
           themeController: themeController,
           currencyController: currencyController,
+          loadProfile: _api.fetchProfileSettings,
+          saveProfile: ({String? timezone, String? displayName}) =>
+              _api.updateProfileSettings(
+                timezone: timezone,
+                displayName: displayName,
+              ),
         );
     }
     return const SizedBox.shrink();

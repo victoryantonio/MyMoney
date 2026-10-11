@@ -16,6 +16,7 @@ from app.core.audit_service import record_audit
 from app.models.account import Account
 from app.models.category import Category, category_visible_clause
 from app.models.pending_transaction import PendingTransaction
+from app.models.profile import Profile
 from app.models.transaction import Transaction
 from app.models.transaction_item import TransactionItem
 
@@ -129,15 +130,23 @@ def create_transaction_internal(
     pending: PendingTransaction | None = None,
     original_currency: str = "IDR",
     exchange_rate: Decimal = Decimal("1"),
+    user_timezone: str | None = None,
 ) -> Transaction:
     """Core logic for creating a transaction (audited).
 
     When `pending` is given (pending-confirmation flow), the pending row is
     deleted in the same commit — so confirming a pending parse never leaves a
     crash window where both the Transaction and its pending row exist.
+
+    `user_timezone` di-snapshot ke kolom `transactions.timezone`. Bila tidak
+    diberikan (jalur bot/LLM), diambil dari profil user saat ini.
     """
     if transaction_date is None:
         transaction_date = datetime.now(UTC)
+
+    if user_timezone is None:
+        owner = db.get(Profile, user_id)
+        user_timezone = (owner.timezone if owner else None) or "Asia/Jakarta"
 
     transaction = Transaction(
         id=uuid.uuid4(),
@@ -151,6 +160,7 @@ def create_transaction_internal(
         source=source,
         note=note,
         transaction_date=transaction_date,
+        timezone=user_timezone,
         confidence=confidence,
         original_currency=original_currency,
         exchange_rate=exchange_rate,
@@ -208,12 +218,16 @@ def update_transaction_internal(
     pending: PendingTransaction | None = None,
     original_currency: str | None = None,
     exchange_rate: Decimal | None = None,
+    user_timezone: str | None = None,
 ) -> Transaction:
     """Core logic for updating a transaction (audited).
 
     `items=None` keeps existing line items untouched; a list replaces them.
     When `pending` is given (pending-confirmation flow for LLM edits), the
     pending row is deleted in the same commit.
+
+    `user_timezone` = snapshot timezone baru; dikirim hanya saat user menginput
+    ulang `transaction_date` (interpretasi baru), bukan pada update lain.
     """
     old_value = {
         "type": transaction.type,
@@ -247,6 +261,8 @@ def update_transaction_internal(
         transaction.account_id = account_id
     if transaction_date is not None:
         transaction.transaction_date = transaction_date
+    if user_timezone is not None:
+        transaction.timezone = user_timezone
     if items is not None:
         for item in list(transaction.items):
             db.delete(item)

@@ -9,6 +9,8 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide MultipartFile;
 
+import '../models/mutation_models.dart';
+import '../models/profile_settings.dart';
 import '../models/report_models.dart';
 import '../models/transaction_models.dart';
 import 'config.dart';
@@ -133,6 +135,48 @@ class ApiClient {
     }
   }
 
+  // ── Matching Mutasi (Req 9) ────────────────────────────────────────────────
+
+  /// POST /api/mutations/match — unggah bukti mutasi bank (screenshot/foto atau
+  /// CSV) → daftar pasangan mutasi ↔ transaksi tercatat + mutasi yang belum
+  /// tercatat (otomatis dibuat sebagai `pending_transaction` di backend).
+  ///
+  /// `accountId` opsional: batasi pencocokan ke satu akun. `amountTolerance`
+  /// (rupiah) & `dateWindowDays` menyesuaikan seberapa longgar pencocokan.
+  Future<MutationMatchResult> matchMutations({
+    required Uint8List bytes,
+    required String filename,
+    String? accountId,
+    String? amountTolerance,
+    int? dateWindowDays,
+  }) async {
+    try {
+      final form = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: filename),
+        'account_id': ?accountId,
+        'amount_tolerance': ?amountTolerance,
+        if (dateWindowDays != null) 'date_window_days': '$dateWindowDays',
+      });
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/api/mutations/match',
+        data: form,
+        options: Options(receiveTimeout: const Duration(seconds: 120)),
+      );
+      return MutationMatchResult.fromJson(res.data ?? const {});
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 422 || status == 415) {
+        final detail = (e.response?.data as Map<String, dynamic>?)?['detail'];
+        throw ApiException(
+          detail is String
+              ? detail
+              : 'Mutasi tidak terbaca — coba unggah screenshot yang lebih jelas.',
+        );
+      }
+      throw ApiException(_dioMessage(e));
+    }
+  }
+
   /// GET /api/accounts → daftar akun user.
   Future<List<AccountModel>> fetchAccounts({bool includeInactive = false}) async {
     final query = <String, dynamic>{};
@@ -148,6 +192,7 @@ class ApiClient {
   /// GET /api/transactions — keyset pagination (`cursor` = next_cursor).
   /// `sort` (newest|oldest|largest|smallest) disort server-side.
   /// `dateFrom`/`dateTo` (ISO-8601, opsional) membatasi rentang tanggal.
+  /// `search` (opsional) mencari teks di merchant/keterangan & nama item.
   Future<TransactionListResult> fetchTransactions({
     String? cursor,
     String? type,
@@ -155,6 +200,7 @@ class ApiClient {
     String? accountId,
     String? dateFrom,
     String? dateTo,
+    String? search,
     String? sort,
   }) async {
     final query = <String, dynamic>{};
@@ -164,6 +210,9 @@ class ApiClient {
     if (accountId != null) query['account_id'] = accountId;
     if (dateFrom != null) query['date_from'] = dateFrom;
     if (dateTo != null) query['date_to'] = dateTo;
+    if (search != null && search.trim().isNotEmpty) {
+      query['search'] = search.trim();
+    }
     if (sort != null) query['sort'] = sort;
     final data = await _get('/api/transactions', query);
     return TransactionListResult.fromJson(data);
@@ -176,6 +225,9 @@ class ApiClient {
     String? type,
     String? categoryId,
     String? accountId,
+    String? dateFrom,
+    String? dateTo,
+    String? search,
     String? sort,
     int maxItems = 2000,
   }) async {
@@ -187,6 +239,9 @@ class ApiClient {
         type: type,
         categoryId: categoryId,
         accountId: accountId,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        search: search,
         sort: sort,
       );
       all.addAll(page.items);
@@ -237,7 +292,9 @@ class ApiClient {
       if (merchant != null) data['merchant'] = merchant;
       if (note != null) data['note'] = note;
       if (transactionDate != null) {
-        data['transaction_date'] = transactionDate.toIso8601String();
+        // Selalu kirim instant UTC eksplisit: DateTime lokal tanpa offset akan
+        // ditafsirkan server sebagai UTC dan menggeser jam transaksi.
+        data['transaction_date'] = transactionDate.toUtc().toIso8601String();
       }
       if (items != null) {
         data['items'] = items.map((i) => i.toJson()).toList();
@@ -432,12 +489,41 @@ class ApiClient {
           'to_account_id': toAccountId,
           'merchant': merchant,
           'note': note,
-          'transaction_date': transactionDate.toIso8601String(),
+          // Instant UTC eksplisit (lihat catatan di updateTransaction).
+          'transaction_date': transactionDate.toUtc().toIso8601String(),
           'items': items.map((i) => i.toJson()).toList(),
           'original_currency': ?originalCurrency,
           'exchange_rate': ?exchangeRate,
         },
       );
+    } on DioException catch (e) {
+      throw ApiException(_dioMessage(e));
+    }
+  }
+
+  /// GET /api/profile — setelan profil (timezone + flag konfirmasi).
+  Future<ProfileSettings> fetchProfileSettings() async {
+    final data = await _get('/api/profile', const {});
+    return ProfileSettings.fromJson(data);
+  }
+
+  /// PATCH /api/profile — ubah timezone dan/atau nama tampilan.
+  ///
+  /// Backend menandai `timezone_confirmed = true` begitu `timezone` dikirim,
+  /// jadi form onboarding tidak muncul lagi setelah user memilih.
+  Future<ProfileSettings> updateProfileSettings({
+    String? timezone,
+    String? displayName,
+  }) async {
+    try {
+      final response = await _dio.patch<Map<String, dynamic>>(
+        '/api/profile',
+        data: {
+          'timezone': ?timezone,
+          'display_name': ?displayName,
+        },
+      );
+      return ProfileSettings.fromJson(response.data ?? const {});
     } on DioException catch (e) {
       throw ApiException(_dioMessage(e));
     }

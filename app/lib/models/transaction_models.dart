@@ -4,6 +4,8 @@
 /// konversi angka lewat [_toDouble] agar tahan terhadap `num` maupun `String`.
 library;
 
+import '../core/timezones.dart';
+
 /// Konversi nilai JSON (num | String) menjadi double.
 double _toDouble(dynamic v) {
   if (v is num) return v.toDouble();
@@ -183,6 +185,7 @@ class TransactionModel {
     this.note,
     this.confidence,
     this.receiptImageUrl,
+    this.timezone = 'Asia/Jakarta',
     this.items = const [],
   });
 
@@ -204,11 +207,19 @@ class TransactionModel {
   final String? receiptImageUrl;
   final DateTime transactionDate;
   final DateTime createdAt;
+  /// Snapshot timezone saat transaksi dibuat (migrasi 0012). Dipakai untuk
+  /// menerjemahkan instant UTC ke tanggal/jam lokal transaksi ini.
+  final String timezone;
   final List<TransactionItem> items;
 
   /// Nominal asli di mata uang asal (totalAmount dibagi kurs).
   double get originalAmount =>
       exchangeRate > 0 ? totalAmount / exchangeRate : totalAmount;
+
+  /// Instant UTC transaksi ini diterjemahkan ke zona waktu SNAPSHOT-nya
+  /// (Req 5). Mengubah timezone profil TIDAK menggeser tanggal transaksi
+  /// lama — interpretasi dibekukan saat transaksi dibuat.
+  DateTime get localDateTime => inTimezone(transactionDate, timezone);
 
   factory TransactionModel.fromJson(Map<String, dynamic> json) =>
       TransactionModel(
@@ -227,6 +238,7 @@ class TransactionModel {
         receiptImageUrl: json['receipt_image_url'] as String?,
         transactionDate: _toDateTime(json['transaction_date']),
         createdAt: _toDateTime(json['created_at']),
+        timezone: json['timezone'] as String? ?? 'Asia/Jakarta',
         items: (json['items'] as List<dynamic>? ?? const [])
             .map((e) => TransactionItem.fromJson(e as Map<String, dynamic>))
             .toList(),

@@ -10,6 +10,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../core/format.dart';
 import '../models/transaction_models.dart';
 
 /// Urutan tampil transaksi.
@@ -37,13 +38,49 @@ class TransactionFilterResult {
   const TransactionFilterResult({
     required this.accountIds,
     required this.categoryIds,
+    this.dateFrom,
+    this.dateTo,
   });
 
   final Set<String> accountIds;
   final Set<String> categoryIds;
 
-  bool get isEmpty => accountIds.isEmpty && categoryIds.isEmpty;
+  /// Rentang tanggal (between, inklusif pada kedua sisi).
+  /// `null` = tanpa batas pada sisi tersebut.
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
+
+  bool get hasDateRange => dateFrom != null || dateTo != null;
+
+  bool get isEmpty =>
+      accountIds.isEmpty &&
+      categoryIds.isEmpty &&
+      dateFrom == null &&
+      dateTo == null;
 }
+
+// ── Batas hari → instant UTC ────────────────────────────────────────────────
+
+/// Awal hari lokal (00:00) sebagai instant UTC dalam ISO-8601.
+///
+/// `transaction_date` disimpan sebagai `timestamptz` (UTC). Mengirim instant
+/// UTC yang setara dengan tengah malam di timezone pengguna membuat filter
+/// tanggal server-side (`>= date_from`) tepat secara kalender lokal —
+/// mengirim string naive tanpa offset akan salah saat server memakai UTC.
+String dayStartIso(DateTime day) =>
+    DateTime(day.year, day.month, day.day).toUtc().toIso8601String();
+
+/// Akhir hari lokal (23:59:59.999) sebagai instant UTC ISO-8601 — sehingga
+/// `date_to` bersifat inklusif untuk tanggal yang dipilih.
+String dayEndIso(DateTime day) => DateTime(
+      day.year,
+      day.month,
+      day.day,
+      23,
+      59,
+      59,
+      999,
+    ).toUtc().toIso8601String();
 
 /// Terapkan sortir pada daftar (tanpa mengubah list asal).
 List<TransactionModel> sortTransactions(
@@ -177,20 +214,24 @@ Map<String, List<CategoryModel>> groupCategoriesByType(
   };
 }
 
-/// Tampilkan bottom sheet filter (akun + kategori, multi-checklist).
+/// Tampilkan bottom sheet filter (akun + kategori + rentang tanggal).
 ///
 /// Mengembalikan pilihan baru, atau `null` jika user menutup tanpa
-/// "Terapkan". Pilihan saat ini (`selectedAccountIds`/`selectedCategoryIds`)
-/// dipakai sebagai nilai awal.
+/// "Terapkan". Pilihan saat ini (`selectedAccountIds`/`selectedCategoryIds`/
+/// `dateFrom`/`dateTo`) dipakai sebagai nilai awal.
 Future<TransactionFilterResult?> showTransactionFilterSheet({
   required BuildContext context,
   required List<AccountModel> accounts,
   required List<CategoryModel> categories,
   Set<String> selectedAccountIds = const {},
   Set<String> selectedCategoryIds = const {},
+  DateTime? dateFrom,
+  DateTime? dateTo,
 }) {
   final selectedAccounts = {...selectedAccountIds};
   final selectedCategories = {...selectedCategoryIds};
+  DateTime? rangeStart = dateFrom;
+  DateTime? rangeEnd = dateTo;
 
   return showModalBottomSheet<TransactionFilterResult>(
     context: context,
@@ -233,6 +274,8 @@ Future<TransactionFilterResult?> showTransactionFilterSheet({
                         onPressed: () => setSheetState(() {
                           selectedAccounts.clear();
                           selectedCategories.clear();
+                          rangeStart = null;
+                          rangeEnd = null;
                         }),
                         child: const Text('Reset'),
                       ),
@@ -244,6 +287,21 @@ Future<TransactionFilterResult?> showTransactionFilterSheet({
                     controller: scrollController,
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                     children: [
+                      _DateRangeSection(
+                        start: rangeStart,
+                        end: rangeEnd,
+                        onChanged: (s, e) => setSheetState(() {
+                          // Rentang selalu valid: tukar bila terbalik.
+                          if (s != null && e != null && s.isAfter(e)) {
+                            rangeStart = e;
+                            rangeEnd = s;
+                          } else {
+                            rangeStart = s;
+                            rangeEnd = e;
+                          }
+                        }),
+                      ),
+                      const SizedBox(height: 20),
                       Text(
                         'Pilih grup untuk memilih semua, atau centang per item.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -321,6 +379,8 @@ Future<TransactionFilterResult?> showTransactionFilterSheet({
                         TransactionFilterResult(
                           accountIds: selectedAccounts,
                           categoryIds: selectedCategories,
+                          dateFrom: rangeStart,
+                          dateTo: rangeEnd,
                         ),
                       ),
                       child: const Text('Terapkan'),
@@ -334,6 +394,121 @@ Future<TransactionFilterResult?> showTransactionFilterSheet({
       );
     },
   );
+}
+
+/// Bagian "Tanggal (between)" di bottom sheet filter: dua pemilih tanggal
+/// (Dari → Sampai) + tombol hapus rentang. Tombol "Terapkan" pada sheet tetap
+/// menjadi satu-satunya titik commit.
+class _DateRangeSection extends StatelessWidget {
+  const _DateRangeSection({
+    required this.start,
+    required this.end,
+    required this.onChanged,
+  });
+
+  final DateTime? start;
+  final DateTime? end;
+  final void Function(DateTime? start, DateTime? end) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hasRange = start != null || end != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.date_range_outlined,
+                size: 18, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tanggal (between)',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            if (hasRange)
+              TextButton.icon(
+                onPressed: () => onChanged(null, null),
+                icon: const Icon(Icons.clear, size: 16),
+                label: const Text('Hapus'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: _DateField(
+                label: 'Dari',
+                value: start,
+                onPick: (d) => onChanged(d, end),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _DateField(
+                label: 'Sampai',
+                value: end,
+                onPick: (d) => onChanged(start, d),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Pemilih satu tanggal untuk sisi "Dari"/"Sampai".
+class _DateField extends StatelessWidget {
+  const _DateField({
+    required this.label,
+    required this.value,
+    required this.onPick,
+  });
+
+  final String label;
+  final DateTime? value;
+  final ValueChanged<DateTime?> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: () async {
+        final now = DateTime.now();
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: value ?? now,
+          firstDate: DateTime(now.year - 5),
+          lastDate: now.add(const Duration(days: 365)),
+          helpText: 'Pilih tanggal $label',
+        );
+        if (picked != null) {
+          onPick(DateTime(picked.year, picked.month, picked.day));
+        }
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          border: const OutlineInputBorder(),
+          suffixIcon: Icon(
+            Icons.calendar_today_outlined,
+            size: 16,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        child: Text(value == null ? 'Semua' : formatDateDetail(value!)),
+      ),
+    );
+  }
 }
 
 /// Satu grup pohon di bottom sheet filter: header (icon + nama + checkbox

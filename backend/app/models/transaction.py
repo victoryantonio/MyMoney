@@ -76,6 +76,12 @@ class Transaction(Base):
     confidence: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Actual transaction date (may differ from created_at if user back-dates)
     transaction_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Snapshot timezone user saat transaksi dibuat (migration 0012). Dipakai
+    # untuk interpretasi tanggal/jam ("hari" transaksi ini) — TIDAK dihitung
+    # ulang live, jadi mengubah setelan timezone tidak menggeser transaksi lama.
+    timezone: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="Asia/Jakarta", default="Asia/Jakarta"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

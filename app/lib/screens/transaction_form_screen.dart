@@ -52,7 +52,9 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
   late final TextEditingController _amountCtrl;
   late final TextEditingController _merchantCtrl;
   late final TextEditingController _noteCtrl;
+  // Tanggal & jam dipisah agar date picker tidak mereset jam (Req 8).
   DateTime _date = DateTime.now();
+  TimeOfDay _time = TimeOfDay.now();
 
   final List<ReceiptItemModel> _items = [];
   List<CategoryModel> _categories = [];
@@ -89,7 +91,10 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       text: tx?.merchant ?? widget.initialMerchant ?? '',
     );
     _noteCtrl = TextEditingController(text: tx?.note ?? '');
-    _date = tx?.transactionDate ?? widget.initialDate ?? DateTime.now();
+    final base =
+        (tx?.transactionDate ?? widget.initialDate ?? DateTime.now()).toLocal();
+    _date = DateTime(base.year, base.month, base.day);
+    _time = TimeOfDay(hour: base.hour, minute: base.minute);
     _categoryId = tx?.categoryId ?? widget.initialCategoryId;
     _accountId = tx?.accountId ?? widget.initialAccountId;
     _toAccountId = tx?.toAccountId;
@@ -255,6 +260,19 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
     }
   }
 
+  /// Instant lokal dari tanggal + jam yang dipilih. `ApiClient` mengubahnya
+  /// ke UTC saat dikirim, jadi storage tetap UTC.
+  DateTime get _transactionDateTime => DateTime(
+        _date.year,
+        _date.month,
+        _date.day,
+        _time.hour,
+        _time.minute,
+      );
+
+  String get _timeLabel =>
+      '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}';
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -262,7 +280,18 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 1)),
     );
-    if (picked != null) setState(() => _date = picked);
+    if (picked != null) {
+      setState(() => _date = DateTime(picked.year, picked.month, picked.day));
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _time,
+      helpText: 'Pilih jam transaksi',
+    );
+    if (picked != null) setState(() => _time = picked);
   }
 
   void _addItem() {
@@ -412,7 +441,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
           toAccountId: _toAccountId,
           merchant: merchant.isEmpty ? null : merchant,
           note: note.isEmpty ? null : note,
-          transactionDate: _date,
+          transactionDate: _transactionDateTime,
           items: _items.map((i) => i).toList(),
           originalCurrency: _currency,
           exchangeRate: rate,
@@ -426,7 +455,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
           toAccountId: _toAccountId,
           merchant: merchant.isEmpty ? null : merchant,
           note: note.isEmpty ? null : note,
-          transactionDate: _date,
+          transactionDate: _transactionDateTime,
           items: _items.map((i) => i).toList(),
           originalCurrency: _currency,
           exchangeRate: rate,
@@ -520,18 +549,53 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // ── Tanggal ───────────────────────────────────────────────────
-              InkWell(
-                onTap: _pickDate,
-                borderRadius: BorderRadius.circular(4),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Tanggal',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.calendar_today_outlined),
+              // ── Tanggal & Jam ─────────────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: InkWell(
+                      onTap: _saving ? null : _pickDate,
+                      borderRadius: BorderRadius.circular(4),
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Tanggal',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.calendar_today_outlined),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                        ),
+                        child: Text(
+                          formatDateDetail(_date),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
                   ),
-                  child: Text(formatDateDetail(_date)),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: InkWell(
+                      onTap: _saving ? null : _pickTime,
+                      borderRadius: BorderRadius.circular(4),
+                      child: InputDecorator(
+                        decoration: const InputDecoration(
+                          labelText: 'Jam',
+                          border: OutlineInputBorder(),
+                          suffixIcon: Icon(Icons.schedule_outlined),
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                        ),
+                        child: Text(
+                          _timeLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
 

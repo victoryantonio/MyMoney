@@ -4,6 +4,39 @@ All notable changes to the MyMoney app are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0+7] — 2026-09-14
+
+### Added
+- **Matching Mutasi (Req 9)** — Menu Upload di kanan atas Dashboard untuk
+  mencocokkan mutasi bank dengan catatan. Backend membaca setiap baris mutasi
+  (screenshot/foto via vision LLM atau ekspor CSV), lalu memeriksa apakah
+  nominalnya sudah balance dengan transaksi tercatat (nominal + arah dana +
+  jarak tanggal + akun). Mutasi yang belum tercatat otomatis dibuat sebagai
+  *transaksi pending* untuk dikonfirmasi user.
+- **Jam transaksi (Req 8)** — Form input transaksi kini punya kolom *Jam*
+  sejajar dengan kolom *Tanggal*.
+- **Filter tanggal (between) di menu Transaksi (Req 7)** — Batasi daftar
+  transaksi pada rentang tanggal tertentu.
+- **Pencarian transaksi (Req 6)** — Ikon magnifier di kanan atas menu Transaksi
+  untuk mencari dari Merchant/keterangan maupun nama item.
+- **Snapshot zona waktu per transaksi (Req 5)** — Storage tetap UTC, tetapi
+  interpretasi/tampilan memakai zona waktu user yang di-*snapshot* saat
+  transaksi dibuat. Zona waktu awal mengikuti setting HP (form saat pertama
+  login) dan bisa diubah kapan saja di menu Profil.
+
+### Fixed
+- **Select All pada filter Dashboard (Req 2)** — Menekan "Select All" saat semua
+  item sudah terpilih kini membatalkan semua pilihan (unselect all).
+- **Chart cashflow per akun & transfer (Req 3)** — Transfer antar akun tidak lagi
+  dihitung sebagai income/expense, dan filter akun kini juga menyertakan
+  transaksi yang masuk ke akun tujuan sehingga saldo per akun konsisten dengan
+  best practice akuntansi.
+- **Bar percentage kategori terkunci (Req 4)** — Bar percentage di chart kategori
+  tidak berubah saat salah satu kategori expense/income dipilih.
+
+### Changed
+- Version number: `1.2.2+6` → `1.3.0+7`.
+
 ## [1.2.2+6] — 2026-08-31
 
 ### Added

@@ -137,14 +137,19 @@ def get_report_trend(
     tz: ZoneInfo,
 ) -> ReportTrendResponse:
     """
-    Daily income/expense series for the period, bucketed by calendar day in
-    the user's timezone. SQL `GROUP BY date(...)` only (DATABASE.md §3.4).
+    Daily income/expense series for the period, bucketed by calendar day in the
+    timezone that was SNAPSHOTTED on each transaction (`transactions.timezone`).
+    SQL `GROUP BY date(...)` only (DATABASE.md §3.4).
 
-    Every day in [start_date, end_date) appears in the result — days without
-    transactions are zero-filled so the client can draw a continuous line.
+    Memakai snapshot per-baris (bukan timezone user saat ini) supaya
+    interpretasi tanggal tidak berubah setelah fakta ketika user mengganti
+    setelan timezone. `tz` hanya dipakai untuk sumbu hari (periode "sekarang").
+
+    Setiap hari pada [start_date, end_date) muncul di hasil — hari tanpa
+    transaksi diisi nol agar klien bisa menggambar garis kontinu.
     """
-    # Convert timestamptz to the user's local wall-clock time, then take the date.
-    day_col = func.date(func.timezone(str(tz), Transaction.transaction_date))
+    # Convert timestamptz ke wall-clock timezone transaksi itu sendiri, lalu ambil tanggalnya.
+    day_col = func.date(func.timezone(Transaction.timezone, Transaction.transaction_date))
     rows = db.execute(
         select(day_col.label("day"), Transaction.type, func.sum(Transaction.total_amount))
         .where(
@@ -160,19 +165,27 @@ def get_report_trend(
     for day, tx_type, amount in rows:
         by_day.setdefault(day, {})[tx_type] = Decimal(amount)
 
-    points: list[TrendPoint] = []
-    cursor = start_date.date()
-    end_day = end_date.date()
+    # Sumbu hari = seluruh hari periode UNION hari yang benar-benar ada, supaya
+    # transaksi yang jatuh di tepi periode karena perbedaan timezone tidak
+    # hilang dari chart.
+    axis_days: set[date] = set(by_day)
+    # Sumbu hari mengikuti timezone user saat ini (konsep "periode sekarang").
+    cursor = start_date.astimezone(tz).date()
+    end_day = end_date.astimezone(tz).date()
     while cursor < end_day:
-        bucket = by_day.get(cursor, {})
+        axis_days.add(cursor)
+        cursor += timedelta(days=1)
+
+    points: list[TrendPoint] = []
+    for day in sorted(axis_days):
+        bucket = by_day.get(day, {})
         points.append(
             TrendPoint(
-                date=cursor,
+                date=day,
                 income=bucket.get("income", Decimal("0")),
                 expense=bucket.get("expense", Decimal("0")),
             )
         )
-        cursor += timedelta(days=1)
 
     return ReportTrendResponse(
         start_date=start_date,

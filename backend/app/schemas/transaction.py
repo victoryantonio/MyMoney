@@ -113,6 +113,9 @@ class TransactionResponse(BaseModel):
     confidence: str | None
     receipt_image_url: str | None
     transaction_date: datetime
+    # Timezone snapshot saat transaksi dibuat — dipakai klien untuk
+    # menerjemahkan instant UTC ke tanggal/jam lokal transaksi tersebut.
+    timezone: str
     created_at: datetime
     updated_at: datetime
     items: list[TransactionItemResponse] = []

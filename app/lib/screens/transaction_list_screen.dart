@@ -193,7 +193,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            '${formatDateDetail(tx.transactionDate)} · '
+                            '${formatDateDetail(tx.localDateTime)} · '
                             '${widget.accountLabels[tx.accountId] ?? 'Akun'} · '
                             '$categoryLabel',
                             maxLines: 2,

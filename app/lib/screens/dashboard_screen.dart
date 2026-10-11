@@ -19,6 +19,7 @@ import '../core/format.dart';
 import '../models/report_models.dart';
 import '../models/transaction_models.dart';
 import '../widgets/trend_chart.dart';
+import 'mutation_match_screen.dart';
 import 'transaction_list_screen.dart';
 import 'transaction_form_screen.dart';
 
@@ -59,8 +60,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   DateTime? _customStart;
   DateTime? _customEnd;
 
-  // Filter akun (client-side, seperti v1). Kosong = semua akun.
-  final Set<String> _selectedAccountIds = {};
+  // Filter akun (client-side, seperti v1) — tri-state:
+  //   null  = semua akun (tanpa filter)
+  //   {}    = tidak ada akun dipilih (hasil kosong / unselect all)
+  //   {...} = subset akun terpilih
+  Set<String>? _selectedAccountIds;
 
   String? _selectedCategoryName;
   bool _amountsHidden = false;
@@ -211,34 +215,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _load();
   }
 
-  /// null = semua akun; non-null = subset yang difilter.
-  Set<String>? get _activeAccountFilter =>
-      _selectedAccountIds.isEmpty ? null : _selectedAccountIds;
+  /// null = semua akun (tanpa filter); non-null = filter akun aktif.
+  /// Bisa berisi 0 akun ("unselect all") → tidak ada transaksi yang cocok.
+  Set<String>? get _activeAccountFilter => _selectedAccountIds;
 
   Future<void> _toggleAccount(String id) async {
     await _ensureAllTxLoaded();
     if (!mounted) return;
     setState(() {
-      if (_selectedAccountIds.isEmpty) {
-        // Dari "semua" → pilih semua kecuali yang ditoggle (deselect satu).
-        _selectedAccountIds
-          ..clear()
-          ..addAll(_accounts.map((a) => a.id).where((x) => x != id));
-      } else if (_selectedAccountIds.contains(id)) {
-        _selectedAccountIds.remove(id);
+      final current = _selectedAccountIds;
+      if (current == null) {
+        // Dari "semua akun" → pilih semua kecuali yang ditoggle (deselect satu).
+        _selectedAccountIds =
+            _accounts.map((a) => a.id).where((x) => x != id).toSet();
+      } else if (current.contains(id)) {
+        current.remove(id);
       } else {
-        _selectedAccountIds.add(id);
+        current.add(id);
       }
     });
   }
 
+  /// Toggle "Select all" ⇄ "Unselect all".
+  ///
+  /// Bila semua akun sudah terpilih (termasuk state "semua akun" = null),
+  /// tekan lagi akan mengosongkan seleksi (unselect all). Selain itu →
+  /// memilih semua akun.
   void _selectAllAccounts() {
+    // Memilih subset akun mengaktifkan filter client-side → pastikan cache
+    // transaksi lengkap sudah dimuat agar hasil filter tidak kosong.
+    _ensureAllTxLoaded();
     setState(() {
-      if (_selectedAccountIds.isEmpty) {
-        _selectedAccountIds.addAll(_accounts.map((a) => a.id));
-      } else {
-        _selectedAccountIds.clear();
-      }
+      final all = _accounts.map((a) => a.id).toSet();
+      final allSelected =
+          _selectedAccountIds == null || _selectedAccountIds!.length >= all.length;
+      _selectedAccountIds = allSelected ? <String>{} : all;
     });
   }
 
@@ -273,12 +284,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
+      appBar: AppBar(
+        title: const Text('Dashboard'),
+        actions: [
+          // Req 9 — "Matching Mutasi": unggah bukti mutasi bank, cocokkan dengan
+          // transaksi tercatat, sisanya masuk sebagai transaksi pending.
+          IconButton(
+            icon: const Icon(Icons.upload_file_outlined),
+            tooltip: 'Matching Mutasi',
+            onPressed: _openMutationMatch,
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _buildBody(context),
       ),
     );
+  }
+
+  Future<void> _openMutationMatch() async {
+    var pendingCreated = false;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MutationMatchScreen(
+          api: _api,
+          onPendingCreated: () => pendingCreated = true,
+        ),
+      ),
+    );
+    if (pendingCreated && mounted) await _load();
   }
 
   void _editTransaction(TransactionModel tx) {
@@ -376,10 +411,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   // ── Filter akun client-side (setara v1) ─────────────────────────────────
 
+  /// Transaksi yang menyentuh akun terpilih. Transfer menyentuh DUA akun
+  /// (sumber & tujuan), jadi harus cocok di salah satunya — kalau hanya
+  /// `accountId` yang dicek, akun tujuan transfer tidak pernah ikut terhitung.
   List<TransactionModel> get _accountFilteredTxs {
     final active = _activeAccountFilter;
     if (active == null) return _allTx;
-    return _allTx.where((tx) => active.contains(tx.accountId)).toList();
+    return _allTx
+        .where(
+          (tx) =>
+              active.contains(tx.accountId) ||
+              (tx.toAccountId != null && active.contains(tx.toAccountId)),
+        )
+        .toList();
   }
 
   /// Period boundaries untuk filter client-side (date-only).
@@ -413,24 +457,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  bool _inPeriod(DateTime d) {
+  bool _inPeriod(TransactionModel tx) {
     final start = _periodStart;
     final end = _periodEnd;
+    // Tanggal dihitung dari zona waktu snapshot transaksi (Req 5).
+    final d = tx.localDateTime;
     final day = DateTime(d.year, d.month, d.day);
     return !day.isBefore(start) && !day.isAfter(end);
   }
 
   /// Transaksi periode + akun terpilih (client-side).
-  List<TransactionModel> get _filteredTxs => _accountFilteredTxs
-      .where((tx) => _inPeriod(tx.transactionDate))
-      .toList();
+  List<TransactionModel> get _filteredTxs =>
+      _accountFilteredTxs.where(_inPeriod).toList();
 
   /// Transaksi terbaru dalam periode aktif untuk section
   /// "Recent transactions" — ambil dari cache 1 halaman (20 terbaru);
   /// halaman diurutkan terbaru dulu sehingga transaksi periode pasti ada.
   /// Saat period = Today, hanya transaksi hari ini yang muncul.
   List<TransactionModel> get _periodRecentTx =>
-      _recentTx.where((tx) => _inPeriod(tx.transactionDate)).toList();
+      _recentTx.where(_inPeriod).toList();
 
   List<CategoryTotal> get _filteredCategories {
     if (_activeAccountFilter == null) return _summary?.categories ?? const [];
@@ -463,15 +508,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       .fold(0, (s, tx) => s + tx.totalAmount);
 
   /// Tren harian client-side saat filter akun aktif: bucket per tanggal.
+  /// Transfer TIDAK dihitung sebagai income/expense — ini perpindahan dana
+  /// internal antar akun milik user, bukan arus kas masuk/keluar
+  /// (best practice: transfer hanya mengubah komposisi saldo antar akun).
   List<TrendPoint> get _filteredTrendPoints {
     if (_activeAccountFilter == null) return _trend?.points ?? const [];
     final buckets = <DateTime, List<double>>{};
     for (final tx in _filteredTxs) {
-      final day = DateTime(
-        tx.transactionDate.year,
-        tx.transactionDate.month,
-        tx.transactionDate.day,
-      );
+      if (tx.type == 'transfer') continue;
+      final local = tx.localDateTime;
+      final day = DateTime(local.year, local.month, local.day);
       final pair = buckets.putIfAbsent(day, () => [0, 0]);
       if (tx.type == 'expense') {
         pair[1] += tx.totalAmount;
@@ -758,7 +804,7 @@ class _AccountFilterDropdown extends StatelessWidget {
   });
 
   final List<AccountModel> accounts;
-  final Set<String> selectedAccountIds;
+  final Set<String>? selectedAccountIds;
   final ValueChanged<String> onToggle;
   final VoidCallback onSelectAll;
   /// Dipanggil saat dropdown dibuka — trigger lazy-load semua transaksi.
@@ -767,8 +813,10 @@ class _AccountFilterDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final allSelected =
-        selectedAccountIds.isEmpty || selectedAccountIds.length >= accounts.length;
+    final selected = selectedAccountIds;
+    final allSelected = selected == null || selected.length >= accounts.length;
+    final noneSelected = selected != null && selected.isEmpty;
+    final partial = !allSelected && !noneSelected;
 
     return MenuAnchor(
       builder: (context, controller, child) {
@@ -800,7 +848,9 @@ class _AccountFilterDropdown extends StatelessWidget {
                     child: Text(
                       allSelected
                           ? 'Semua akun (${accounts.length})'
-                          : '${selectedAccountIds.length} akun terpilih',
+                          : noneSelected
+                              ? 'Tidak ada akun dipilih'
+                              : '${selected.length} akun terpilih',
                       style: Theme.of(context).textTheme.bodyMedium,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -815,8 +865,10 @@ class _AccountFilterDropdown extends StatelessWidget {
       },
       menuChildren: [
         _AccountMenuItem(
-          label: 'Select all',
+          // Label berubah sesuai state agar toggle unselect-all jelas.
+          label: allSelected ? 'Unselect all' : 'Select all',
           checked: allSelected,
+          indeterminate: partial,
           bold: true,
           onTap: onSelectAll,
         ),
@@ -824,7 +876,7 @@ class _AccountFilterDropdown extends StatelessWidget {
         for (final account in accounts)
           _AccountMenuItem(
             label: account.label,
-            checked: selectedAccountIds.isEmpty || selectedAccountIds.contains(account.id),
+            checked: selected == null || selected.contains(account.id),
             onTap: () => onToggle(account.id),
           ),
       ],
@@ -838,12 +890,17 @@ class _AccountMenuItem extends StatelessWidget {
     required this.checked,
     required this.onTap,
     this.bold = false,
+    this.indeterminate = false,
   });
 
   final String label;
   final bool checked;
   final VoidCallback onTap;
   final bool bold;
+
+  /// Menampilkan ikon checkbox "sebagian" (mis. Select all saat hanya
+  /// sebagian akun terpilih).
+  final bool indeterminate;
 
   @override
   Widget build(BuildContext context) {
@@ -852,8 +909,12 @@ class _AccountMenuItem extends StatelessWidget {
       leadingIcon: SizedBox(
         width: 24,
         child: Icon(
-          checked ? Icons.check_box : Icons.check_box_outline_blank,
-          color: checked
+          indeterminate
+              ? Icons.indeterminate_check_box
+              : checked
+                  ? Icons.check_box
+                  : Icons.check_box_outline_blank,
+          color: checked || indeterminate
               ? Theme.of(context).colorScheme.primary
               : Theme.of(context).colorScheme.onSurfaceVariant,
         ),
@@ -1397,7 +1458,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
     final rows = <Widget>[];
     DateTime? lastDay;
     for (final tx in txs) {
-      final d = tx.transactionDate;
+      final d = tx.localDateTime;
       final day = DateTime(d.year, d.month, d.day);
       if (lastDay == null || day != lastDay) {
         rows.add(
@@ -1583,16 +1644,27 @@ class _CategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Proporsi bar = total / max (kategori terbesar dalam grup). Nilai ini
+    // HANYA bergantung pada data, bukan pada seleksi — sehingga bar tidak
+    // berubah (memanjang/memendek) saat kategorinya diklik. Seleksi ditandai
+    // lewat tint baris + label tebal, bukan lewat mengubah bar.
     final fraction = max <= 0 ? 0.0 : (total / max).clamp(0.0, 1.0);
     return InkWell(
       onTap: onClick,
       borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected
+              ? scheme.primaryContainer.withValues(alpha: 0.45)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
         child: Row(
           children: [
             SizedBox(
-              width: 120,
+              width: 114,
               child: Text(
                 name,
                 maxLines: 1,
@@ -1607,7 +1679,7 @@ class _CategoryRow extends StatelessWidget {
               child: Container(
                 height: 8,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: selected ? 0.9 : 0.25),
+                  color: color.withValues(alpha: 0.25),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 alignment: Alignment.centerLeft,

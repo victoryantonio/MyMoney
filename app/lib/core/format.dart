@@ -53,3 +53,7 @@ String formatAxisLabel(DateTime d, {DateTime? today}) {
 /// "Sen, 12 Agu 2026" untuk panel detail / header tanggal.
 String formatDateDetail(DateTime d) =>
     '${_hari[d.weekday - 1]}, ${d.day} ${_bulan[d.month - 1]} ${d.year}';
+
+/// "14:05" — jam transaksi (Req 8).
+String formatClock(DateTime d) =>
+    '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
