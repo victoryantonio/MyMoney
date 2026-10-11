@@ -135,11 +135,12 @@ class ApiClient {
     }
   }
 
-  // ── Matching Mutasi (Req 9) ────────────────────────────────────────────────
+  // ── Matching Mutasi ────────────────────────────────────────────────
 
-  /// POST /api/mutations/match — unggah bukti mutasi bank (screenshot/foto atau
-  /// CSV) → daftar pasangan mutasi ↔ transaksi tercatat + mutasi yang belum
-  /// tercatat (otomatis dibuat sebagai `pending_transaction` di backend).
+  /// POST /api/mutations/match — unggah bukti mutasi bank (screenshot/foto,
+  /// PDF e-statement, atau CSV) → daftar pasangan mutasi ↔ transaksi tercatat +
+  /// mutasi yang belum tercatat (otomatis dibuat sebagai `pending_transaction`
+  /// di backend).
   ///
   /// `accountId` opsional: batasi pencocokan ke satu akun. `amountTolerance`
   /// (rupiah) & `dateWindowDays` menyesuaikan seberapa longgar pencocokan.
@@ -152,7 +153,11 @@ class ApiClient {
   }) async {
     try {
       final form = FormData.fromMap({
-        'file': MultipartFile.fromBytes(bytes, filename: filename),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: filename,
+          contentType: _uploadMediaType(filename),
+        ),
         'account_id': ?accountId,
         'amount_tolerance': ?amountTolerance,
         if (dateWindowDays != null) 'date_window_days': '$dateWindowDays',
@@ -165,16 +170,30 @@ class ApiClient {
       return MutationMatchResult.fromJson(res.data ?? const {});
     } on DioException catch (e) {
       final status = e.response?.statusCode;
-      if (status == 422 || status == 415) {
+      if (status == 422 || status == 415 || status == 413) {
         final detail = (e.response?.data as Map<String, dynamic>?)?['detail'];
         throw ApiException(
           detail is String
               ? detail
-              : 'Mutasi tidak terbaca — coba unggah screenshot yang lebih jelas.',
+              : 'Mutasi tidak terbaca — coba unggah berkas yang lebih jelas.',
         );
       }
       throw ApiException(_dioMessage(e));
     }
+  }
+
+  /// Content type unggahan mutasi berdasarkan ekstensi nama berkas.
+  static DioMediaType _uploadMediaType(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.pdf')) return DioMediaType('application', 'pdf');
+    if (lower.endsWith('.csv')) return DioMediaType('text', 'csv');
+    if (lower.endsWith('.txt') || lower.endsWith('.tsv')) {
+      return DioMediaType('text', 'plain');
+    }
+    if (lower.endsWith('.png')) return DioMediaType('image', 'png');
+    if (lower.endsWith('.webp')) return DioMediaType('image', 'webp');
+    if (lower.endsWith('.heic')) return DioMediaType('image', 'heic');
+    return DioMediaType('image', 'jpeg');
   }
 
   /// GET /api/accounts → daftar akun user.

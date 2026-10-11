@@ -112,15 +112,66 @@ def test_empty_file_rejected(auth):
 
 
 def test_unsupported_media_type_rejected(auth):
-    """File non-gambar non-CSV → 415 sebelum LLM dipanggil."""
+    """File non-gambar, non-PDF, non-CSV → 415 sebelum LLM dipanggil."""
     with patch("app.api.mutations.parse_mutation_image", new_callable=AsyncMock) as mock_parse:
         resp = client.post(
             _ENDPOINT,
-            files={"file": ("mutasi.pdf", b"%PDF-1.4", "application/pdf")},
-            headers=auth("mut_pdf"),
+            files={
+                "file": (
+                    "mutasi.docx",
+                    b"PK\x03\x04",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+            headers=auth("mut_docx"),
         )
         assert resp.status_code == 415
+        assert "Format tidak didukung" in resp.json()["detail"]
         mock_parse.assert_not_awaited()
+
+
+def test_pdf_upload_matches_recorded_transaction(auth):
+    """PDF e-statement terdeteksi dari MIME type lalu diproses lewat jalur PDF."""
+    headers = auth("mut_pdf_ok")
+    account = _create_account(headers, name="BCA Tahunan")
+    _create_transaction(headers, account["id"], "21000.00", "2026-08-05T10:00:00Z")
+
+    with (
+        patch("app.api.mutations.parse_mutation_pdf", new_callable=AsyncMock) as mock_pdf,
+        patch("app.api.mutations.parse_mutation_image", new_callable=AsyncMock) as mock_img,
+    ):
+        mock_pdf.return_value = _extraction(_debit("21000.00", date="2026-08-05"))
+        resp = client.post(
+            _ENDPOINT,
+            files={"file": ("mutasi.pdf", b"%PDF-1.4 fake", "application/pdf")},
+            data={"account_id": account["id"]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["matched_count"] == 1
+    assert body["created_pending_ids"] == []
+    assert body["account_name"] == "BCA Tahunan"
+    mock_pdf.assert_awaited_once()
+    mock_img.assert_not_awaited()
+
+
+def test_pdf_detected_by_extension_without_mime(auth):
+    """Beberapa client mengirim application/octet-stream → deteksi dari ekstensi."""
+    headers = auth("mut_pdf_ext")
+    with patch("app.api.mutations.parse_mutation_pdf", new_callable=AsyncMock) as mock_pdf:
+        mock_pdf.return_value = _extraction(_debit("50000.00", date="2026-08-05"))
+        resp = client.post(
+            _ENDPOINT,
+            files={"file": ("e-statement.pdf", b"%PDF-1.7 x", "application/octet-stream")},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["total_mutations"] == 1
+    assert len(resp.json()["created_pending_ids"]) == 1
+    mock_pdf.assert_awaited_once()
 
 
 def test_unreadable_statement_returns_422(auth):

@@ -755,7 +755,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                     ),
                     items: [
                       for (final a in accounts)
-                        DropdownMenuItem(value: a.id, child: Text(a.label)),
+                        DropdownMenuItem(value: a.id, child: Text(a.name)),
                     ],
                     onChanged: _saving
                         ? null
@@ -770,7 +770,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                     ),
                     items: [
                       for (final a in accounts)
-                        DropdownMenuItem(value: a.id, child: Text(a.label)),
+                        DropdownMenuItem(value: a.id, child: Text(a.name)),
                     ],
                     onChanged: _saving
                         ? null
@@ -820,7 +820,7 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                     ),
                     items: [
                       for (final a in accounts)
-                        DropdownMenuItem(value: a.id, child: Text(a.label)),
+                        DropdownMenuItem(value: a.id, child: Text(a.name)),
                     ],
                     onChanged: _saving
                         ? null

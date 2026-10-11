@@ -1,8 +1,8 @@
 /// Screen "Matching Mutasi" (Req 9) — dibuka dari menu Dashboard → Upload.
 ///
 /// Alur:
-///   1. User memilih screenshot/foto mutasi bank (atau ekspor CSV) dan
-///      opsional menentukan akun.
+///   1. User memilih screenshot/foto mutasi bank, e-statement PDF, atau ekspor
+///      CSV dan opsional menentukan akun.
 ///   2. Backend (`POST /api/mutations/match`) membaca mutasi via vision LLM,
 ///      lalu mencocokkan setiap baris dengan transaksi yang sudah tercatat
 ///      (nominal + arah dana + jarak tanggal + akun).
@@ -15,6 +15,7 @@ library;
 
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -23,31 +24,66 @@ import '../core/format.dart';
 import '../models/mutation_models.dart';
 import '../models/transaction_models.dart';
 
-/// Hasil pemilihan berkas mutasi (screenshot/foto atau CSV).
+/// Hasil pemilihan berkas mutasi (screenshot/foto, PDF e-statement, atau CSV).
 class PickedMutationFile {
   const PickedMutationFile({required this.bytes, required this.name});
 
   final Uint8List bytes;
   final String name;
 
+  bool get isPdf => name.toLowerCase().endsWith('.pdf');
+
   bool get isCsv {
     final lower = name.toLowerCase();
     return lower.endsWith('.csv') || lower.endsWith('.txt') || lower.endsWith('.tsv');
   }
+
+  /// Berkas non-gambar → pratinjau pakai ikon dokumen, bukan `Image.memory`.
+  bool get isDocument => isPdf || isCsv;
+}
+
+/// Sumber berkas mutasi yang bisa dipilih user.
+enum MutationSource {
+  /// Kamera (screenshot langsung dari aplikasi bank).
+  camera,
+
+  /// Galeri/foto.
+  gallery,
+
+  /// Dokumen PDF e-statement dari penyimpanan.
+  document,
 }
 
 /// Pengambil berkas — overridable di widget test (tanpa kamera/galeri nyata).
-typedef MutationFilePickFn = Future<PickedMutationFile?> Function(ImageSource source);
+typedef MutationFilePickFn = Future<PickedMutationFile?> Function(MutationSource source);
 
-/// Implementasi default: kamera/galeri lewat `image_picker`.
-Future<PickedMutationFile?> _pickWithImagePicker(ImageSource source) async {
+/// Implementasi default: kamera/galeri lewat `image_picker`, PDF lewat
+/// `file_picker` (`image_picker` tidak bisa memilih dokumen).
+Future<PickedMutationFile?> _pickMutationFile(MutationSource source) async {
+  if (source == MutationSource.document) return _pickStatementDocument();
+
   final file = await ImagePicker().pickImage(
-    source: source,
+    source: source == MutationSource.camera ? ImageSource.camera : ImageSource.gallery,
     imageQuality: 85,
     maxWidth: 2000,
   );
   if (file == null) return null;
   return PickedMutationFile(bytes: await file.readAsBytes(), name: file.name);
+}
+
+/// Pilih e-statement PDF dari penyimpanan perangkat.
+Future<PickedMutationFile?> _pickStatementDocument() async {
+  final result = await FilePicker.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: const ['pdf'],
+    withData: true,
+    dialogTitle: 'Pilih e-statement PDF',
+  );
+  final picked = result?.files.singleOrNull;
+  if (picked == null) return null;
+  final bytes = picked.bytes;
+  if (bytes == null || bytes.isEmpty) return null;
+  return PickedMutationFile(bytes: bytes, name: picked.name);
 }
 
 enum _Stage { select, preview, result }
@@ -74,7 +110,7 @@ class MutationMatchScreen extends StatefulWidget {
 }
 
 class _MutationMatchScreenState extends State<MutationMatchScreen> {
-  late final MutationFilePickFn _pickFile = widget.pickFile ?? _pickWithImagePicker;
+  late final MutationFilePickFn _pickFile = widget.pickFile ?? _pickMutationFile;
 
   _Stage _stage = _Stage.select;
   PickedMutationFile? _file;
@@ -102,7 +138,7 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
     }
   }
 
-  Future<void> _pick(ImageSource source) async {
+  Future<void> _pick(MutationSource source) async {
     final picked = await _pickFile(source);
     if (picked == null) return;
     setState(() {
@@ -184,7 +220,7 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Unggah screenshot/foto mutasi (m-banking) atau ekspor CSV. Sistem membaca setiap baris mutasi, lalu memeriksa apakah nominalnya sudah balance dengan transaksi yang tercatat. '
+          'Unggah screenshot/foto mutasi (m-banking), e-statement PDF, atau ekspor CSV. Sistem membaca setiap baris mutasi, lalu memeriksa apakah nominalnya sudah balance dengan transaksi yang tercatat. '
           'Mutasi yang belum tercatat akan masuk sebagai transaksi pending untuk kamu konfirmasi.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
@@ -208,15 +244,21 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
           ),
         const SizedBox(height: 16),
         FilledButton.icon(
-          onPressed: () => _pick(ImageSource.camera),
+          onPressed: () => _pick(MutationSource.camera),
           icon: const Icon(Icons.camera_alt_outlined),
           label: const Text('Ambil Foto Mutasi'),
         ),
         const SizedBox(height: 12),
         OutlinedButton.icon(
-          onPressed: () => _pick(ImageSource.gallery),
+          onPressed: () => _pick(MutationSource.gallery),
           icon: const Icon(Icons.photo_library_outlined),
           label: const Text('Pilih dari Galeri'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => _pick(MutationSource.document),
+          icon: const Icon(Icons.picture_as_pdf_outlined),
+          label: const Text('Pilih PDF E-Statement'),
         ),
         if (_error != null) ...[
           const SizedBox(height: 16),
@@ -238,12 +280,17 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: file == null || file.isCsv
+              child: file == null || file.isDocument
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.description_outlined, size: 56),
+                          Icon(
+                            file?.isPdf == true
+                                ? Icons.picture_as_pdf_outlined
+                                : Icons.description_outlined,
+                            size: 56,
+                          ),
                           const SizedBox(height: 8),
                           Text(file?.name ?? '-'),
                         ],

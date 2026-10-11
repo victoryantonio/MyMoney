@@ -20,6 +20,9 @@ python-multipart==0.0.12
 # ── HTTP Client (for LLM calls) ───────────────────────────────────────────────
 httpx==0.28.0
 
+# ── PDF (Matching Mutasi: ekstrak teks/render halaman e-statement bank) ──────
+pymupdf==1.28.2
+
 # ── Logging ───────────────────────────────────────────────────────────────────
 structlog==24.4.0
 

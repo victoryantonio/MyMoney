@@ -3,9 +3,12 @@ Matching Mutasi — pencocokan mutasi bank dengan transaksi tercatat.
 
 Alur (REQUIREMENTS — fitur "Matching Mutasi", menu Dashboard → Upload):
 
-  1. User mengunggah bukti mutasi (screenshot/foto aplikasi bank, atau CSV).
+  1. User mengunggah bukti mutasi (screenshot/foto aplikasi bank, CSV, atau PDF
+     e-statement).
   2. Vision LLM mengekstrak baris-baris mutasi (tanggal, keterangan, nominal,
-     arah dana debit/kredit).
+     arah dana debit/kredit). PDF diekstrak teksnya lebih dulu (murah & akurat);
+     hanya PDF hasil scan yang di-render ke gambar lalu dibaca vision LLM
+     (satu halaman per satu halaman, tanpa batas jumlah halaman).
   3. Setiap baris mutasi dicocokkan dengan transaksi di sistem:
      nominal sama (toleransi kecil) + arah dana cocok + jarak tanggal ≤ N hari
      + akun yang sama (bila user memilih akun).
@@ -21,6 +24,7 @@ import base64
 import json
 import re
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -28,6 +32,12 @@ import structlog
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+try:  # pragma: no cover - guard agar app tetap jalan tanpa PyMuPDF
+    import fitz  # PyMuPDF
+
+except ImportError:  # pragma: no cover
+    fitz = None  # type: ignore[assignment]
 
 from app.core.llm_client import VISION_MODELS, call_llm
 from app.models.account import Account
@@ -47,6 +57,18 @@ DEFAULT_DATE_WINDOW_DAYS = 3
 
 TEXT_MIME_PREFIXES = ("text/",)
 TEXT_EXTENSIONS = (".csv", ".txt", ".tsv")
+
+# ── PDF (e-statement bank) ────────────────────────────────────────────────────
+
+PDF_MIME_TYPES = ("application/pdf", "application/x-pdf")
+PDF_EXTENSIONS = (".pdf",)
+PDF_MAGIC = b"%PDF-"
+# Tidak ada batas jumlah halaman: halaman di-render & dibaca satu per satu
+# (lazy) sehingga e-statement panjang tetap aman memori. Batas praktisnya
+# adalah ukuran unggahan (MAX_UPLOAD_BYTES di API).
+PDF_RENDER_DPI = 200
+# Di bawah ini dianggap PDF tidak punya layer teks (hasil scan) → render ke gambar.
+MIN_PDF_TEXT_CHARS = 40
 
 
 # ── Hasil ekstraksi LLM ───────────────────────────────────────────────────────
@@ -166,7 +188,7 @@ def _parse_llm_json(content: str) -> MutationExtraction | None:
 def _to_decimal(value) -> Decimal | None:
     if value is None or isinstance(value, bool):
         return None
-    if isinstance(value, (int, float, Decimal)):
+    if isinstance(value, int | float | Decimal):
         return Decimal(str(value))
     # Buang simbol mata uang & spasi; dukung "1.250.000,50" dan "1,250,000.50".
     text = re.sub(r"[^\d.,-]", "", str(value).strip())
@@ -220,7 +242,7 @@ def _normalize_direction(direction, raw_amount) -> str | None:
         if norm in ("credit", "cr", "kredit", "in", "masuk", "income", "+"):
             return "credit"
     # Fallback: tanda pada nilai mentah.
-    if isinstance(raw_amount, (int, float)) and raw_amount < 0:
+    if isinstance(raw_amount, int | float) and raw_amount < 0:
         return "debit"
     if isinstance(raw_amount, str) and raw_amount.strip().startswith("-"):
         return "debit"
@@ -322,6 +344,91 @@ async def parse_mutation_text(text: str) -> MutationExtraction | None:
         temperature=0.0,
         parser=_parse_llm_json,
     )
+
+
+# ── PDF ───────────────────────────────────────────────────────────────────────
+
+
+def is_pdf_upload(
+    data: bytes,
+    *,
+    mime_type: str | None = None,
+    filename: str | None = None,
+) -> bool:
+    """Deteksi PDF dari magic bytes, MIME type, atau ekstensi nama file."""
+    if data[: len(PDF_MAGIC)] == PDF_MAGIC:
+        return True
+    if (mime_type or "").lower().split(";")[0].strip() in PDF_MIME_TYPES:
+        return True
+    return (filename or "").lower().endswith(PDF_EXTENSIONS)
+
+
+def extract_pdf_text(data: bytes) -> str:
+    """Teks dari seluruh halaman PDF ('' bila PDF hasil scan tanpa layer teks)."""
+    if fitz is None or not data:
+        return ""
+    try:
+        with fitz.open(stream=data, filetype="pdf") as doc:
+            return "\n".join(page.get_text("text") for page in doc)
+    except Exception as exc:  # noqa: BLE001 - PDF korup tidak boleh bikin 500
+        log.warning("mutation_pdf_text_failed", error=str(exc))
+        return ""
+
+
+def render_pdf_pages(data: bytes) -> Iterator[bytes]:
+    """Yield PNG bytes per halaman PDF, satu per satu.
+
+    Lazy: hanya satu halaman berada di memori pada satu waktu, dan PDF yang
+    gagal dirender sebagian tetap mengembalikan halaman yang sudah berhasil.
+    """
+    if fitz is None or not data:
+        return
+    try:
+        with fitz.open(stream=data, filetype="pdf") as doc:
+            for page in doc:
+                pixmap = page.get_pixmap(dpi=PDF_RENDER_DPI)
+                yield pixmap.tobytes("png")
+    except Exception as exc:  # noqa: BLE001 - PDF korup tidak boleh bikin 500
+        log.warning("mutation_pdf_render_failed", error=str(exc))
+        return
+
+
+async def parse_mutation_pdf(data: bytes) -> MutationExtraction | None:
+    """Ekstrak mutasi dari PDF e-statement.
+
+    Dua jalur: (a) PDF digital punya layer teks → jalur teks (cepat, murah,
+    akurat); (b) PDF hasil scan → tiap halaman di-render ke PNG lalu dibaca
+    vision LLM, hasil semua halaman digabung. Jumlah halaman tidak dibatasi.
+    """
+    if not data:
+        return None
+
+    text = extract_pdf_text(data)
+    if len(" ".join(text.split())) >= MIN_PDF_TEXT_CHARS:
+        return await parse_mutation_text(text)
+
+    merged: MutationExtraction | None = None
+    pages = 0
+    for png in render_pdf_pages(data):
+        pages += 1
+        page_result = await parse_mutation_image(png, "image/png")
+        if page_result is None:
+            continue
+        if merged is None:
+            merged = page_result
+            continue
+        if merged.account_hint is None:
+            merged.account_hint = page_result.account_hint
+        merged.mutations.extend(page_result.mutations)
+
+    if pages == 0:
+        log.error("mutation_pdf_no_content")
+        return None
+    if merged is None:
+        log.error("mutation_pdf_all_pages_failed", pages=pages)
+    else:
+        log.info("mutation_pdf_ok", pages=pages, scanned=True)
+    return merged
 
 
 # ── Pencocokan ────────────────────────────────────────────────────────────────

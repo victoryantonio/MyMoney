@@ -61,6 +61,10 @@ class AccountModel {
   final double netBalance;
   final bool isActive;
 
+  /// Nama akun apa adanya (tanpa keterangan tipe) — dipakai di dropdown
+  /// pemilihan akun pada form transaksi baru.
+  String get name => accountName;
+
   /// Label ramah: 'Cash', 'BCA · Bank', 'GoPay · E-Wallet', dst.
   String get label {
     const names = {'cash': 'Cash', 'ewallet': 'E-Wallet', 'bank': 'Bank'};

@@ -24,8 +24,12 @@ from app.core.mutation_matcher import (
     _normalize_time,
     _parse_llm_json,
     _to_decimal,
+    extract_pdf_text,
     fallback_category_id,
     find_matches,
+    is_pdf_upload,
+    parse_mutation_pdf,
+    render_pdf_pages,
     resolve_upload_account,
 )
 from app.models.account import Account
@@ -166,6 +170,146 @@ class TestParseLlmJson:
         assert _parse_llm_json(content) is None
 
 
+# ── PDF e-statement (tanpa DB, LLM di-mock) ───────────────────────────────────
+
+# Baris contoh yang lebih panjang dari MIN_PDF_TEXT_CHARS.
+_STATEMENT_LINE = "05/08 TRANSFER KE 1234 BCA 21.000,00 DEBIT SALDO 1.500.000,00"
+
+
+def _make_pdf(lines: list[str], pages: int = 1) -> bytes:
+    """PDF mini dengan layer teks nyata (dibuat pakai PyMuPDF)."""
+    import fitz
+
+    doc = fitz.open()
+    for index in range(pages):
+        page = doc.new_page()
+        text = lines[index] if index < len(lines) else ""
+        if text:
+            page.insert_text((72, 100), text)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def _make_blank_pdf(pages: int = 1) -> bytes:
+    """PDF tanpa layer teks — meniru hasil scan."""
+    return _make_pdf([""] * pages, pages=pages)
+
+
+class TestPdfDetection:
+    @pytest.mark.parametrize(
+        ("data", "mime", "filename", "expected"),
+        [
+            (b"%PDF-1.4 ...", None, None, True),
+            (b"garbage", "application/pdf", "mutasi", True),
+            (b"garbage", "application/pdf; charset=binary", None, True),
+            (b"garbage", None, "MUTASI.PDF", True),
+            (b"\x89PNG\r\n", "image/png", "mutasi.png", False),
+            (b"a,b,c", "text/csv", "mutasi.csv", False),
+            (b"PK\x03\x04", "application/octet-stream", "mutasi.docx", False),
+            (b"", None, None, False),
+        ],
+    )
+    def test_is_pdf_upload(self, data, mime, filename, expected):
+        assert is_pdf_upload(data, mime_type=mime, filename=filename) is expected
+
+
+class TestPdfTextExtraction:
+    def test_reads_text_layer(self):
+        pdf = _make_pdf([_STATEMENT_LINE])
+        text = extract_pdf_text(pdf)
+        assert "TRANSFER KE 1234" in text.replace("\n", " ")
+
+    def test_blank_pdf_has_no_text(self):
+        assert extract_pdf_text(_make_blank_pdf()).strip() == ""
+
+    @pytest.mark.parametrize("data", [b"", b"bukan pdf sama sekali"])
+    def test_invalid_pdf_is_safe(self, data):
+        # PDF korup tidak boleh melempar exception (endpoint harus tetap jalan).
+        assert extract_pdf_text(data).strip() == ""
+
+    def test_render_pages_returns_png(self):
+        pages = list(render_pdf_pages(_make_blank_pdf(pages=2)))
+        assert len(pages) == 2
+        for png in pages:
+            assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_render_has_no_page_cap(self):
+        """Semua halaman di-render — tidak ada batas maksimal halaman."""
+        assert len(list(render_pdf_pages(_make_blank_pdf(pages=7)))) == 7
+
+    def test_render_invalid_pdf_is_safe(self):
+        assert list(render_pdf_pages(b"bukan pdf")) == []
+
+
+class TestParseMutationPdf:
+    async def test_digital_pdf_uses_text_path(self, monkeypatch):
+        """PDF dengan layer teks → jalur teks; vision tidak dipanggil."""
+        expected = MutationExtraction(account_hint="BCA", mutations=[mutation()])
+
+        async def fake_text(text: str):
+            assert "TRANSFER KE 1234" in text.replace("\n", " ")
+            return expected
+
+        async def boom(*args, **kwargs):  # pragma: no cover - harus tidak dipanggil
+            raise AssertionError("vision LLM tidak boleh dipanggil untuk PDF digital")
+
+        monkeypatch.setattr("app.core.mutation_matcher.parse_mutation_text", fake_text)
+        monkeypatch.setattr("app.core.mutation_matcher.parse_mutation_image", boom)
+
+        result = await parse_mutation_pdf(_make_pdf([_STATEMENT_LINE]))
+        assert result is expected
+
+    async def test_scanned_pdf_reads_every_page(self, monkeypatch):
+        """PDF hasil scan dibaca seluruhnya, berapa pun jumlah halamannya."""
+        calls: list[str] = []
+
+        async def fake_image(image_bytes: bytes, mime_type: str):
+            assert mime_type == "image/png"
+            assert image_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+            calls.append(mime_type)
+            page = len(calls)
+            return MutationExtraction(
+                account_hint="BCA" if page == 1 else None,
+                mutations=[mutation(description=f"MUTASI {page}")],
+            )
+
+        monkeypatch.setattr("app.core.mutation_matcher.parse_mutation_image", fake_image)
+
+        result = await parse_mutation_pdf(_make_blank_pdf(pages=8))
+        assert result is not None
+        assert len(calls) == 8
+        assert result.account_hint == "BCA"
+        assert [m.description for m in result.mutations] == [f"MUTASI {i}" for i in range(1, 9)]
+
+    async def test_scanned_pdf_keeps_pages_that_succeed(self, monkeypatch):
+        """Halaman yang gagal dibaca tidak membatalkan halaman lain."""
+        seen = 0
+
+        async def counting_fake(image_bytes: bytes, mime_type: str):
+            nonlocal seen
+            seen += 1
+            if seen == 1:
+                return None
+            return MutationExtraction(mutations=[mutation(description="HALAMAN KEDUA")])
+
+        monkeypatch.setattr("app.core.mutation_matcher.parse_mutation_image", counting_fake)
+
+        result = await parse_mutation_pdf(_make_blank_pdf(pages=2))
+        assert seen == 2
+        assert result is not None
+        assert [m.description for m in result.mutations] == ["HALAMAN KEDUA"]
+
+    async def test_returns_none_when_nothing_usable(self, monkeypatch):
+        assert await parse_mutation_pdf(b"") is None
+
+        async def fake_image(image_bytes: bytes, mime_type: str):
+            return None
+
+        monkeypatch.setattr("app.core.mutation_matcher.parse_mutation_image", fake_image)
+        assert await parse_mutation_pdf(_make_blank_pdf(pages=2)) is None
+
+
 # ── Integrasi: find_matches / resolve_upload_account ─────────────────────────
 
 
@@ -193,9 +337,11 @@ def _seed(db, profile, *, tx_date=datetime(2026, 8, 5, 10, 0, tzinfo=UTC)):
             user_id=profile.id,
             type=type_,
             total_amount=Decimal(amount),
-            category_id=None
-            if type_ == "transfer"
-            else (expense_cat.id if type_ == "expense" else income_cat.id),
+            category_id=(
+                None
+                if type_ == "transfer"
+                else (expense_cat.id if type_ == "expense" else income_cat.id)
+            ),
             account_id=account.id,
             to_account_id=to_account.id if to_account else None,
             merchant=merchant,

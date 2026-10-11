@@ -3,7 +3,10 @@ Matching Mutasi REST endpoint — unggah bukti mutasi bank, cocokkan dengan
 transaksi tercatat, sisanya masuk sebagai pending_transaction.
 
 POST /api/mutations/match
-  - multipart: `file` (gambar screenshot/foto aplikasi bank, atau CSV/teks)
+  - multipart: `file` (gambar screenshot/foto aplikasi bank, CSV/teks, atau PDF
+    e-statement bank — PDF digital dibaca dari layer teksnya, PDF hasil scan
+    di-render halaman demi halaman lalu dibaca vision LLM, jumlah halaman
+    tidak dibatasi)
   - form opsional: `account_id` (akun yang diunggah), `amount_tolerance`,
     `date_window_days`
 
@@ -33,7 +36,9 @@ from app.core.mutation_matcher import (
     ParsedMutation,
     fallback_category_id,
     find_matches,
+    is_pdf_upload,
     parse_mutation_image,
+    parse_mutation_pdf,
     parse_mutation_text,
     resolve_upload_account,
 )
@@ -46,8 +51,9 @@ from app.models.profile import Profile
 log = structlog.get_logger()
 router = APIRouter(prefix="/api/mutations", tags=["Matching Mutasi"])
 
-# 10 MB — sama dengan batas Scan Nota; screenshot mutasi jauh lebih kecil.
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+# 20 MB — screenshot mutasi jauh lebih kecil, tetapi e-statement PDF beberapa
+# halaman bisa besar. Batas ini dijaga agar memori container tetap aman.
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 class MutationMatchResponse(BaseModel):
@@ -90,7 +96,7 @@ async def match_mutations(
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File terlalu besar (maks 10 MB)",
+            detail="File terlalu besar (maks 20 MB)",
         )
 
     tolerance = _parse_tolerance(amount_tolerance)
@@ -107,6 +113,8 @@ async def match_mutations(
             extraction = await parse_mutation_text(raw.decode("utf-8", errors="replace"))
         except UnicodeDecodeError:
             extraction = None
+    elif is_pdf_upload(raw, mime_type=content_type, filename=filename):
+        extraction = await parse_mutation_pdf(raw)
     else:
         if not content_type.startswith("image/") and not filename.endswith(
             (".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif")
@@ -115,7 +123,7 @@ async def match_mutations(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
                 detail=(
                     "Format tidak didukung. Unggah screenshot/foto mutasi bank "
-                    "(JPG/PNG/WebP) atau ekspor CSV."
+                    "(JPG/PNG/WebP), PDF e-statement, atau ekspor CSV."
                 ),
             )
         mime = content_type if content_type.startswith("image/") else "image/jpeg"
@@ -130,7 +138,7 @@ async def match_mutations(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=(
-                "Mutasi tidak terbaca — pastikan screenshot memuat daftar transaksi "
+                "Mutasi tidak terbaca — pastikan berkas memuat daftar transaksi "
                 "(tanggal, keterangan, nominal) lalu coba lagi."
             ),
         )

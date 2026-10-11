@@ -51,6 +51,7 @@ void main() {
     expect(find.text('Cocokkan mutasi bank dengan catatan'), findsOneWidget);
     expect(find.text('Ambil Foto Mutasi'), findsOneWidget);
     expect(find.text('Pilih dari Galeri'), findsOneWidget);
+    expect(find.text('Pilih PDF E-Statement'), findsOneWidget);
     expect(find.text('Cocokkan Mutasi'), findsNothing);
   });
 
@@ -84,6 +85,46 @@ void main() {
 
     expect(find.text('mutasi.csv'), findsOneWidget);
     expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+  });
+
+  testWidgets('PDF e-statement uses the document picker and previews as a file',
+      (tester) async {
+    MutationSource? requested;
+    await tester.pumpWidget(
+      buildScreen(
+        pickFile: (source) async {
+          requested = source;
+          return PickedMutationFile(bytes: kTinyPng, name: 'mutasi-bca.pdf');
+        },
+      ),
+    );
+
+    await tester.tap(find.text('Pilih PDF E-Statement'));
+    await tester.pumpAndSettle();
+
+    expect(requested, MutationSource.document);
+    expect(find.text('mutasi-bca.pdf'), findsOneWidget);
+    expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+    expect(find.text('Cocokkan Mutasi'), findsOneWidget);
+  });
+
+  testWidgets('Camera and gallery map to their own sources', (tester) async {
+    final sources = <MutationSource>[];
+    await tester.pumpWidget(
+      buildScreen(
+        pickFile: (source) async {
+          sources.add(source);
+          return null;
+        },
+      ),
+    );
+
+    await tester.tap(find.text('Ambil Foto Mutasi'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pilih dari Galeri'));
+    await tester.pumpAndSettle();
+
+    expect(sources, [MutationSource.camera, MutationSource.gallery]);
   });
 
   testWidgets('"Pilih Ulang" returns to the select stage', (tester) async {
