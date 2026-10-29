@@ -121,6 +121,11 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
 
   MutationMatchResult? _result;
 
+  /// Baris pending dari unggahan ini yang **belum** dikonfirmasi/dibatalkan.
+  /// Dipakai agar label tombol Matching akurat dan agar keluar dari layar tidak
+  /// mengirim permintaan batal untuk baris yang sudah selesai.
+  Set<String> _openPendingIds = <String>{};
+
   List<AccountModel> _accounts = [];
   String? _accountId; // null = semua akun
 
@@ -168,6 +173,7 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
       if (result.createdPendingIds.isNotEmpty) widget.onPendingCreated?.call();
       setState(() {
         _result = result;
+        _openPendingIds = result.createdPendingIds.toSet();
         _processing = false;
         _stage = _Stage.result;
       });
@@ -188,24 +194,26 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
       _file = null;
       _result = null;
       _error = null;
+      _openPendingIds = <String>{};
       _stage = _Stage.select;
     });
   }
 
   /// Batalkan (best-effort) semua pending yang dibuat oleh unggahan ini.
   ///
-  /// Baris yang sudah dikonfirmasi/dibatalkan lewat layar Matching akan
-  /// menghasilkan 404 — diabaikan. Tidak ada `setState` di sini karena bisa
-  /// dipanggil saat layar sedang ditinggalkan.
+  /// Baris yang sudah dikonfirmasi/dibatalkan lewat layar Matching sudah tidak
+  /// ada di `_openPendingIds`, jadi tidak dikirim ulang. Balasan 404 dari sisa
+  /// yang terlanjur terkirim diabaikan: backend masih punya pembersihan sendiri
+  /// (kedaluwarsa + unggahan berikutnya).
   Future<void> _discardUnconfirmedPendings() async {
-    final ids = _result?.createdPendingIds ?? const <String>[];
-    if (ids.isEmpty) return;
+    if (_openPendingIds.isEmpty) return;
+    final ids = _openPendingIds.toList(growable: false);
+    _openPendingIds = <String>{};
     for (final id in ids) {
       try {
         await widget.api.cancelPending(id);
       } on ApiException {
-        // Sudah dikonfirmasi/dibatalkan, atau jaringan bermasalah: backend
-        // masih punya pembersihan sendiri (kedaluwarsa + unggahan berikutnya).
+        // Sudah dikonfirmasi/dibatalkan, atau jaringan bermasalah.
       }
     }
   }
@@ -216,7 +224,7 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
   /// backend, jadi layar Pending memuatnya dari server (selalu sinkron) dan
   /// baris terbaru ditampilkan lebih dulu.
   Future<void> _openPendingReview() async {
-    final createdIds = _result?.createdPendingIds ?? const <String>[];
+    final createdIds = _openPendingIds.toList(growable: false);
     var changed = false;
     await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -224,6 +232,11 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
           api: widget.api,
           initialIds: createdIds,
           title: 'Matching — Pending',
+          onResolved: (id) {
+            // Baris ini sudah selesai (dikonfirmasi atau dibatalkan) — jangan
+            // dikirim ulang saat layar ditinggalkan, dan label tombol ikut turun.
+            if (_openPendingIds.remove(id) && mounted) setState(() {});
+          },
           onChanged: () {
             changed = true;
             widget.onPendingCreated?.call();
@@ -240,7 +253,7 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
 
   /// Baris di bawah layar: satu tombol besar untuk menyelesaikan pending.
   Widget _buildMatchingBar() {
-    final pendingCount = _result?.createdPendingIds.length ?? 0;
+    final pendingCount = _openPendingIds.length;
     return SafeArea(
       minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: FilledButton.icon(
@@ -263,7 +276,7 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
     // menutup satu-satunya jalan menuju baris tersebut. Jadi baris yang belum
     // dikonfirmasi dibuang lebih dulu supaya `pending_transactions` tetap bersih.
     final guardPendingOnExit =
-        _stage == _Stage.result && (_result?.createdPendingIds.isNotEmpty ?? false);
+        _stage == _Stage.result && _openPendingIds.isNotEmpty;
     return PopScope(
       canPop: !guardPendingOnExit,
       onPopInvokedWithResult: (didPop, _) async {

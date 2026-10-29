@@ -28,6 +28,7 @@ class PendingReviewScreen extends StatefulWidget {
     this.initialIds,
     this.title = 'Pending',
     this.onChanged,
+    this.onResolved,
   });
 
   final ApiClient api;
@@ -41,6 +42,11 @@ class PendingReviewScreen extends StatefulWidget {
   /// Dipanggil setiap kali satu baris dikonfirmasi/dibatalkan — pemanggil bisa
   /// menyegarkan dashboard tanpa menunggu layar ini ditutup.
   final VoidCallback? onChanged;
+
+  /// Dipanggil dengan id baris yang sudah **selesai** (dikonfirmasi atau
+  /// dibatalkan). Pemanggil memakainya untuk berhenti menghitung baris itu
+  /// sebagai pending yang masih menunggu.
+  final ValueChanged<String>? onResolved;
 
   @override
   State<PendingReviewScreen> createState() => _PendingReviewScreenState();
@@ -105,6 +111,7 @@ class _PendingReviewScreenState extends State<PendingReviewScreen> {
         _busy.remove(item.id);
         _changed = true;
       });
+      widget.onResolved?.call(item.id);
       widget.onChanged?.call();
       _snack('Transaksi tersimpan: ${formatRupiah(item.totalAmount)}');
     } on ApiException catch (e) {
@@ -127,6 +134,7 @@ class _PendingReviewScreenState extends State<PendingReviewScreen> {
         _busy.remove(item.id);
         _changed = true;
       });
+      widget.onResolved?.call(item.id);
       widget.onChanged?.call();
       _snack('Baris dihapus — tidak ada transaksi yang dibuat');
     } on ApiException catch (e) {
