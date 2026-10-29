@@ -42,7 +42,11 @@ from app.core.mutation_matcher import (
     parse_mutation_text,
     resolve_upload_account,
 )
-from app.core.pending_service import create_pending_transaction
+from app.core.pending_service import (
+    create_pending_transaction,
+    purge_expired_pendings,
+    purge_matching_pendings,
+)
 from app.core.rate_limit import limiter
 from app.db.session import get_db
 from app.models.account import Account
@@ -167,6 +171,14 @@ async def match_mutations(
         amount_tolerance=tolerance,
         date_window_days=window,
     )
+
+    # Bersihkan sisa pending dari unggahan sebelumnya yang tidak pernah
+    # dikonfirmasi user + pending yang sudah kedaluwarsa. Unggahan baru
+    # menggantikan daftar lama, jadi tabel pending tidak menumpuk baris mati.
+    # Dilakukan SEBELUM membuat pending baru dan hanya setelah berkas berhasil
+    # dibaca, agar unggahan gagal tidak menghapus pending yang masih berlaku.
+    purge_expired_pendings(db, current_user.id)
+    purge_matching_pendings(db, current_user.id)
 
     pending_ids = _create_pendings(
         db,

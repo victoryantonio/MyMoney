@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart' hide MultipartFile;
 
 import '../models/mutation_models.dart';
+import '../models/pending_models.dart';
 import '../models/profile_settings.dart';
 import '../models/report_models.dart';
 import '../models/transaction_models.dart';
@@ -205,6 +206,42 @@ class ApiClient {
     if (lower.endsWith('.webp')) return DioMediaType('image', 'webp');
     if (lower.endsWith('.heic')) return DioMediaType('image', 'heic');
     return DioMediaType('image', 'jpeg');
+  }
+
+  // ── Pending (hasil Matching Mutasi yang belum dikonfirmasi) ────────────────
+
+  /// GET /api/pending — daftar pending aktif milik user.
+  ///
+  /// Backend membuang baris yang sudah kedaluwarsa lebih dulu, jadi daftar yang
+  /// kembali selalu berisi baris yang masih bisa dikonfirmasi.
+  Future<List<PendingTransactionModel>> fetchPendingTransactions() async {
+    final data = await _get('/api/pending', const {});
+    final items = data['items'] as List<dynamic>? ?? const [];
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(PendingTransactionModel.fromJson)
+        .toList();
+  }
+
+  /// POST /api/pending/{id}/confirm — jadikan pending sebagai transaksi nyata.
+  Future<PendingConfirmResult> confirmPending(String id) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/api/pending/$id/confirm',
+      );
+      return PendingConfirmResult.fromJson(res.data ?? const {});
+    } on DioException catch (e) {
+      throw ApiException(_dioMessage(e));
+    }
+  }
+
+  /// POST /api/pending/{id}/cancel — buang pending tanpa menyimpan transaksi.
+  Future<void> cancelPending(String id) async {
+    try {
+      await _dio.post<void>('/api/pending/$id/cancel');
+    } on DioException catch (e) {
+      throw ApiException(_dioMessage(e));
+    }
   }
 
   /// GET /api/accounts → daftar akun user.

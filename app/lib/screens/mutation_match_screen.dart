@@ -13,6 +13,7 @@
 /// Flutter = thin client: seluruh logika pembacaan & pencocokan ada di backend.
 library;
 
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -23,6 +24,7 @@ import '../core/api_client.dart';
 import '../core/format.dart';
 import '../models/mutation_models.dart';
 import '../models/transaction_models.dart';
+import 'pending_review_screen.dart';
 
 /// Hasil pemilihan berkas mutasi (screenshot/foto, PDF e-statement, atau CSV).
 class PickedMutationFile {
@@ -179,6 +181,9 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
   }
 
   void _reset() {
+    // Sisa pending dari unggahan ini dibuang dulu — hasilnya tidak bisa
+    // dijangkau lagi setelah layar di-reset.
+    unawaited(_discardUnconfirmedPendings());
     setState(() {
       _file = null;
       _result = null;
@@ -187,16 +192,96 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
     });
   }
 
+  /// Batalkan (best-effort) semua pending yang dibuat oleh unggahan ini.
+  ///
+  /// Baris yang sudah dikonfirmasi/dibatalkan lewat layar Matching akan
+  /// menghasilkan 404 — diabaikan. Tidak ada `setState` di sini karena bisa
+  /// dipanggil saat layar sedang ditinggalkan.
+  Future<void> _discardUnconfirmedPendings() async {
+    final ids = _result?.createdPendingIds ?? const <String>[];
+    if (ids.isEmpty) return;
+    for (final id in ids) {
+      try {
+        await widget.api.cancelPending(id);
+      } on ApiException {
+        // Sudah dikonfirmasi/dibatalkan, atau jaringan bermasalah: backend
+        // masih punya pembersihan sendiri (kedaluwarsa + unggahan berikutnya).
+      }
+    }
+  }
+
+  /// Tombol **Matching** — buka layar Pending untuk baris yang belum cocok.
+  ///
+  /// Hasil unggahan ini sudah tersimpan sebagai `pending_transaction` di
+  /// backend, jadi layar Pending memuatnya dari server (selalu sinkron) dan
+  /// baris terbaru ditampilkan lebih dulu.
+  Future<void> _openPendingReview() async {
+    final createdIds = _result?.createdPendingIds ?? const <String>[];
+    var changed = false;
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => PendingReviewScreen(
+          api: widget.api,
+          initialIds: createdIds,
+          title: 'Matching — Pending',
+          onChanged: () {
+            changed = true;
+            widget.onPendingCreated?.call();
+          },
+        ),
+      ),
+    );
+    if (changed && mounted) {
+      // Baris sudah dipindahkan ke transaksi / dibuang di layar Pending —
+      // tampilkan ringkasan terbaru agar tidak menyesatkan.
+      widget.onPendingCreated?.call();
+    }
+  }
+
+  /// Baris di bawah layar: satu tombol besar untuk menyelesaikan pending.
+  Widget _buildMatchingBar() {
+    final pendingCount = _result?.createdPendingIds.length ?? 0;
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: FilledButton.icon(
+        onPressed: _openPendingReview,
+        icon: const Icon(Icons.rule_folder_outlined),
+        label: Text(
+          pendingCount > 0
+              ? 'Matching — konfirmasi $pendingCount baris'
+              : 'Matching',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Matching Mutasi')),
-      body: SafeArea(
-        child: switch (_stage) {
-          _Stage.select => _buildSelect(),
-          _Stage.preview => _buildPreview(),
-          _Stage.result => _buildResult(),
-        },
+    final showMatchingBar =
+        _stage == _Stage.result && (_result?.unmatchedMutations.isNotEmpty ?? false);
+    // Bila unggahan ini menghasilkan baris pending, keluar dari layar berarti
+    // menutup satu-satunya jalan menuju baris tersebut. Jadi baris yang belum
+    // dikonfirmasi dibuang lebih dulu supaya `pending_transactions` tetap bersih.
+    final guardPendingOnExit =
+        _stage == _Stage.result && (_result?.createdPendingIds.isNotEmpty ?? false);
+    return PopScope(
+      canPop: !guardPendingOnExit,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final navigator = Navigator.of(context);
+        await _discardUnconfirmedPendings();
+        navigator.pop();
+      },
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Matching Mutasi')),
+        body: SafeArea(
+          child: switch (_stage) {
+            _Stage.select => _buildSelect(),
+            _Stage.preview => _buildPreview(),
+            _Stage.result => _buildResult(),
+          },
+        ),
+        bottomNavigationBar: showMatchingBar ? _buildMatchingBar() : null,
       ),
     );
   }
@@ -376,7 +461,7 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Baris berikut belum balance dengan transaksi mana pun. Sistem sudah memasukkannya sebagai transaksi pending — buka menu Pending untuk mengonfirmasi.',
+            'Baris berikut belum balance dengan transaksi mana pun. Sistem sudah memasukkannya sebagai transaksi pending — tekan tombol Matching di bawah untuk mengonfirmasi atau membatalkannya.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 8),

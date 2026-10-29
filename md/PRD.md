@@ -116,13 +116,27 @@ Dashboard → Matching Mutasi
 | Semua baris cocok | Ringkasan menampilkan 0 pending; tidak error |
 
 ### 4.3 Alur filter saldo (perbaikan regresi)
-
 ```text
 Dashboard
   → filter akun: "Semua akun"  → Total Balance = jumlah seluruh akun, tanpa subtitle
   → filter akun: satu akun     → Total Balance = saldo akun itu, subtitle "SeaBank · Bank"
   → filter akun: 2+ akun       → Total Balance = jumlah akun terpilih, subtitle "2 akun terpilih"
   → filter akun: tidak ada     → Total Balance = Rp 0, subtitle "Tidak ada akun dipilih"
+```
+
+### 4.4 Alur konfirmasi pending (baru di 1.2)
+
+```text
+Dashboard → Upload → Matching Mutasi
+  → pilih berkas + akun → "Cocokkan Mutasi"
+  → layar hasil: pasangan cocok + daftar baris belum cocok
+  → tombol **Matching** di bagian bawah layar ("Matching — konfirmasi N baris")
+      → layar Pending: daftar baris menunggu konfirmasi (baris unggahan ini di atas)
+          → "Konfirmasi" → transaksi nyata dibuat, baris hilang dari daftar
+          → "Batalkan"   → baris dihapus, tidak ada transaksi dibuat
+  → user keluar tanpa menekan Matching
+      → baris pending dari unggahan itu dibatalkan otomatis (tabel tetap bersih)
+      → bila tetap tersisa, dibersihkan saat daftar dibuka / backend start / unggahan berikutnya
 ```
 
 ---
@@ -222,6 +236,49 @@ Kriteria penerimaan:
 
 - [x] Endpoint `POST /api/mutations/match` dibatasi 10 permintaan/menit per IP karena berbiaya LLM.
 
+### FR-8 — Review & konfirmasi pending dari layar Matching Mutasi
+
+**Sebagai** user yang baru selesai mencocokkan mutasi, **saya ingin** bisa langsung
+menyelesaikan baris yang belum cocok dari layar hasil **agar** alur tidak berhenti di pesan
+buntu.
+
+Latar belakang: teks hasil sebelumnya menyuruh user "buka menu Pending", padahal menu itu
+tidak pernah ada di aplikasi — user terpaksa menutup layar dan baris pending menjadi yatim.
+
+Kriteria penerimaan:
+
+- [x] Layar hasil Matching Mutasi menampilkan tombol **Matching** di bagian bawah layar
+      (`bottomNavigationBar`) saat ada baris yang belum cocok.
+- [x] Label tombol menyebut jumlah baris: "Matching — konfirmasi N baris".
+- [x] Tombol membuka layar `PendingReviewScreen` berisi baris pending milik user.
+- [x] Setiap baris punya dua aksi tegas: **Konfirmasi** (membuat transaksi nyata) dan
+      **Batalkan** (membuang baris, tidak membuat transaksi apa pun).
+- [x] Baris yang baru saja dibuat dari unggahan ini ditampilkan lebih dulu.
+- [x] Setelah konfirmasi/pembatalan, daftar dan ringkasan dashboard ikut diperbarui.
+- [x] Tidak ada lagi teks yang menunjuk ke menu yang tidak ada.
+- [x] Konfirmasi/pembatalan baris milik user lain → 404 (isolasi data).
+- [x] Konfirmasi baris kedaluwarsa → 410 dengan pesan yang meminta unggah ulang.
+
+### FR-9 — Kebersihan tabel `pending_transactions`
+
+**Sebagai** pemilik produk, **saya ingin** baris pending yang tidak pernah dikonfirmasi ikut
+hilang **agar** tabel tidak menumpuk data mati dan daftar Pending tetap bisa dibaca.
+
+Kriteria penerimaan:
+
+- [x] Baris dengan `expires_at` lampau dihapus otomatis saat daftar pending dimuat
+      (`GET /api/pending`), saat jumlah pending diminta (`GET /api/pending/count`), dan saat
+      backend start.
+- [x] Saat user mengunggah mutasi baru, seluruh pending hasil "Matching Mutasi" miliknya dari
+      unggahan sebelumnya dihapus — unggahan baru menggantikan daftar lama, bukan menumpuk.
+- [x] Pembersihan saat unggah hanya dijalankan **setelah** berkas berhasil dibaca, sehingga
+      unggahan yang gagal tidak menghapus pending yang masih berlaku.
+- [x] Bila user keluar dari layar hasil tanpa menekan tombol Matching, baris pending dari
+      unggahan itu dibatalkan (best-effort) sehingga tabel langsung bersih.
+- [x] Baris milik alur lain (mis. riwayat percakapan Telegram lama) **tidak** ikut terhapus —
+      pembersihan dibatasi pada `raw_input` berawalan `Matching Mutasi`.
+- [x] Baris yang sudah dikonfirmasi menjadi transaksi nyata tidak terpengaruh pembersihan.
+
 ---
 
 ## 6. Kebutuhan Non-Fungsional
@@ -302,8 +359,16 @@ Kriteria penerimaan:
 ## 11. Pertanyaan Terbuka
 
 1. Apakah perlu tombol "Setujui semua pending" setelah rekonsiliasi? — *belum, di luar cakupan.*
+   **Status 1.2:** tetap di luar cakupan. Konfirmasi dilakukan satu-per-satu agar setiap baris
+   sempat diperiksa; yang ditambahkan pada 1.2 hanya jalan masuk ke daftar pending, bukan
+   aksi massal.
 2. Apakah saldo awal akun sebaiknya bisa diisi saat rekonsiliasi pertama? — *belum, di luar cakupan.*
 3. Apakah Pending perlu menampilkan sumber unggahan (nama berkas)? — *belum, di luar cakupan.*
+   **Status 1.2:** nama berkas sudah tersimpan di `raw_input` (mis.
+   `Matching Mutasi — mutasi.csv`) dan dipakai sebagai penanda asal baris, namun belum
+   ditampilkan sebagai kolom di UI.
+4. Berapa lama pending sebaiknya disimpan bila user menutup aplikasi di tengah konfirmasi?
+   — *jawaban 1.2: 24 jam (`expires_minutes=60*24`) lalu dibersihkan otomatis.*
 
 ---
 
@@ -311,5 +376,6 @@ Kriteria penerimaan:
 
 | Versi | Tanggal | Perubahan |
 | --- | --- | --- |
+| 1.2 | 2026-11-01 | Jalan keluar dari layar Matching Mutasi: tombol **Matching** di bawah layar hasil + layar `PendingReviewScreen` (FR-8), serta kebersihan tabel `pending_transactions` — pending kedaluwarsa & pending tak terkonfirmasi dihapus otomatis (FR-9) |
 | 1.1 | 2026-10-30 | Dukungan bank berwarna (Permata: merah = keluar, hijau = masuk) + penghapusan bot Telegram dari lingkup produk |
 | 1.0 | 2026-10-29 | PRD awal untuk perbaikan Matching Mutasi pada e-statement Indonesia + perbaikan filter Total Balance |

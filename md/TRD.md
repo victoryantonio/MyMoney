@@ -462,6 +462,76 @@ Galat:
 | `422` | Tidak ada baris terbaca | `Mutasi tidak terbaca — pastikan berkas memuat daftar transaksi (tanggal, keterangan, nominal) lalu coba lagi.` |
 | `429` | Lewat rate limit | standar slowapi |
 
+### Pending API — *baru di 1.2*
+
+Modul: `backend/app/api/pending.py` + `backend/app/schemas/pending.py`.
+**Auth:** JWT Supabase (`require_active_user`) di semua endpoint. Semua query dibatasi
+`user_id = current_user.id` (isolasi data, tanpa endpoint lintas user).
+
+| Method | Path | Rate limit | Keterangan |
+| --- | --- | --- | --- |
+| `GET` | `/api/pending` | — | Daftar baris aktif (belum kedaluwarsa). `limit` default 200, `1…200`. Urut `created_at DESC`. |
+| `GET` | `/api/pending/count` | — | `{"count": n}` — baris aktif milik user. Belum dipakai UI 1.2 (disediakan untuk badge/indikator berikutnya). |
+| `POST` | `/api/pending/{id}/confirm` | `30/minute` | Baris → transaksi nyata (lewat `transaction_service`, jadi audit log ikut tercatat). |
+| `POST` | `/api/pending/{id}/cancel` | `30/minute` | Baris dihapus; tidak ada transaksi dibuat. |
+
+`PendingTransactionResponse` — field: `id`, `action`, `type`, `total_amount`,
+`category_id`, `category_name`, `account_id`, `account_name`, `merchant`, `note`,
+`source`, `confidence`, `raw_input`, `target_transaction_id`, `created_at`,
+`expires_at`. `category_name` dan `account_name` diresolusi lewat satu query
+`Account.id, Account.account_name` untuk semua baris (menghindari N+1), dan
+`category` dimuat dengan `selectinload`.
+
+`confirm` mengembalikan `PendingConfirmResponse`:
+`{pending_id, transaction_id, action, type, total_amount}`.
+`cancel` mengembalikan `PendingCancelResponse`: `{pending_id, cancelled: true}`.
+
+Galat:
+
+| Status | Penyebab | Body |
+| --- | --- | --- |
+| `401` | JWT tidak ada/invalid | `Could not validate credentials` |
+| `404` | Baris tidak ada / milik user lain | `Transaksi pending tidak ditemukan.` |
+| `404` | `target_transaction_id` sudah tidak ada | `Transaksi tujuan sudah tidak ada.` |
+| `410` | `expires_at` sudah lewat | `Transaksi pending sudah kedaluwarsa — unggah ulang mutasi untuk memprosesnya.` |
+| `429` | Lewat rate limit | standar slowapi |
+
+Catatan implementasi: `pending_action` dibaca **sebelum** memanggil service, karena
+`confirm_pending_transaction()` menghapus baris pending di dalam transaksi DB yang sama.
+
+### Kebersihan tabel `pending_transactions` — *baru di 1.2*
+
+Dua fungsi di `app/core/pending_service.py`:
+
+| Fungsi | Cakupan WHERE | Commit? | Kapan dipanggil |
+| --- | --- | --- | --- |
+| `purge_expired_pendings(db, user_id=None)` | `expires_at IS NOT NULL AND expires_at <= now()` (+ `user_id` bila diisi) | ya | `GET /api/pending`, `GET /api/pending/count`, `POST /api/mutations/match`, dan startup backend (tanpa `user_id` → seluruh tabel) |
+| `purge_matching_pendings(db, user_id)` | `user_id = ?` AND `raw_input IS NOT NULL` AND `raw_input LIKE 'Matching Mutasi%'` | **tidak** (digabung commit pemanggil) | `POST /api/mutations/match` sebelum membuat pending baru |
+
+Konstanta `MATCHING_MUTASI_RAW_PREFIX = "Matching Mutasi"` menjaga pembersihan tetap sempit:
+baris pending dari alur lain (mis. riwayat percakapan Telegram lama) tidak pernah ikut
+terhapus, karena `raw_input`-nya tidak memakai prefiks itu.
+
+**Urutan yang dijamin** di `mutations.py`:
+
+```text
+baca berkas → parse (LLM/deterministik) → gagal? → 422 (tidak ada yang dihapus)
+                                       → sukses → purge_expired_pendings
+                                                → purge_matching_pendings
+                                                → _create_pendings (commit bersama)
+```
+
+Pembersihan sengaja diletakkan **setelah** parse berhasil: unggahan yang gagal (berkas kosong
+atau tak terbaca) tidak boleh menghapus pending yang masih berlaku. `purge_matching_pendings`
+tidak commit sendiri karena hasilnya harus satu commit dengan pembuatan pending baru —
+kalau proses mati di tengah, tabel tetap konsisten (pending lama masih ada, bukan hilang
+tanpa pengganti).
+
+Sisi klien, `MutationMatchScreen` mengirim `cancelPending()` (best-effort) untuk setiap
+`created_pending_ids` bila user keluar lewat tombol back pada layar hasil (`PopScope` +
+`canPop: false`), atau saat `_reset()`. Ini murni optimasi UX agar tabel langsung bersih;
+jaring pengaman sebenarnya ada di backend (kedaluwarsa 24 jam + pembersihan di atas).
+
 ---
 
 ## 8. Model Data
@@ -492,6 +562,13 @@ Tidak ada perubahan skema. Tabel yang dipakai:
 | `mutation_pdf_render_failed` | warning | `error` |
 | `mutation_match_unrecognized` | warning | `user_id`, `filename` |
 | `mutation_match_ok` | info | `user_id`, `total`, `matched`, `unmatched`, `pendings` |
+| `pending_expired_purged` | info | `user_id` (opsional), `deleted` |
+| `pending_matching_purged` | info | `user_id`, `deleted` |
+| `pending_purged_on_startup` | info | `purged` |
+| `pending_purge_on_startup_failed` | warning | `exc_info` |
+| `pending_confirmed_api` | info | `user_id`, `pending_id`, `transaction_id` |
+| `pending_cancel_rejected` / `pending_confirm_rejected` | warning | `user_id`, `pending_id`, `error` |
+| `pending_cancelled_api` | info | `user_id`, `pending_id` |
 
 Event baru yang direncanakan: `mutation_statement_rows_mismatch` (warning) — bila jumlah baris
 hasil parser ≠ jumlah baris data yang terlihat dari selisih saldo; berguna mendeteksi regresi
@@ -590,6 +667,10 @@ cd app && flutter analyze && flutter test
   berwarna pada baris yang sama belum diuji.
 - PDF hasil pindaian tanpa peningkatan kualitas (de-skew, kontras) — jalur vision apa adanya.
 - Belum ada tombol "setujui semua pending".
+  **Update 1.2:** tetap belum ada — konfirmasi dilakukan satu-per-satu. Yang sudah ada:
+  jalan masuk ke daftar pending dari layar hasil Matching Mutasi (tombol **Matching** di
+  `bottomNavigationBar`) dan layar `PendingReviewScreen`. Aksi massal sengaja ditunda agar
+  user tetap memeriksa tiap baris.
 - Belum ada penyimpanan berkas unggahan; berkas gagal tidak dapat diuji ulang dari produksi.
   *Saran lanjutan:* simpan berkas gagal secara sementara (mis. 7 hari) agar regresi bisa
   direproduksi.
@@ -614,3 +695,22 @@ cd app && flutter analyze && flutter test
 - [ ] `ruff`, `black`, `flutter analyze`, `flutter test` bersih.
 - [ ] `.gitignore` diperbaiki (`tests/` dan `test/root@…` dihapus) sehingga fixture & unit test ikut ter-commit.
 - [ ] Backend image dibangun ulang dan diverifikasi di container.
+
+### Tambahan 1.2 — alur Pending & kebersihan tabel
+
+- [x] `app/schemas/pending.py` — DTO daftar/konfirmasi/batal/jumlah.
+- [x] `app/api/pending.py` — `GET /api/pending`, `GET /api/pending/count`,
+      `POST /api/pending/{id}/confirm`, `POST /api/pending/{id}/cancel`.
+- [x] `app/main.py` — router `pending` terdaftar + housekeeping pending kedaluwarsa saat startup.
+- [x] `purge_expired_pendings()` — global saat startup, per-user saat list/count/match.
+- [x] `purge_matching_pendings()` — unggahan baru menggantikan pending "Matching Mutasi" lama.
+- [x] Pembersihan dijalankan **setelah** parse sukses (unggahan gagal tidak menghapus apa pun).
+- [x] 410 Gone untuk konfirmasi baris kedaluwarsa; 404 untuk baris user lain.
+- [x] `app/lib/models/pending_models.dart` + 3 method di `api_client.dart`.
+- [x] `app/lib/screens/pending_review_screen.dart` — Konfirmasi / Batalkan per baris.
+- [x] Tombol **Matching** di `bottomNavigationBar` layar hasil + teks buntu diganti.
+- [x] `PopScope` di layar hasil: keluar tanpa konfirmasi → pending dibatalkan (best-effort).
+- [x] `tests/test_pending_api.py` — 18 test (auth, isolasi, konfirmasi, batal, housekeeping).
+- [x] `test/pending_review_screen_test.dart` — 6 widget test (daftar, konfirmasi, batal,
+      empty state, tombol Matching, pembuangan saat keluar layar).
+- [x] `ruff`, `black`, `flutter analyze`, `flutter test` bersih; suite backend 304 passed.

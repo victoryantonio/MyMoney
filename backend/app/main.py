@@ -64,6 +64,7 @@ from app.api import (  # noqa: E402
     accounts,
     categories,
     mutations,
+    pending,
     profile,
     receipts,
     reports,
@@ -76,6 +77,7 @@ app.include_router(accounts.router)
 app.include_router(transactions.router)
 app.include_router(receipts.router)
 app.include_router(mutations.router)
+app.include_router(pending.router)
 app.include_router(reports.router)
 
 # ── Static files (brand logo) ──────────────────────────────────────────────────
@@ -88,6 +90,18 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 async def on_startup() -> None:
     logger.info("startup", env=settings.app_env, base_url=settings.app_base_url)
+    # Housekeeping: buang pending_transaction yang sudah kedaluwarsa agar tabel
+    # tidak menyimpan baris yang tidak mungkin dikonfirmasi lagi. Best-effort —
+    # kegagalan DB di sini tidak boleh menggagalkan start container.
+    try:
+        from app.core.pending_service import purge_expired_pendings
+        from app.db.session import SessionLocal
+
+        with SessionLocal() as session:
+            purged = purge_expired_pendings(session)
+        logger.info("pending_purged_on_startup", purged=purged)
+    except Exception:  # noqa: BLE001 - startup tidak boleh crash karena housekeeping
+        logger.warning("pending_purge_on_startup_failed", exc_info=True)
 
 
 # ── System endpoints ───────────────────────────────────────────────────────────

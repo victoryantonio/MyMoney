@@ -21,7 +21,7 @@ from decimal import Decimal
 from typing import Literal
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.transaction_service import (
@@ -35,6 +35,11 @@ from app.models.transaction import Transaction
 log = structlog.get_logger()
 
 DEFAULT_EXPIRES_MINUTES = 10
+
+# Prefix `raw_input` untuk pending hasil fitur "Matching Mutasi" — dipakai
+# `purge_matching_pendings()` agar pembersihan tidak menyentuh pending yang
+# berasal dari jalur lain (mis. sisa baris historis bot Telegram).
+MATCHING_MUTASI_RAW_PREFIX = "Matching Mutasi"
 
 
 def create_pending_transaction(
@@ -97,6 +102,59 @@ def get_latest_active_pending(db: Session, user_id: uuid.UUID) -> PendingTransac
         .order_by(PendingTransaction.created_at.desc())
         .limit(1)
     )
+
+
+def purge_expired_pendings(db: Session, user_id: uuid.UUID | None = None) -> int:
+    """Delete pending rows whose `expires_at` has passed — table hygiene.
+
+    A pending row is a short-lived staging area: once it expires it can never be
+    confirmed (`_get_pending_or_raise` refuses it), so keeping it only makes the
+    table grow without bound. Called on every pending listing and at startup.
+
+    `user_id=None` purges every user (maintenance); passing a user id scopes the
+    purge to that user's rows.
+    """
+    now = datetime.now(UTC)
+    stmt = delete(PendingTransaction).where(
+        PendingTransaction.expires_at.is_not(None),
+        PendingTransaction.expires_at <= now,
+    )
+    if user_id is not None:
+        stmt = stmt.where(PendingTransaction.user_id == user_id)
+
+    deleted = int(db.execute(stmt).rowcount or 0)
+    db.commit()
+    if deleted:
+        log.info(
+            "pending_expired_purged",
+            user_id=str(user_id) if user_id else "*",
+            deleted=deleted,
+        )
+    return deleted
+
+
+def purge_matching_pendings(db: Session, user_id: uuid.UUID) -> int:
+    """Delete unconfirmed "Matching Mutasi" pendings for one user.
+
+    Matched rows are already stored as real transactions, so a pending row is
+    only an unconfirmed leftover of a previous upload. When the user uploads a
+    new statement the old leftover is superseded — dropping it keeps
+    `pending_transactions` from accumulating rows nobody will ever confirm.
+
+    Scoped to `raw_input` starting with `MATCHING_MUTASI_RAW_PREFIX` so pendings
+    produced by other flows are never touched.
+    """
+    stmt = delete(PendingTransaction).where(
+        PendingTransaction.user_id == user_id,
+        PendingTransaction.raw_input.is_not(None),
+        PendingTransaction.raw_input.startswith(MATCHING_MUTASI_RAW_PREFIX),
+    )
+    # Hapus tanpa commit: pemanggil menggabungkannya dengan transaksi lain
+    # (pembuatan pending baru) dalam satu commit.
+    deleted = int(db.execute(stmt).rowcount or 0)
+    if deleted:
+        log.info("pending_matching_purged", user_id=str(user_id), deleted=deleted)
+    return deleted
 
 
 def _get_pending_or_raise(
