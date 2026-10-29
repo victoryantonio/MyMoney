@@ -80,5 +80,7 @@ logs/
 key.properties
 *.jks
 *.keystore
-tests/
-test/
+backend/alembic/
+md/
+backend/tests/
+app/test/

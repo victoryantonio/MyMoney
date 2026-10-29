@@ -74,7 +74,7 @@ def test_create_transaction_writes_audit_row(db, profile):
         total_amount=Decimal("35000"),
         category_id=category.id,
         account_id=account.id,
-        source="telegram",
+        source="app",
         note="Makan siang",
     )
 
@@ -83,6 +83,6 @@ def test_create_transaction_writes_audit_row(db, profile):
     assert row.action == "create"
     assert row.entity_type == "transaction"
     assert row.entity_id == tx.id
-    assert row.source == "telegram"
+    assert row.source == "app"
     assert row.new_value["total_amount"] == "35000"
     assert row.old_value is None

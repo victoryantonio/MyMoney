@@ -15,6 +15,7 @@ class AuditLog(Base):
             "action IN ('create', 'update', 'delete', 'login', 'login_failed')",
             name="audit_logs_action_check",
         ),
+        # 'telegram' tetap diizinkan: baris audit lama di DB produksi memakainya.
         CheckConstraint("source IN ('telegram', 'app')", name="audit_logs_source_check"),
     )
 

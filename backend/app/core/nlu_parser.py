@@ -1,6 +1,6 @@
 """
 Natural Language Understanding (NLU) Parser via DeepSeek.
-Transforms raw text from Telegram into structured JSON for transactions.
+Transforms raw free-form text into structured JSON for transactions.
 
 All LLM transport/fallback is delegated to `core/llm_client.call_llm()`
 (CODING_RULES §2.4) — this module owns the domain prompt, the JSON schema,

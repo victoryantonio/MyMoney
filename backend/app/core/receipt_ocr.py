@@ -1,10 +1,10 @@
 """
-Receipt OCR via DeepSeek vision model (Phase 6 — Telegram photo receipts).
+Receipt OCR via DeepSeek vision model (fitur "Scan Nota").
 
 Conceptually mirrors the Android `ReceiptParser`: given a photo of a receipt
 (nota), extract merchant, line items (name/qty/price), transaction date,
-category, and account — so the Telegram bot can save a receipt the same way
-the camera menu does.
+category, and account — the same data the camera menu needs to pre-fill a
+transaction.
 
 All LLM transport/fallback is delegated to `core/llm_client.call_llm()`
 (CODING_RULES §2.4) — this module owns the domain prompt, the JSON schema,

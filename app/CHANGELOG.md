@@ -4,6 +4,29 @@ All notable changes to the MyMoney app are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.1+9] — 2026-10-30
+
+### Added
+- **Matching Mutasi: statement yang hanya membedakan arah lewat warna** —
+  Sebagian bank (mis. Permata) tidak mencetak kolom Keluar/Masuk sama sekali;
+  arah dana hanya terlihat dari warna teks. Parser kini membaca warna nominal
+  (merah = pengeluaran, hijau = pemasukan) dan memakai tanggal terakhir untuk
+  baris berikutnya. Bila ada nominal tanpa warna, arah tidak ditebak dan baris
+  tersebut diserahkan ke jalur berikutnya.
+
+### Fixed
+- **Total Balance Dashboard tidak mengikuti filter akun** — Kartu saldo kini
+  menjumlahkan hanya akun yang sedang difilter, dengan subtitle nama akun; 
+  bila tidak ada akun dipilih, nominal menjadi `Rp 0` dengan keterangan `Tidak ada akun dipilih`.
+
+### Removed
+- **Bot Telegram** — Fitur bot Telegram dihapus seluruhnya (kode bot, webhook,
+  endpoint linking, variabel environment, beserta dokumentasinya). Semua input
+  sekarang melalui aplikasi mobile.
+
+### Changed
+- Version number: `1.4.0+8` → `1.4.1+9`.
+
 ## [1.4.0+8] — 2026-09-15
 
 ### Added
@@ -59,7 +82,7 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 ### Fixed
 - **Filter Transaksi Kategori Transfer** — Transaksi transfer kini otomatis ditampilkan ketika akun asal (`accountId`) atau akun tujuan (`toAccountId`) dipilih pada filter akun.
 - **UX Multi-Checklist Filter Dashboard** — Menu filter akun tidak lagi tertutup otomatis saat memilih/membatalkan pilihan akun (`closeOnActivate: false`), dan toggle "Select All" kini berfungsi dengan benar.
-- **Robustness OCR Nota** — Prompt OCR Telegram ditingkatkan dengan fallback dummy item total bila baris produk buram tetapi nominal total terbaca (mencegah error "couldn't read nota").
+- **Robustness OCR Nota** — Prompt OCR nota ditingkatkan dengan fallback dummy item total bila baris produk buram tetapi nominal total terbaca (mencegah error "couldn't read nota").
 - **Domain Konfigurasi Produksi** — Pembaruan URL bot & auth ke domain resmi.
 
 ### Changed
@@ -151,4 +174,5 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 ## [1.0.0+1] — initial release
 
 - Aplikasi pencatat keuangan pribadi: dashboard, transaksi manual, scan nota
-  (OCR), kategori, akun, laporan, dan bot Telegram.
+  (OCR), kategori, akun, laporan, dan bot Telegram. *(Bot Telegram dihapus pada
+  1.4.1.)*

@@ -15,6 +15,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api_client.dart';
 import '../core/app_colors.dart';
+import '../core/balance.dart';
 import '../core/format.dart';
 import '../models/report_models.dart';
 import '../models/transaction_models.dart';
@@ -278,8 +279,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     );
   }
 
-  double get _totalBalance =>
-      _accounts.fold(0, (sum, a) => sum + a.currentBalance);
+  /// Total saldo akun yang sedang difilter: tanpa filter → semua akun,
+  /// dengan filter → hanya akun terpilih (0 bila tidak ada yang dipilih).
+  ///
+  /// Sebelumnya nilai ini selalu menjumlah seluruh akun, sehingga kartu
+  /// "Total Balance" tidak berubah saat filter akun diganti — berbeda dengan
+  /// kartu Income/Expense/Trend yang sudah mengikuti filter.
+  double get _totalBalance => totalBalanceFor(_accounts, _activeAccountFilter);
+
+  /// Keterangan cakupan kartu saldo (null saat semua akun ditampilkan).
+  String? get _balanceSubtitle =>
+      balanceScopeLabel(_accounts, _activeAccountFilter);
 
   @override
   Widget build(BuildContext context) {
@@ -364,6 +374,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         const SizedBox(height: 12),
         _BalanceCard(
           totalBalance: _totalBalance,
+          subtitle: _balanceSubtitle,
           amountsHidden: _amountsHidden,
           onToggleHidden: () =>
               setState(() => _amountsHidden = !_amountsHidden),
@@ -1079,11 +1090,15 @@ class _BalanceCard extends StatelessWidget {
     required this.totalBalance,
     required this.amountsHidden,
     required this.onToggleHidden,
+    this.subtitle,
   });
 
   final double totalBalance;
   final bool amountsHidden;
   final VoidCallback onToggleHidden;
+
+  /// Cakupan saldo (mis. nama akun atau "2 akun terpilih"); null = semua akun.
+  final String? subtitle;
 
   static const _masked = 'Rp ••••••';
 
@@ -1128,6 +1143,18 @@ class _BalanceCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.visible,
             ),
+            if (subtitle != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ),
           ],
         ),
       ),

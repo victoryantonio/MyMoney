@@ -14,7 +14,7 @@ from app.models.audit_log import AuditLog
 log = structlog.get_logger()
 
 VALID_ACTIONS = {"create", "update", "delete", "login", "login_failed"}
-VALID_SOURCES = {"telegram", "app"}
+VALID_SOURCES = {"app"}
 
 
 def record_audit(

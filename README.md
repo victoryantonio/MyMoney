@@ -1,12 +1,11 @@
 # MyMoney
 
-MyMoney is an open-source, Telegram-first personal finance assistant. It turns
+MyMoney is an open-source personal finance assistant. It turns
 natural-language messages and receipt photos into editable, itemized financial
 transactions, then presents the same data in a Flutter dashboard.
 
 <p align=center>
    <img src="apps.jpeg" alt="Apps Screenshot" width="300">
-   <img src="telegram_bot.jpeg" alt="Telegram Bot Screenshot" width="465">
 </p>
 
 The interesting part is not simply adding an LLM to a finance app. MyMoney is
@@ -14,8 +13,8 @@ a reference implementation for a safer workflow around AI-extracted financial
 data:
 
 ```text
-Telegram or Flutter input
-            -> structured LLM/OCR output
+Flutter input (text, receipt photo, bank mutation PDF)
+            -> structured LLM/OCR output or deterministic parser
             -> Pydantic validation
             -> category/account resolution
             -> editable transaction with line items
@@ -24,17 +23,18 @@ Telegram or Flutter input
 
 ## Why Try It?
 
-- **Telegram-first capture**: record an expense, send a receipt, request a
-   report, edit the latest transaction, or undo it without opening the app.
-- **Multimodal and itemized**: text and receipt photos can produce merchant,
-   date, category, account, total, and `qty x unit price` line items.
+- **Capture anywhere**: record an expense, scan a receipt, upload a bank
+   mutation statement, or request a report from the mobile app.
+- **Multimodal and itemized**: text, receipt photos, and bank e-statements can
+   produce merchant, date, category, account, total, and `qty x unit price`
+   line items.
 - **Human-correctable AI**: parsed data is represented as structured fields,
    not an opaque sentence, so users can correct it before saving in the app.
 - **Account-aware bookkeeping**: balances are computed from transactions;
    deactivating an account with a balance creates auditable transfer entries
    instead of destroying history.
-- **One business-logic path**: Flutter and Telegram use the same FastAPI
-   service layer. The Node bot is only a webhook proxy.
+- **One business-logic path**: every client uses the same FastAPI service
+   layer, so validation and audit rules cannot drift between clients.
 - **Useful AI engineering surface**: provider-driven LLM gateway, Pydantic
    schemas, locked categories, audit logging, pagination, SQL aggregation, and
    tests around parsing and transaction flows.
@@ -56,9 +56,8 @@ The repository is in the v2 migration branch, `migration`.
 - Account multi-select filtering and lazy transaction loading
 - Cash Flow and category charts with tap details
 - Manual transaction form with optional multiple line items
-- Telegram text commands, receipt OCR endpoint, reports, edit, undo, and
-   account linking
-- Node.js + Telegraf webhook proxy
+- Bank mutation matching (PDF/text upload, deterministic multi-bank parser)
+- Receipt OCR endpoint, reports, edit, undo, and account linking
 - SQL aggregation, keyset pagination, eager-loaded transaction items, and
    audit trail
 
@@ -83,9 +82,7 @@ The repository is in the v2 migration branch, `migration`.
 
 ```mermaid
 flowchart LR
-      T[Telegram] --> B[Node bot proxy]
       F[Flutter Android/iOS/Web] --> API[FastAPI REST API]
-      B --> API
       API --> S[Service layer]
       S --> DB[(Supabase Postgres/Auth/Storage)]
       S --> L[LLM gateway]
@@ -93,7 +90,6 @@ flowchart LR
 
 - `backend/`: FastAPI API, SQLAlchemy models, service layer, migrations, and
    tests
-- `bot/`: Node.js/Telegraf proxy that forwards Telegram webhooks
 - `app/`: Flutter client and Android build target
 - `receipts/`: local development receipt workspace
 - `_archive/`: inactive v1 Kotlin implementation
@@ -111,13 +107,12 @@ directly to Supabase.
 | Backend API | Python 3.12 · FastAPI 0.115 · SQLAlchemy 2.0 (ORM) · Pydantic v2 (schemas/validation) · Alembic (migrations) |
 | Database | PostgreSQL (Supabase managed) |
 | Authentication | Supabase Auth — JWT verified by the backend via JWKS (RS256 + ES256) |
-| Telegram bot | Node.js + TypeScript + Telegraf — a thin webhook proxy that forwards updates to the REST API |
 | LLM gateway | Provider-agnostic `call_llm()` — OpenRouter and/or DeepSeek, env-driven (`LLM_PROVIDER`) |
-| AI features | Receipt OCR (vision) + natural-language transaction parsing → structured output validated with Pydantic |
+| AI features | Receipt OCR (vision) + natural-language transaction parsing + bank mutation PDF parsing → structured output validated with Pydantic |
 | Rate limiting | slowapi — per-IP limits on every mutation endpoint |
 | Logging | structlog — structured JSON logs |
 | Deployment | Docker Compose (backend + cloudflared tunnel) → public API |
-| CI | GitHub Actions — backend (ruff, black, pytest), Flutter (analyze, test), Node (lint, typecheck) |
+| CI | GitHub Actions — backend (ruff, black, pytest), Flutter (analyze, test) |
 | Backups | Daily `pg_dump` via cron (`scripts/backup_db.sh`, 14-file rotation) |
 
 ## Quick Start
@@ -136,13 +131,13 @@ directly to Supabase.
 cp .env.example .env
 ```
 
-Fill in Supabase, database, LLM, Telegram, and service-token values in `.env`.
+Fill in Supabase, database, and LLM values in `.env`.
 Never commit `.env`, Supabase service-role keys, or LLM keys.
 
 The root `.env` is the **single** source of configuration. `backend/app/core/config.py`
 does not contain credentials; it is only a typed validation/access layer for
 `.env` and exposes values through `settings.*` so backend modules do not read
-environment variables independently. The Node bot reads the same root `.env`.
+environment variables independently.
 `docker-compose.yml` loads it via `env_file` — there is no separate `backend/.env`.
 Flutter cannot read a server-side `.env` at runtime, so its public client
 values are forwarded explicitly at build/run time with `--dart-define`.
@@ -169,8 +164,8 @@ pytest -q
 ```
 
 Some integration tests require reachable Supabase credentials. Unit tests for
-the parser, Telegram flow, pending transactions, LLM client, and OCR parser
-can run without a live Supabase API.
+the parsers (NLU, bank mutation, receipt OCR), pending transactions, and the
+LLM client can run without a live Supabase API.
 
 ### Run Flutter
 

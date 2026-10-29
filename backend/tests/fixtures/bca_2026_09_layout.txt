@@ -1,0 +1,132 @@
+                                  REKENING                TAHAPAN                XPRESI
+  KCU CONTOH
+  NASABAH CONTOH                                          NO. REKENING          :   900000000005
+  KECAMATAN                                                                                         1 / 3
+                                                                        HALAMAN               :
+  RT001 RW001 KOTA
+                                                                        PERIODE               :   SEPTEMBER   2026
+  JL CONTOH NO 1
+  KOTA CONTOH 12345                                                MATA  UANG            :   IDR
+  INDONESIA
+CATATAN:
+•  A p a b i l a n a s a b a h t i d a k m e l a k u k a n s a n g g a h a n a t a s L a p o r a n M u t a s i • BCA berhak setiap saat melakukan koreksi apabila ada kesalahan pada
+   Rekening ini sampai dengan akhir bulan berikutnya, nasabah dianggap Laporan Mutasi Rekening.
+   telah menyetujui segala data yang tercantum pada Laporan Mutasi
+   Rekening ini.
+  TANGGAL                         KETERANGAN                        CBG              MUTASI                       SALDO
+     01/09      SALDO AWAL                                                                                                732,783.13
+     01/09      KARTU KREDIT/PL          0831 WSID952710312                               159,227.00 DB                  573,556.13
+                TANGGAL  :31/08          0100 BCA CARD
+                                         0000000021286583
+                                         NASABAH CONTOH
+     01/09      TRANSAKSI DEBIT          TGL: 01/09                                       19,000.00 DB
+                                         QR 014
+                                         00000.00TOKO  TABA
+     01/09      BIAYA ADM                                           0998                  10,000.00 DB                   544,556.13
+     02/09      TARIKAN ATM              02/09                                           150,000.00 DB                   394,556.13
+                                         5379413105032475
+     03/09      TRANSAKSI DEBIT          TGL: 02/09                                       13,095.00 DB
+                TANGGAL  :02/09          QR 014
+                                         00000.00SUPERINDO
+     03/09      TRANSAKSI DEBIT          TGL: 03/09                                       69,920.00 DB                    311,541.13
+                                         QR 014
+                                         00000.00SUPERINDO
+     05/09      TRANSAKSI DEBIT          TGL: 05/09                                       50,000.00 DB
+                                         QR 811
+                                         00000.00PT INDOSAT
+     05/09      TRANSAKSI DEBIT          TGL: 05/09                                       20,000.00 DB
+                                         QR 914
+                                         00000.00MyTelkomse
+     05/09      TRSF E-BANKING CR        0509/FTSCY/WS95051                               19,000.00                       260,541.13
+                                         19000.00
+                                         200001012_64518177
+                                         28213416906822533
+                                         AIRPAY INTERNATION
+     13/09      TRSF E-BANKING DB        1309/FTSCY/WS95271                               50,000.00 DB                    210,541.13
+                                         50000.00
+                                         REKAN B
+     15/09      TRSF E-BANKING DB        1509/FTSCY/WS95271                              142,000.00 DB                     68,541.13
+                                         142000.00
+                                         REKAN C CV
+     18/09      TRANSAKSI DEBIT          TGL: 18/09                                       48,583.00 DB                     19,958.13
+                                         QR 918
+                                         00000.00Trijaya In
+                                                                                          Bersambung ke halaman berikut
+                                  REKENING                TAHAPAN                XPRESI
+  KCU CONTOH
+  NASABAH CONTOH                                          NO. REKENING          :   900000000005
+  KECAMATAN                                                                                         2 / 3
+                                                                        HALAMAN               :
+  RT001 RW001 KOTA
+                                                                        PERIODE               :   SEPTEMBER   2026
+  JL CONTOH NO 1
+  KOTA CONTOH 12345                                                MATA  UANG            :   IDR
+  INDONESIA
+CATATAN:
+•  A p a b i l a n a s a b a h t i d a k m e l a k u k a n s a n g g a h a n a t a s L a p o r a n M u t a s i • BCA berhak setiap saat melakukan koreksi apabila ada kesalahan pada
+   Rekening ini sampai dengan akhir bulan berikutnya, nasabah dianggap Laporan Mutasi Rekening.
+   telah menyetujui segala data yang tercantum pada Laporan Mutasi
+   Rekening ini.
+  TANGGAL                         KETERANGAN                        CBG              MUTASI                       SALDO
+     24/09      TRSF E-BANKING CR        2409/FTSCY/WS95051                               46,310.00                       66,268.13
+                                         46310.00
+                                         2026092434077737
+                                         TRFDN-NASABAH CONT
+                                         ESPAY DEBIT INDONE
+     24/09      TRSF E-BANKING CR        2409/FTSCY/WS95051                               53,690.00
+                                         53690.00
+                                         200001012_42646380
+                                         41286986251082773
+                                         AIRPAY INTERNATION
+     24/09      TARIKAN ATM              24/09                                           100,000.00 DB                     19,958.13
+                                         5379413105032475
+     25/09      BI-FAST CR               BIF TRANSFER DR                               4,096,858.00
+                                         013
+                                         NASABAH CONTOH
+     25/09      KARTU KREDIT/PL          0925 WSID952710251                              746,377.00 DB
+                                         0100 BCA CARD
+                                         0000000021286583
+                                         NASABAH CONTOH
+     25/09      TRANSAKSI DEBIT          TGL: 25/09                                       76,000.00 DB                 3,294,439.13
+                                         QR 503
+                                         00000.00NGUDI BARO
+     26/09      TARIKAN ATM              26/09                                         1,800,000.00 DB
+                                         5379413105032475
+     26/09      KARTU DEBIT              PASAR SWALAYAN  ADA                             583,970.00 DB                   910,469.13
+                                         5379413105032475
+     27/09      TRANSAKSI DEBIT          TGL: 27/09                                       10,000.00 DB
+                                         QR 014
+                                         00000.00PERSEMBAHA
+     27/09      SETORAN VIA CDM          27/09 WSID:ZT7C1                              4,100,000.00
+                                         NASABAH CONTOH
+     27/09      SETORAN VIA CDM          27/09 WSID:ZT7C1                               500,000.00
+                                         NASABAH CONTOH
+     27/09      TRSF E-BANKING DB        2709/FTFVA/WS95271                            5,000,000.00 DB                   500,469.13
+                                         39010/DANA
+                                         -
+                                         -
+                                         81373176003
+                                                                                          Bersambung ke halaman berikut
+                                    REKENING                 TAHAPAN                 XPRESI
+  KCU CONTOH
+  NASABAH CONTOH                                            NO.  REKENING          :    900000000005
+  KECAMATAN                                                                                              3 / 3
+                                                                           HALAMAN                :
+  RT001 RW001 KOTA
+                                                                           PERIODE                :    SEPTEMBER   2026
+  JL CONTOH NO 1
+  KOTA CONTOH 12345                                                  MATA   UANG            :    IDR
+  INDONESIA
+CATATAN:
+ • A p a b i l a n a s a b a h t i d a k m e l a k u k a n s a n g g a h a n a t a s L a p o r a n M u t a s i • BCA berhak setiap saat melakukan koreksi apabila ada kesalahan pada
+   Rekening ini sampai dengan akhir bulan berikutnya, nasabah dianggap Laporan Mutasi Rekening.
+   telah menyetujui segala data yang tercantum pada Laporan  Mutasi
+   Rekening ini.
+   TANGGAL                         KETERANGAN                          CBG               MUTASI                        SALDO
+     30/09      TRANSAKSI  DEBIT           TGL: 30/09                                         52,670.00  DB                    447,799.13
+                                           QR 014
+                                           00000.00SUPERINDO
+                                              SALDO  AWAL   :                732,783.13
+                                              MUTASI CR     :              8,815,858.00          6
+                                              MUTASI DB     :              9,100,842.00         19
+                                              SALDO  AKHIR  :                447,799.13

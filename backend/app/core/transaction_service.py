@@ -1,7 +1,7 @@
 """
 Transaction service for centralizing business logic.
-This ensures both the REST API and the Telegram Bot use the same exact logic
-and that every mutation is audited (CODING_RULES §2.6).
+This ensures both the REST API and the mutation-matching flow use the same
+logic and that every mutation is audited (CODING_RULES §2.6).
 """
 
 import uuid
@@ -98,7 +98,7 @@ def get_or_create_category(
     )
     if other is None:
         # Default global "Other" disembunyikan user — buat "Other" milik user
-        # agar jalur locked (telegram/LLM) tetap punya fallback.
+        # agar jalur locked (mutation matching/LLM) tetap punya fallback.
         other = Category(
             id=uuid.uuid4(),
             user_id=user_id,

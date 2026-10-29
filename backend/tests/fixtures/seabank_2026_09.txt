@@ -1,0 +1,84 @@
+Informasi Rekening
+ * Bank: SeaBank
+ * Nama Pemilik: NASABAH CONTOH
+ * Nomor Rekening: 900000000001
+ * Periode Mutasi: 01 SEP 2026 sampai 30 SEP 2026
+Ringkasan Saldo
+ * Saldo Awal: IDR 1.744.386
+ * Total Transaksi Keluar: IDR 3.288.616
+ * Total Transaksi Masuk: IDR 2.553.554
+ * Saldo Akhir: IDR 1.009.324
+Rincian Transaksi (01 Sep 2026 - 30 Sep 2026)
+| Tanggal | Keterangan Transaksi | Keluar (IDR) | Masuk (IDR) | Saldo Akhir (IDR) |
+|---|---|---|---|---|
+| 01 SEP | Bunga Tabungan |  | 119 |  |
+| 01 SEP | Pembayaran NASI PINDANG KUDUS "BU | 18.000 |  |  |
+| 02 SEP | Bunga Tabungan |  | 118 |  |
+| 03 SEP | Bunga Tabungan |  | 119 |  |
+| 03 SEP | Pembayaran TREETOP FITNESS | 20.000 |  |  |
+| 04 SEP | Bunga Tabungan |  | 117 |  |
+| 04 SEP | Pembayaran QRIS IDM TYSS CONDROKUSU | 20.200 |  |  |
+| 05 SEP | Bunga Tabungan |  | 115 |  |
+| 05 SEP | Pembayaran ShopeePay ANTXXXX VICXXXX SEMX | 371.095 |  |  |
+| 06 SEP | Bunga Tabungan |  | 90 |  |
+| 06 SEP | Pembayaran TOKO IIN | 100.000 |  |  |
+| 07 SEP | Bunga Tabungan |  | 84 |  |
+| 07 SEP | Transfer DANA |  | 450.000 |  |
+| 07 SEP | Transfer REKAN.A SeaBank 900000000003 | 750.000 |  |  |
+| 07 SEP | Pembayaran TREETOP FITNESS | 20.000 |  |  |
+| 08 SEP | Bunga Tabungan |  | 61 |  |
+| 08 SEP | Pembayaran NASI PINDANG KUDUS "BU | 18.000 |  |  |
+| 08 SEP | Pembayaran NASI PINDANG KUDUS "BU | 5.000 |  |  |
+| 09 SEP | Bunga Tabungan |  | 60 |  |
+| 09 SEP | Pembayaran Shopee | 209.874 |  |  |
+| 09 SEP | Pembayaran TREETOP FITNESS | 20.000 |  |  |
+| 09 SEP | Pembayaran Shopee Indonesia | 25.838 |  |  |
+| 10 SEP | Bunga Tabungan |  | 42 |  |
+| 10 SEP | Pembayaran PT. Telekomunikasi Selula | 45.000 |  |  |
+| 11 SEP | Bunga Tabungan |  | 39 |  |
+| 11 SEP | Pembayaran GEPREK NIKO | 28.000 |  |  |
+| 11 SEP | Pembayaran SATYA MART SLTG | 10.000 |  |  |
+| 11 SEP | Pembayaran KOV KOFFIE MONTRE MBL | 118.000 |  |  |
+| 12 SEP | Bunga Tabungan |  | 29 |  |
+| 13 SEP | Bunga Tabungan |  | 28 |  |
+| 13 SEP | Pembayaran QR SUPERINDO SIMONGAN | 138.510 |  |  |
+| 14 SEP | Bunga Tabungan |  | 19 |  |
+| 15 SEP | Bunga Tabungan |  | 19 |  |
+| 16 SEP | Bunga Tabungan |  | 19 |  |
+| 16 SEP | Pembayaran QRIS IDM TYSS CONDROKUSU | 97.000 |  |  |
+| 17 SEP | Bunga Tabungan |  | 13 |  |
+| 18 SEP | Bunga Tabungan |  | 12 |  |
+| 18 SEP | Pembayaran TREETOP FITNESS | 10.000 |  |  |
+| 19 SEP | Bunga Tabungan |  | 12 |  |
+| 19 SEP | Pembayaran J&T SEMARANG | 48.379 |  |  |
+| 20 SEP | Bunga Tabungan |  | 8 |  |
+| 20 SEP | Pembayaran PERSEMBAHAN JKI HTE | 10.000 |  |  |
+| 20 SEP | Pembayaran Omah Ngumbahi Laundry | 23.500 |  |  |
+| 21 SEP | Bunga Tabungan |  | 6 |  |
+| 21 SEP | Pembayaran Needimsum | 15.000 |  |  |
+| 21 SEP | Pembayaran KEDAI KOPI DALINTA JUMPA | 47.000 |  |  |
+| 22 SEP | Bunga Tabungan |  | 2 |  |
+| 23 SEP | Bunga Tabungan |  | 2 |  |
+| 24 SEP | Bunga Tabungan |  | 2 |  |
+| 24 SEP | Pembayaran TREETOP FITNESS | 10.000 |  |  |
+| 25 SEP | Bunga Tabungan |  | 1 |  |
+| 25 SEP | PERMATA 900000000004 NASABAH CONTOH |  | 2.101.922 |  |
+| 25 SEP | Pembayaran TREETOP FITNESS | 20.000 |  |  |
+| 25 SEP | Pembayaran WEDANGAN WAK PLONG 6 | 18.000 |  |  |
+| 26 SEP | Bunga Tabungan |  | 143 |  |
+| 26 SEP | Pembayaran ELISHA BEAUTY 3 | 124.700 |  |  |
+| 26 SEP | Pembayaran PT Tokopedia | 56.000 |  |  |
+| 27 SEP | Bunga Tabungan |  | 130 |  |
+| 27 SEP | Pembayaran MINOSHE | 202.500 |  |  |
+| 27 SEP | Pembayaran Montato Paragon Semarang | 25.000 |  |  |
+| 27 SEP | Pembayaran SUNSET VIEW SMG | 95.000 |  |  |
+| 27 SEP | Pembayaran Shopee | 400.196 |  |  |
+| 27 SEP | Pembayaran Shopee Indonesia | 55.824 |  |  |
+| 28 SEP | Bunga Tabungan |  | 77 |  |
+| 28 SEP | Pembayaran UMKM P3A YOGASMARA, BNYMN | 18.000 |  |  |
+| 28 SEP | Pembayaran TREETOP FITNESS | 20.000 |  |  |
+| 29 SEP | Bunga Tabungan |  | 74 |  |
+| 29 SEP | Transfer ARIS TRI SUGIARTO BCA 900000000002 | 25.000 |  |  |
+| 30 SEP | Bunga Tabungan |  | 72 |  |
+| 30 SEP | BCA 8985169531 KURNIA | 30.000 |  |  |
+| 30 SEP | Pembayaran TREETOP FITNESS | 20.000 |  |  |

@@ -1,12 +1,9 @@
 """
-Security utilities: password hashing (Argon2) and JWT management.
+Security utilities: password hashing (Argon2) and Supabase JWT verification.
 
-All token creation/verification passes through this module.
+All token verification passes through this module.
 Never import jwt or argon2 directly elsewhere.
 """
-
-from datetime import UTC, datetime, timedelta
-from typing import Literal
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
@@ -38,65 +35,6 @@ def verify_password(plain: str, hashed: str) -> bool:
 def needs_rehash(hashed: str) -> bool:
     """Return True if the stored hash uses outdated parameters and should be upgraded."""
     return _ph.check_needs_rehash(hashed)
-
-
-# ── JWT token creation ─────────────────────────────────────────────────────
-TokenType = Literal["telegram_link"]
-
-
-def _create_token(subject: str, token_type: TokenType, expires_delta: timedelta) -> str:
-    """
-    Internal: build and sign a JWT.
-
-    Payload fields:
-      sub  — the user's UUID as string (or telegram_id for telegram_link tokens)
-      type — 'telegram_link'
-      exp  — UTC expiry timestamp
-      iat  — UTC issued-at timestamp
-    """
-    now = datetime.now(UTC)
-    payload = {
-        "sub": subject,
-        "type": token_type,
-        "iat": now,
-        "exp": now + expires_delta,
-    }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
-
-
-def create_telegram_link_token(telegram_id: int) -> str:
-    """
-    Create a short-lived (10-minute) linking token that encodes a Telegram user ID.
-    Used in the SSO linking flow: bot → generates token → user clicks link → backend validates.
-    """
-    return _create_token(
-        subject=str(telegram_id),
-        token_type="telegram_link",
-        expires_delta=timedelta(minutes=10),
-    )
-
-
-def decode_token(token: str, expected_type: TokenType) -> str:
-    """
-    Decode and validate a JWT. Returns the 'sub' claim on success.
-
-    Raises:
-        JWTError — if the token is invalid, expired, or the type doesn't match.
-    """
-    try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-    except JWTError:
-        raise
-
-    token_type = payload.get("type")
-    if token_type != expected_type:
-        raise JWTError(f"Expected token type '{expected_type}', got '{token_type}'")
-
-    sub: str | None = payload.get("sub")
-    if sub is None:
-        raise JWTError("Token missing 'sub' claim")
-
-    return sub
 
 
 # ── Supabase Auth JWT verification (v2) ──────────────────────────────────────

@@ -25,6 +25,7 @@ class Transaction(Base):
             name="transactions_type_check",
         ),
         CheckConstraint("total_amount > 0", name="transactions_amount_positive"),
+        # 'telegram' tetap diizinkan: baris lama di DB produksi memakainya.
         CheckConstraint("source IN ('telegram', 'app')", name="transactions_source_check"),
         CheckConstraint(
             "confidence IN ('high', 'medium', 'low') OR confidence IS NULL",

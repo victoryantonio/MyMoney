@@ -2,7 +2,7 @@
 Unit tests for pending_service.py — the pending-confirmation gate for LLM
 parse results (CODING_RULES §2.4, REQUIREMENTS US-05/US-08).
 
-Uses a mocked Session (like test_telegram_service.py) — no DB required.
+Uses a mocked Session — no DB required.
 """
 
 import uuid
@@ -32,7 +32,7 @@ def _pending(**overrides) -> PendingTransaction:
         type="expense",
         total_amount=Decimal("35000"),
         category_id=uuid.uuid4(),
-        source="telegram",
+        source="app",
         note="Makan siang",
         raw_input="Makan siang 35rb",
         expires_at=datetime.now(UTC) + timedelta(minutes=10),
@@ -50,7 +50,7 @@ class TestCreatePending:
             type="expense",
             total_amount=Decimal("5000"),
             category_id=uuid.uuid4(),
-            source="telegram",
+            source="app",
             raw_input="Kopi 5k",
         )
         db.add.assert_called_once()
@@ -69,7 +69,7 @@ class TestCreatePending:
                 type="expense",
                 total_amount=Decimal("5000"),
                 category_id=uuid.uuid4(),
-                source="telegram",
+                source="app",
                 action="update",
             )
 
@@ -99,7 +99,7 @@ class TestConfirm:
         assert call_args.kwargs["pending"] is pending
         assert call_args.kwargs["user_id"] == pending.user_id
         assert call_args.kwargs["total_amount"] == pending.total_amount
-        assert call_args.kwargs["source"] == "telegram"
+        assert call_args.kwargs["source"] == "app"
 
     def test_confirm_update_delegates_to_update_internal(self):
         db = MagicMock(spec=Session)

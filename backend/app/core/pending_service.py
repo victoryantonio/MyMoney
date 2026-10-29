@@ -11,8 +11,8 @@ in a `PendingTransaction` row. The user then either:
   * cancels   → the pending row is deleted, nothing is persisted (no audit row —
                 no business action happened).
 
-`action='update'` covers Telegram `/edit` (also LLM-parsed), which must pass the
-same confirmation gate as new transactions.
+`action='update'` covers an edit of an already-parsed draft (also LLM-parsed),
+which must pass the same confirmation gate as new transactions.
 """
 
 import uuid

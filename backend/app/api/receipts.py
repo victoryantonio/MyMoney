@@ -2,8 +2,8 @@
 Receipt OCR REST endpoint — dipakai app Flutter (fitur "Scan Nota",
 REQUIREMENTS US-07..US-10).
 
-Alur sama dengan jalur foto Telegram: bytes gambar → `parse_receipt_image()`
-(vision LLM DeepSeek) → `ParsedReceipt` terstruktur. Bedanya, hasil
+Alur sama dengan jalur kamera di app: bytes gambar → `parse_receipt_image()`
+(vision LLM DeepSeek) → `ParsedReceipt` terstruktur. Hasil
 dikembalikan ke client untuk direview/diedit (US-08) sebelum transaksi
 disimpan via `POST /api/transactions` — bukan langsung disimpan.
 

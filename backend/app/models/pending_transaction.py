@@ -37,6 +37,7 @@ class PendingTransaction(Base):
     __table_args__ = (
         CheckConstraint("type IN ('income', 'expense')", name="pending_transactions_type_check"),
         CheckConstraint("total_amount > 0", name="pending_transactions_amount_positive"),
+        # 'telegram' tetap diizinkan: baris lama di DB produksi memakainya.
         CheckConstraint("source IN ('telegram', 'app')", name="pending_transactions_source_check"),
         CheckConstraint("action IN ('create', 'update')", name="pending_transactions_action_check"),
     )

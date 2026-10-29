@@ -39,7 +39,7 @@ logger = structlog.get_logger()
 
 app = FastAPI(
     title="MyMoney API",
-    description="Personal finance tracking backend — REST API for Android app and Telegram bot.",
+    description="Personal finance tracking backend — REST API for the MyMoney mobile app.",
     version="1.0.0",
     docs_url="/docs" if settings.app_env == "development" else None,
     redoc_url=None,
@@ -67,13 +67,9 @@ from app.api import (  # noqa: E402
     profile,
     receipts,
     reports,
-    telegram_linking,
-    telegram_webhook,
     transactions,
 )
 
-app.include_router(telegram_webhook.router)
-app.include_router(telegram_linking.router)
 app.include_router(profile.router)
 app.include_router(categories.router)
 app.include_router(accounts.router)
@@ -82,7 +78,7 @@ app.include_router(receipts.router)
 app.include_router(mutations.router)
 app.include_router(reports.router)
 
-# ── Static files (brand logo used by the Telegram linking pages) ─────────────
+# ── Static files (brand logo) ──────────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

@@ -1,6 +1,6 @@
 # MyMoney — Backend
 
-FastAPI backend for MyMoney: personal finance tracker with Telegram bot + Android app.
+FastAPI backend for MyMoney: personal finance tracker with a Flutter (Android/iOS/Web) client.
 
 ## Local Setup
 
@@ -137,14 +137,6 @@ All mutation endpoints are limited per IP (slowapi):
 | `POST /api/categories`, `PUT/DELETE /{id}` | 20/minute |
 | `POST /api/accounts`, `PUT /{id}`, `POST /{id}/deactivate` | 20/minute |
 | `POST /api/receipts/ocr` | 10/minute |
-| `POST /api/telegram/link/confirm` | 10/minute |
-| `POST /api/telegram/webhook` | 20/minute |
-
-`POST /api/telegram/webhook` authenticates via `X-Bot-Token` or
-`X-Telegram-Bot-Api-Secret-Token`, claims `update_id` in `processed_updates`
-(`INSERT … ON CONFLICT DO NOTHING`), then processes in a FastAPI background
-task with its own DB session. Duplicate deliveries return `200 {"status":"ok"}`
-without running the pipeline again.
 
 Exceeding the limit → `429 Too Many Requests`.
 
@@ -168,6 +160,5 @@ Exceeding the limit → `429 Too Many Requests`.
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase auth & admin |
 | `LLM_PROVIDER` | `auto` / `openrouter` / `deepseek` |
 | `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY` | LLM keys for OCR & NLU |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `BOT_PUBLIC_URL`, `BOT_SERVICE_TOKEN` | Telegram bot |
 | `CLOUDFLARE_TUNNEL_TOKEN` | cloudflared tunnel token (read by docker-compose) |
 

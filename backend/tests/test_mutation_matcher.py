@@ -13,22 +13,28 @@ domain aplikasi.
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
 from app.core.mutation_matcher import (
     MutationExtraction,
     ParsedMutation,
+    _color_direction,
+    _detect_account_hint,
     _normalize_date,
     _normalize_direction,
     _normalize_time,
     _parse_llm_json,
+    _PdfSpan,
     _to_decimal,
     extract_pdf_text,
     fallback_category_id,
     find_matches,
     is_pdf_upload,
+    parse_colored_statement_pdf,
     parse_mutation_pdf,
+    parse_statement_text,
     render_pdf_pages,
     resolve_upload_account,
 )
@@ -575,3 +581,481 @@ class TestFallbackCategory:
         # Kategori default (bila ada) menang; kalau tidak, kategori milik user.
         assert expense.user_id in (None, profile.id)
         assert income.user_id in (None, profile.id)
+
+
+# ── Parser deterministik (tanpa LLM) ─────────────────────────────────────────
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SEABANK_FIXTURE = FIXTURES_DIR / "seabank_2026_09.txt"
+SEABANK_LAYOUT_FIXTURE = FIXTURES_DIR / "seabank_2026_09_layout.txt"
+BCA_LAYOUT_FIXTURE = FIXTURES_DIR / "bca_2026_09_layout.txt"
+
+
+def _seabank_rows():
+    return parse_statement_text(SEABANK_FIXTURE.read_text(encoding="utf-8"))
+
+
+class TestStatementTextParser:
+    """Regresi format e-statement SeaBank (kolom Keluar/Masuk + saldo berjalan)."""
+
+    def test_reads_every_row(self):
+        rows = _seabank_rows()
+        assert len(rows) == 71
+        # Baris ringkasan tidak boleh ikut terbaca.
+        assert not any(row.description.startswith("Saldo") for row in rows)
+        assert not any("Periode" in row.description for row in rows)
+
+    def test_debit_and_credit_columns_are_mapped(self):
+        rows = _seabank_rows()
+
+        def first(description: str):
+            return next(row for row in rows if row.description == description)
+
+        debit = first('Pembayaran NASI PINDANG KUDUS "BU')
+        assert debit.direction == "debit"
+        assert debit.amount == Decimal("18000")
+
+        sweep = first("Transfer DANA")
+        assert sweep.direction == "credit"
+        assert sweep.amount == Decimal("450000")
+
+        big_in = first("PERMATA 900000000004 NASABAH CONTOH")
+        assert big_in.direction == "credit"
+        assert big_in.amount == Decimal("2101922")
+
+        big_out = first("Transfer REKAN.A SeaBank 900000000003")
+        assert big_out.direction == "debit"
+        assert big_out.amount == Decimal("750000")
+
+    def test_year_inferred_for_month_name_dates(self):
+        rows = _seabank_rows()
+        assert rows[0].date == "2026-09-01"
+        assert rows[-1].date == "2026-09-30"
+
+    def test_totals_match_statement_summary(self):
+        rows = _seabank_rows()
+        debit = sum((row.amount for row in rows if row.direction == "debit"), Decimal("0"))
+        credit = sum((row.amount for row in rows if row.direction == "credit"), Decimal("0"))
+        assert debit == Decimal("3288616")
+        assert credit == Decimal("2553554")
+
+    def test_balance_column_is_never_used_as_amount(self):
+        # Layout asli: saldo berjalan (1.744.505, 1.726.505, 1.009.324, ...)
+        # tidak boleh terbaca sebagai nominal transaksi.
+        rows = parse_statement_text(SEABANK_LAYOUT_FIXTURE.read_text(encoding="utf-8"))
+        balances = {
+            Decimal("1744505"),
+            Decimal("1726505"),
+            Decimal("1744386"),
+            Decimal("1009324"),
+        }
+        assert all(row.amount not in balances for row in rows)
+
+    def test_interest_rows_are_kept_as_income(self):
+        interest = [row for row in _seabank_rows() if row.description == "Bunga Tabungan"]
+        assert len(interest) == 30
+        assert all(row.direction == "credit" for row in interest)
+
+    def test_non_tabular_text_returns_no_rows(self):
+        assert parse_statement_text("Halo, ini bukan mutasi bank.") == []
+
+    def test_row_with_both_columns_filled_is_skipped(self):
+        header = f"{'Tanggal':<10}{'Keterangan':<20}{'Keluar':>11}{'Masuk':>12}"
+        text = "\n".join(
+            [
+                header,
+                f"{'01 SEP':<10}{'Transfer DANA':<20}{'18.000':>11}{'450.000':>12}",
+                f"{'02 SEP':<10}{'Bunga Tabungan':<20}{'':>11}{'119':>12}",
+            ]
+        )
+        rows = parse_statement_text(text)
+        assert [(r.description, r.direction) for r in rows] == [("Bunga Tabungan", "credit")]
+
+    def test_csv_with_semicolon(self):
+        text = (
+            "Tanggal;Keterangan;Keluar;Masuk;Saldo\n"
+            "01/09/2026;Transfer: DANA;;450000;1665853\n"
+            "02/09/2026;Pembayaran: TOKO IIN;100000;;1215769\n"
+        )
+        rows = parse_statement_text(text)
+        assert [(r.description, r.direction, r.amount) for r in rows] == [
+            ("Transfer: DANA", "credit", Decimal("450000")),
+            ("Pembayaran: TOKO IIN", "debit", Decimal("100000")),
+        ]
+
+    def test_whitespace_pdf_layout_uses_header_positions(self):
+        header = (
+            f"{'Tanggal':<10}{'Keterangan Transaksi':<40}{'Keluar':>15}{'Masuk':>16}{'Saldo':>18}"
+        )
+
+        def row(day: str, description: str, keluar: str = "", masuk: str = "", saldo: str = ""):
+            return f"{day:<10}{description:<40}{keluar:>15}{masuk:>16}{saldo:>18}"
+
+        text = "\n".join(
+            [
+                "Bank: SeaBank",
+                "Periode Mutasi: 01 SEP 2026 sampai 30 SEP 2026",
+                header,
+                row("01 SEP", "Bunga Tabungan", masuk="119", saldo="1.744.505"),
+                row("01 SEP", "Pembayaran: NASI PINDANG KUDUS", keluar="18.000", saldo="1.726.505"),
+                row("07 SEP", "Transfer: DANA", masuk="450.000", saldo="1.665.853"),
+                row(
+                    "07 SEP",
+                    "Transfer: ADE.A.PERTIWI SeaBank 901280308455",
+                    keluar="750.000",
+                    saldo="915.853",
+                ),
+            ]
+        )
+
+        rows = parse_statement_text(text)
+        assert [(r.direction, r.amount) for r in rows] == [
+            ("credit", Decimal("119")),
+            ("debit", Decimal("18000")),
+            ("credit", Decimal("450000")),
+            ("debit", Decimal("750000")),
+        ]
+        assert [r.date for r in rows] == [
+            "2026-09-01",
+            "2026-09-01",
+            "2026-09-07",
+            "2026-09-07",
+        ]
+
+    def test_llm_split_debit_credit_columns(self):
+        extraction = _parse_llm_json(
+            '{"mutations": [{"date": "2026-09-01", "description": "TOKO IIN", '
+            '"debit": 18000, "credit": null}]}'
+        )
+        assert extraction is not None
+        assert extraction.mutations[0].direction == "debit"
+        assert extraction.mutations[0].amount == Decimal("18000")
+
+
+def _seabank_layout_lines() -> list[str]:
+    """Fixture SeaBank → teks bertata letak spasi (mirip text layer PDF)."""
+    lines = [
+        "Informasi Rekening",
+        "Bank: SeaBank",
+        "Periode Mutasi: 01 SEP 2026 sampai 30 SEP 2026",
+        f"{'Tanggal':<10}{'Keterangan Transaksi':<58}{'Keluar':>12}{'Masuk':>12}{'Saldo Akhir':>16}",
+    ]
+    for raw in SEABANK_FIXTURE.read_text(encoding="utf-8").splitlines():
+        if not raw.startswith("|") or set(raw) <= set("|- "):
+            continue
+        cells = [cell.strip() for cell in raw.strip().strip("|").split("|")]
+        if cells[0] == "Tanggal":
+            continue
+        date, description, keluar, masuk, saldo = cells
+        lines.append(f"{date:<10}{description:<58}{keluar:>12}{masuk:>12}{saldo:>16}")
+    return lines
+
+
+def _make_mono_pdf(lines: list[str], per_page: int = 50) -> bytes:
+    """PDF dengan font monospace supaya kolom hasil ekstraksi tetap sejajar."""
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    for index, line in enumerate(lines):
+        if index and index % per_page == 0:
+            page = doc.new_page()
+        page.insert_text(
+            (40, 60 + (index % per_page) * 11),
+            line,
+            fontname="cour",
+            fontsize=8,
+        )
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+class TestSeabankLayoutText:
+    """Text layer e-statement SeaBank asli (kolom Keluar/Masuk, keterangan 2 sisi)."""
+
+    @staticmethod
+    def _text() -> str:
+        return SEABANK_LAYOUT_FIXTURE.read_text(encoding="utf-8")
+
+    def test_reads_every_row_from_text_layer(self):
+        rows = parse_statement_text(self._text())
+        assert len(rows) == 71
+        assert not any(row.description.startswith(("Saldo", "TOTAL", "REKENING")) for row in rows)
+
+    def test_totals_match_summary_block(self):
+        rows = parse_statement_text(self._text())
+        debit = sum((row.amount for row in rows if row.direction == "debit"), Decimal("0"))
+        credit = sum((row.amount for row in rows if row.direction == "credit"), Decimal("0"))
+        # RINGKASAN: TRANSAKSI KELUAR 3.288.616 - TRANSAKSI MASUK 2.553.554
+        assert debit == Decimal("3288616")
+        assert credit == Decimal("2553554")
+
+    def test_description_joined_from_lines_around_the_date(self):
+        rows = parse_statement_text(self._text())
+        descriptions = [row.description for row in rows]
+        assert descriptions[0] == "Bunga Tabungan"
+        assert 'Pembayaran NASI PINDANG KUDUS "BU' in descriptions
+        assert "Pembayaran TREETOP FITNESS" in descriptions
+
+    def test_html_entities_are_decoded(self):
+        text = self._text()
+        assert "&quot;" in text  # bukti berkas asli memuat entitas HTML
+        rows = parse_statement_text(text)
+        assert all("&quot;" not in row.description for row in rows)
+        assert any('"' in row.description for row in rows)
+
+    def test_balance_and_summary_rows_are_ignored(self):
+        rows = parse_statement_text(self._text())
+        amounts = {row.amount for row in rows}
+        assert Decimal("1009324") not in amounts  # SALDO AKHIR
+        assert Decimal("1744386") not in amounts  # SALDO AWAL
+
+    def test_dates_use_period_year(self):
+        rows = parse_statement_text(self._text())
+        assert {row.date[:7] for row in rows} == {"2026-09"}
+        assert rows[0].date == "2026-09-01"
+        assert rows[-1].date == "2026-09-30"
+
+    def test_account_hint_detected_from_header(self):
+        assert _detect_account_hint(self._text()) == "SeaBank"
+
+
+class TestBcaLayoutText:
+    """Text layer rekening koran BCA: satu kolom MUTASI + sufiks DB/CR."""
+
+    @staticmethod
+    def _text() -> str:
+        return BCA_LAYOUT_FIXTURE.read_text(encoding="utf-8")
+
+    def test_reads_every_row_from_text_layer(self):
+        rows = parse_statement_text(self._text())
+        assert len(rows) == 25
+
+    def test_totals_match_summary_block(self):
+        rows = parse_statement_text(self._text())
+        debit = sum((row.amount for row in rows if row.direction == "debit"), Decimal("0"))
+        credit = sum((row.amount for row in rows if row.direction == "credit"), Decimal("0"))
+        # Blok akhir: MUTASI DB 9.100.842 - MUTASI CR 8.815.858
+        assert debit == Decimal("9100842")
+        assert credit == Decimal("8815858")
+
+    def test_saldo_awal_row_is_not_a_transaction(self):
+        rows = parse_statement_text(self._text())
+        amount = Decimal("732783.13")
+        assert all(row.amount != amount for row in rows)
+        assert not any("SALDO AWAL" in row.description.upper() for row in rows)
+
+    def test_db_suffix_means_debit(self):
+        rows = parse_statement_text(self._text())
+        adm = next(row for row in rows if row.description == "BIAYA ADM 0998")
+        assert adm.direction == "debit"
+        assert adm.amount == Decimal("10000.00")
+
+    def test_incoming_rows_without_suffix_are_credit(self):
+        rows = parse_statement_text(self._text())
+        setoran = [row for row in rows if row.description.startswith("SETORAN VIA CDM")]
+        assert len(setoran) == 2
+        assert all(row.direction == "credit" for row in setoran)
+        assert sum((row.amount for row in setoran), Decimal("0")) == Decimal("4600000.00")
+
+    def test_date_without_year_uses_period(self):
+        rows = parse_statement_text(self._text())
+        assert rows[0].date == "2026-09-01"
+        assert {row.date[:7] for row in rows} == {"2026-09"}
+
+    def test_account_hint_detected_from_header(self):
+        assert _detect_account_hint(self._text()) == "BCA"
+
+    async def test_pdf_path_returns_rows_without_llm(self, monkeypatch):
+        async def boom(*args, **kwargs):  # pragma: no cover - harus tidak dipanggil
+            raise AssertionError("LLM tidak boleh dipanggil untuk PDF bertext-layer")
+
+        monkeypatch.setattr("app.core.mutation_matcher.call_llm", boom)
+        text = self._text()
+        monkeypatch.setattr("app.core.mutation_matcher.extract_pdf_text", lambda data: text)
+
+        result = await parse_mutation_pdf(b"%PDF-1.4 dummy")
+
+        assert result is not None
+        assert result.account_hint == "BCA"
+        assert len(result.mutations) == 25
+
+
+class TestSeabankPdfEndToEnd:
+    """PDF e-statement SeaBank → parser deterministik, tanpa memanggil LLM."""
+
+    async def test_full_statement_read_without_llm(self, monkeypatch):
+        async def boom(*args, **kwargs):  # pragma: no cover - harus tidak dipanggil
+            raise AssertionError("LLM tidak boleh dipanggil untuk PDF bertabel")
+
+        monkeypatch.setattr("app.core.mutation_matcher.call_llm", boom)
+
+        pdf = _make_mono_pdf(_seabank_layout_lines())
+        result = await parse_mutation_pdf(pdf)
+
+        assert result is not None
+        assert result.account_hint == "SeaBank"
+        assert len(result.mutations) == 71
+
+        debit = sum(
+            (row.amount for row in result.mutations if row.direction == "debit"),
+            Decimal("0"),
+        )
+        credit = sum(
+            (row.amount for row in result.mutations if row.direction == "credit"),
+            Decimal("0"),
+        )
+        assert debit == Decimal("3288616")
+        assert credit == Decimal("2553554")
+        assert result.mutations[0].date == "2026-09-01"
+        assert result.mutations[0].description == "Bunga Tabungan"
+
+
+# ── PDF dengan arah dana dari warna teks (Permata) ───────────────────────────
+
+PERMATA_COLOR_FIXTURE = FIXTURES_DIR / "permata_2026_09_color.txt"
+PERMATA_LAYOUT_FIXTURE = FIXTURES_DIR / "permata_2026_09_layout.txt"
+PERMATA_PAGE_WIDTH = 840
+PERMATA_PAGE_HEIGHT = 1242
+
+
+def _permata_color_spans() -> dict[int, list[tuple[int, float, float, float, str]]]:
+    """Fixture span Permata → {halaman: [(warna, y, x, tinggi, teks)]}."""
+    pages: dict[int, list[tuple[int, float, float, float, str]]] = {}
+    for raw in PERMATA_COLOR_FIXTURE.read_text(encoding="utf-8").splitlines():
+        if not raw.strip():
+            continue
+        page, color, y, x, height, text = raw.split("|", 5)
+        pages.setdefault(int(page), []).append(
+            (int(color, 16), float(y), float(x), float(height), text)
+        )
+    return pages
+
+
+def _make_color_pdf() -> bytes:
+    """Bangun PDF mirip statement Permata: arah dana hanya ditandai warna teks."""
+    import fitz
+
+    doc = fitz.open()
+    for _page_number, spans in sorted(_permata_color_spans().items()):
+        page = doc.new_page(width=PERMATA_PAGE_WIDTH, height=PERMATA_PAGE_HEIGHT)
+        for color, y, x, height, text in spans:
+            page.insert_text(
+                (x, y + height * 0.8),
+                text,
+                fontsize=max(height * 0.8, 4.0),
+                color=(
+                    ((color >> 16) & 0xFF) / 255,
+                    ((color >> 8) & 0xFF) / 255,
+                    (color & 0xFF) / 255,
+                ),
+            )
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+class TestColorDirection:
+    """Warna teks → arah dana (Permata: hijau masuk, merah keluar)."""
+
+    @pytest.mark.parametrize(
+        ("color", "expected"),
+        [
+            (0xDD0C25, "debit"),
+            (0x8873, "credit"),
+            (0x008873, "credit"),
+            (0x000000, None),
+            (0xFFFFFF, None),
+            (0x444444, None),
+        ],
+    )
+    def test_color_maps_to_direction(self, color, expected):
+        assert _color_direction(color) == expected
+
+
+class TestPermataColorPdf:
+    """E-statement Permata: nominal hijau/merah, tanpa kolom Keluar/Masuk."""
+
+    @staticmethod
+    def _rows():
+        return parse_colored_statement_pdf(_make_color_pdf())
+
+    def test_reads_every_transaction(self):
+        assert len(self._rows()) == 15
+
+    def test_red_amounts_are_debit_and_green_are_credit(self):
+        rows = self._rows()
+        direction = {(row.amount, row.direction) for row in rows}
+        assert (Decimal("2000.00"), "debit") in direction  # Rp 2,000.00 merah
+        assert (Decimal("7006406.00"), "credit") in direction  # Rp 7,006,406 hijau
+
+    def test_totals_match_statement(self):
+        rows = self._rows()
+        debit = sum((row.amount for row in rows if row.direction == "debit"), Decimal("0"))
+        credit = sum((row.amount for row in rows if row.direction == "credit"), Decimal("0"))
+        assert debit == Decimal("7924015.00")
+        assert credit == Decimal("8209830.00")
+
+    def test_dates_carried_across_pages(self):
+        rows = self._rows()
+        assert [row.date for row in rows] == [
+            "2026-09-30",
+            "2026-09-27",
+            "2026-09-25",
+            "2026-09-25",
+            "2026-09-25",
+            "2026-09-22",
+            "2026-09-16",
+            "2026-09-15",
+            "2026-09-15",
+            "2026-09-15",
+            "2026-09-13",
+            "2026-09-13",
+            "2026-09-08",
+            "2026-09-07",
+            "2026-09-01",
+        ]
+
+    def test_description_follows_the_amount_line(self):
+        rows = self._rows()
+        assert rows[0].description == "Biaya Adm Bulanan Kartu 9999999999999999 September 2026"
+        assert rows[0].direction == "debit"
+        assert rows[1].description == "QR PAYMENT 13:21:49 HPM PARAGON CITY SEMARANG"
+        assert rows[-1].description == "PB Bagi Hasil"
+        assert rows[-1].amount == Decimal("79.00")
+        assert rows[-1].direction == "credit"
+
+    def test_account_hint_is_permata_not_the_transfer_counterparty(self):
+        # Keterangan memuat "PT BANK SEABANK INDONESIA" satu kali, sedangkan
+        # nama bank penerbit muncul jauh lebih sering.
+        text = PERMATA_LAYOUT_FIXTURE.read_text(encoding="utf-8")
+        assert _detect_account_hint(text) == "Permata"
+
+    async def test_pdf_path_uses_color_and_never_calls_llm(self, monkeypatch):
+        async def boom(*args, **kwargs):  # pragma: no cover - harus tidak dipanggil
+            raise AssertionError("LLM tidak boleh dipanggil untuk PDF berwarna")
+
+        monkeypatch.setattr("app.core.mutation_matcher.call_llm", boom)
+
+        result = await parse_mutation_pdf(_make_color_pdf())
+
+        assert result is not None
+        assert result.account_hint == "Permata"
+        assert len(result.mutations) == 15
+        debit = sum(
+            (row.amount for row in result.mutations if row.direction == "debit"),
+            Decimal("0"),
+        )
+        assert debit == Decimal("7924015.00")
+
+    def test_uncolored_amount_skips_color_path(self, monkeypatch):
+        # PDF bertabel biasa (nominal hitam) tidak boleh dibaca jalur warna:
+        # arah dana tidak tercetak, jadi tidak boleh ditebak.
+        monkeypatch.setattr(
+            "app.core.mutation_matcher._page_spans",
+            lambda page: [
+                _PdfSpan(text="Rp 10.000", x=10.0, y=20.0, height=12.0, color=0x000000),
+            ],
+        )
+        assert parse_colored_statement_pdf(b"%PDF-1.4 dummy", text="September 2026") == []

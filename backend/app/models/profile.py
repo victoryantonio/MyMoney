@@ -29,7 +29,6 @@ if TYPE_CHECKING:
     from app.models.audit_log import AuditLog
     from app.models.category import Category
     from app.models.pending_transaction import PendingTransaction
-    from app.models.telegram_link import TelegramLink
     from app.models.transaction import Transaction
 
 # auth.users hidup di skema `auth` milik Supabase (di luar ORM app). Table
@@ -70,9 +69,6 @@ class Profile(Base):
     )
 
     # Relationships (nama sama dengan v1 User — back_populates tidak berubah)
-    telegram_link: Mapped["TelegramLink | None"] = relationship(
-        back_populates="user", uselist=False
-    )
     categories: Mapped[list["Category"]] = relationship(back_populates="user")
     accounts: Mapped[list["Account"]] = relationship(back_populates="user")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")

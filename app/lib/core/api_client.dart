@@ -7,6 +7,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart' hide MultipartFile;
 
 import '../models/mutation_models.dart';
@@ -26,9 +27,19 @@ class ApiException implements Exception {
 class ApiClient {
   ApiClient._(this._dio);
 
+  /// Hanya untuk test: membuat client di atas `Dio` yang sudah dikonfigurasi
+  /// (mis. dengan `HttpClientAdapter` palsu) sehingga widget test tidak
+  /// menyentuh jaringan sungguhan.
+  @visibleForTesting
+  factory ApiClient.withDio(Dio dio) => ApiClient._(dio);
+
   final Dio _dio;
 
   static ApiClient? _instance;
+
+  /// Hanya untuk test: memasang/mengembalikan instance aktif.
+  @visibleForTesting
+  static set overrideInstance(ApiClient? client) => _instance = client;
 
   /// Singleton per aplikasi; `supabase` dipakai untuk mengambil access token
   /// terbaru (auto-refresh oleh supabase_flutter) setiap request.

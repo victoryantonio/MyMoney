@@ -54,7 +54,6 @@ jobs:
           DATABASE_URL: postgresql+psycopg://mymoney_user:test_password@localhost:5432/mymoney_test
           APP_ENV: testing
           APP_BASE_URL: http://localhost:8000
-          JWT_SECRET_KEY: test_secret_key_for_ci_only_not_real
           # LLM gateway — required settings (no defaults in config.py).
           # The API keys default to "" in config.py, which makes llm_client
           # short-circuit; the tests need a non-empty placeholder key.
@@ -62,10 +61,6 @@ jobs:
           OPENROUTER_BASE_URL: https://openrouter.ai/api/v1
           DEEPSEEK_API_KEY: sk-test-placeholder
           DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
-          # Telegram bot/webhook — required settings (no defaults in config.py)
-          TELEGRAM_BOT_TOKEN: 123456789:test
-          TELEGRAM_WEBHOOK_SECRET: test_secret
-          BOT_PUBLIC_URL: http://localhost:3000
         run: pytest tests/ -v
         working-directory: backend
 
@@ -94,33 +89,6 @@ jobs:
       - name: Test
         run: flutter test
         working-directory: app
-
-  bot:
-    name: Lint & Typecheck (Telegram bot)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: bot/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: bot
-
-      - name: Lint — eslint
-        run: npm run lint
-        working-directory: bot
-
-      - name: Typecheck — tsc
-        run: npm run typecheck
-        working-directory: bot
 
   build:
     name: Build Docker Image
