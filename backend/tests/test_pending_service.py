@@ -58,6 +58,38 @@ class TestCreatePending:
         db.refresh.assert_called_once()
         assert pending.action == "create"
         assert pending.expires_at is not None
+
+    def test_persists_mutation_transaction_date_and_timezone(self):
+        db = MagicMock(spec=Session)
+        mutation_dt = datetime(2026, 9, 14, 6, 21, tzinfo=UTC)
+        pending = create_pending_transaction(
+            db,
+            user_id=uuid.uuid4(),
+            type="expense",
+            total_amount=Decimal("21000"),
+            category_id=uuid.uuid4(),
+            source="app",
+            raw_input="Matching Mutasi — SeaBank",
+            transaction_date=mutation_dt,
+            timezone="Asia/Jakarta",
+        )
+        assert pending.transaction_date == mutation_dt
+        assert pending.timezone == "Asia/Jakarta"
+
+    def test_defaults_to_no_transaction_date(self):
+        db = MagicMock(spec=Session)
+        pending = create_pending_transaction(
+            db,
+            user_id=uuid.uuid4(),
+            type="expense",
+            total_amount=Decimal("5000"),
+            category_id=uuid.uuid4(),
+            source="app",
+        )
+        # Jalur non-mutasi (LLM chat) tidak punya tanggal asli → None, sehingga
+        # konfirmasi memakai waktu sekarang seperti sebelumnya.
+        assert pending.transaction_date is None
+        assert pending.timezone is None
         assert pending.expires_at > datetime.now(UTC)
 
     def test_update_action_requires_target(self):
@@ -100,6 +132,51 @@ class TestConfirm:
         assert call_args.kwargs["user_id"] == pending.user_id
         assert call_args.kwargs["total_amount"] == pending.total_amount
         assert call_args.kwargs["source"] == "app"
+
+    def test_confirm_create_uses_mutation_transaction_date(self):
+        """Tanggal+jam dari mutasi bank dipakai apa adanya — bukan waktu konfirmasi."""
+        db = MagicMock(spec=Session)
+        mutation_dt = datetime(2026, 9, 14, 6, 21, tzinfo=UTC)
+        pending = _pending(transaction_date=mutation_dt, timezone="Asia/Jakarta")
+        db.scalar.return_value = pending
+        account = MagicMock()
+        account.id = uuid.uuid4()
+        tx = MagicMock(spec=Transaction)
+
+        with (
+            patch("app.core.pending_service.get_or_create_default_account", return_value=account),
+            patch(
+                "app.core.pending_service.create_transaction_internal", return_value=tx
+            ) as mock_create,
+        ):
+            confirm_pending_transaction(db, pending.user_id, pending.id)
+
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs["transaction_date"] == mutation_dt
+        assert kwargs["user_timezone"] == "Asia/Jakarta"
+
+    def test_confirm_update_uses_mutation_transaction_date(self):
+        db = MagicMock(spec=Session)
+        target = MagicMock(spec=Transaction)
+        db.get.return_value = target
+        mutation_dt = datetime(2026, 9, 14, 6, 21, tzinfo=UTC)
+        pending = _pending(
+            action="update",
+            target_transaction_id=target.id,
+            transaction_date=mutation_dt,
+            timezone="Asia/Jakarta",
+        )
+        db.scalar.return_value = pending
+        tx = MagicMock(spec=Transaction)
+
+        with patch(
+            "app.core.pending_service.update_transaction_internal", return_value=tx
+        ) as mock_update:
+            confirm_pending_transaction(db, pending.user_id, pending.id)
+
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["transaction_date"] == mutation_dt
+        assert kwargs["user_timezone"] == "Asia/Jakarta"
 
     def test_confirm_update_delegates_to_update_internal(self):
         db = MagicMock(spec=Session)

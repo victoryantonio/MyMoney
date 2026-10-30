@@ -14,6 +14,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -28,18 +29,22 @@ from app.core.mutation_matcher import (
     _parse_llm_json,
     _PdfSpan,
     _to_decimal,
+    detect_statement_period,
     extract_pdf_text,
     fallback_category_id,
     find_matches,
     is_pdf_upload,
+    mutation_local_datetime,
     parse_colored_statement_pdf,
     parse_mutation_pdf,
     parse_statement_text,
+    period_bounds_utc,
     render_pdf_pages,
     resolve_upload_account,
 )
 from app.models.account import Account
 from app.models.category import Category
+from app.models.pending_transaction import PendingTransaction
 from app.models.transaction import Transaction
 
 
@@ -581,6 +586,207 @@ class TestFallbackCategory:
         # Kategori default (bila ada) menang; kalau tidak, kategori milik user.
         assert expense.user_id in (None, profile.id)
         assert income.user_id in (None, profile.id)
+
+
+class TestDetectStatementPeriod:
+    """Periode berkas mutasi = dasar filter transaksi (bukan seluruh riwayat)."""
+
+    def test_single_month(self):
+        period = detect_statement_period(
+            [
+                mutation(date="2026-09-01"),
+                mutation(date="2026-09-18"),
+                mutation(date="2026-09-30"),
+            ]
+        )
+        assert period is not None
+        assert period.months == ["2026-09"]
+        assert period.start_date == "2026-09-01"
+        assert period.end_date == "2026-09-30"
+        assert period.label == "September 2026"
+        assert period.first_mutation_date == "2026-09-01"
+        assert period.last_mutation_date == "2026-09-30"
+
+    def test_multi_month_span(self):
+        period = detect_statement_period([mutation(date="2026-08-28"), mutation(date="2026-09-03")])
+        assert period is not None
+        assert period.months == ["2026-08", "2026-09"]
+        assert period.start_date == "2026-08-01"
+        assert period.end_date == "2026-09-30"
+        assert period.label == "Agustus – September 2026"
+
+    def test_stays_within_one_month_for_partial_dates(self):
+        # 1 Feb 2026 (bukan kabisat) → akhir bulan tetap 28.
+        period = detect_statement_period([mutation(date="2026-02-10")])
+        assert period is not None
+        assert period.end_date == "2026-02-28"
+
+    def test_no_dates_returns_none(self):
+        assert detect_statement_period([mutation(date=None)]) is None
+        assert detect_statement_period([]) is None
+
+    def test_absurdly_wide_span_is_rejected(self):
+        # > 12 bulan → bukan e-statement satu periode; jangan filter ketat.
+        assert (
+            detect_statement_period([mutation(date="2024-01-05"), mutation(date="2026-09-05")])
+            is None
+        )
+
+
+class TestPeriodBounds:
+    def test_bounds_are_local_midnight_in_utc(self):
+        period = detect_statement_period([mutation(date="2026-09-15")])
+        assert period is not None
+        start, end = period_bounds_utc(period, ZoneInfo("Asia/Jakarta"))
+        # 1 Sep 2026 00:00 WIB (UTC+7) → 31 Agu 2026 17:00 UTC
+        assert start == datetime(2026, 8, 31, 17, 0, tzinfo=UTC)
+        # batas atas eksklusif = 1 Okt 2026 00:00 WIB → 30 Sep 2026 17:00 UTC
+        assert end == datetime(2026, 9, 30, 17, 0, tzinfo=UTC)
+
+    def test_transaction_at_local_month_end_is_inside_bounds(self):
+        period = detect_statement_period([mutation(date="2026-09-15")])
+        assert period is not None
+        start, end = period_bounds_utc(period, ZoneInfo("Asia/Jakarta"))
+        # 30 Sep 2026 23:30 WIB → 16:30 UTC, masih < batas atas.
+        last = datetime(2026, 9, 30, 23, 30, tzinfo=ZoneInfo("Asia/Jakarta"))
+        assert start <= last.astimezone(UTC) < end
+
+
+class TestMutationLocalDatetime:
+    def test_keeps_mutation_time(self):
+        row = ParsedMutation(
+            date="2026-09-15",
+            time="13:21",
+            description="QRIS",
+            amount=Decimal("21000"),
+            direction="debit",
+        )
+        local = mutation_local_datetime(row, ZoneInfo("Asia/Jakarta"))
+        assert local is not None
+        assert local.isoformat() == "2026-09-15T13:21:00+07:00"
+        assert local.astimezone(UTC) == datetime(2026, 9, 15, 6, 21, tzinfo=UTC)
+
+    def test_missing_time_defaults_to_midnight(self):
+        local = mutation_local_datetime(mutation(), ZoneInfo("Asia/Jakarta"))
+        assert local is not None
+        assert local.hour == 0
+        assert local.minute == 0
+
+    def test_invalid_time_defaults_to_midnight(self):
+        row = ParsedMutation(
+            date="2026-09-15",
+            time="jam sebelas",
+            description="QRIS",
+            amount=Decimal("21000"),
+            direction="debit",
+        )
+        local = mutation_local_datetime(row, ZoneInfo("Asia/Jakarta"))
+        assert local is not None
+        assert (local.hour, local.minute) == (0, 0)
+
+    def test_no_date_returns_none(self):
+        assert mutation_local_datetime(mutation(date=None), ZoneInfo("Asia/Jakarta")) is None
+
+
+class TestFindMatchesPeriodFilter:
+    """Filter berbasis bulan berkas, bukan min/max tanggal mutasi."""
+
+    def test_excludes_transactions_outside_detected_month(self, db, profile):
+        seeded = _seed(db, profile, tx_date=datetime(2026, 8, 5, 10, 0, tzinfo=UTC))
+        # Mutasi September 2026: transaksi Agustus tidak boleh jadi kandidat.
+        matches, unmatched, _ = find_matches(
+            db,
+            user_id=profile.id,
+            mutations=[mutation(date="2026-09-05")],
+            account_id=seeded["bca"].id,
+            date_window_days=90,
+        )
+        assert matches == []
+        assert len(unmatched) == 1
+
+    def test_includes_transaction_in_same_month_far_apart(self, db, profile):
+        seeded = _seed(db, profile, tx_date=datetime(2026, 9, 2, 10, 0, tzinfo=UTC))
+        matches, unmatched, _ = find_matches(
+            db,
+            user_id=profile.id,
+            mutations=[mutation(date="2026-09-28")],
+            account_id=seeded["bca"].id,
+            date_window_days=30,
+        )
+        assert [m.transaction_id for m in matches] == [str(seeded["expense"].id)]
+        assert unmatched == []
+
+    def test_unmatched_transactions_limited_to_month(self, db, profile):
+        seeded = _seed(db, profile, tx_date=datetime(2026, 9, 10, 10, 0, tzinfo=UTC))
+        db.add(
+            Transaction(
+                id=uuid.uuid4(),
+                user_id=profile.id,
+                type="expense",
+                total_amount=Decimal("77000"),
+                account_id=seeded["bca"].id,
+                source="app",
+                transaction_date=datetime(2026, 7, 1, 10, 0, tzinfo=UTC),
+            )
+        )
+        db.commit()
+
+        _, _, unmatched_txs = find_matches(
+            db,
+            user_id=profile.id,
+            mutations=[mutation(amount="21000", direction="debit", date="2026-09-10")],
+            account_id=seeded["bca"].id,
+        )
+        assert all(tx.transaction_date.year == 2026 for tx in unmatched_txs)
+        assert all(tx.transaction_date.month == 9 for tx in unmatched_txs)
+
+
+class TestCreatePendingsTimestamp:
+    """`_create_pendings` menyimpan tanggal+jam ASLI dari mutasi."""
+
+    def test_pending_gets_mutation_datetime_and_timezone(self, db, profile):
+        from app.api.mutations import _create_pendings
+
+        seeded = _seed(db, profile)
+        row = ParsedMutation(
+            date="2026-09-14",
+            time="13:21",
+            description="QRIS KOPI KENANGAN",
+            amount=Decimal("777777"),
+            direction="debit",
+        )
+        ids = _create_pendings(
+            db,
+            current_user=profile,
+            mutations=[row],
+            account_id=seeded["bca"].id,
+            source_label="SeaBank",
+            tz=ZoneInfo("Asia/Jakarta"),
+        )
+        assert len(ids) == 1
+
+        pending = db.get(PendingTransaction, ids[0])
+        assert pending is not None
+        # 14 Sep 2026 13:21 WIB → 06:21 UTC
+        assert pending.transaction_date == datetime(2026, 9, 14, 6, 21, tzinfo=UTC)
+        assert pending.timezone == "Asia/Jakarta"
+
+    def test_missing_time_uses_local_midnight(self, db, profile):
+        from app.api.mutations import _create_pendings
+
+        seeded = _seed(db, profile)
+        ids = _create_pendings(
+            db,
+            current_user=profile,
+            mutations=[mutation(date="2026-09-14")],
+            account_id=seeded["bca"].id,
+            source_label="SeaBank",
+            tz=ZoneInfo("Asia/Jakarta"),
+        )
+        pending = db.get(PendingTransaction, ids[0])
+        assert pending is not None
+        # 14 Sep 2026 00:00 WIB → 13 Sep 2026 17:00 UTC
+        assert pending.transaction_date == datetime(2026, 9, 13, 17, 0, tzinfo=UTC)
 
 
 # ── Parser deterministik (tanpa LLM) ─────────────────────────────────────────

@@ -12,6 +12,8 @@ Yang dijaga:
     (CODING_RULES §2.4)
 """
 
+from datetime import UTC, datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -253,6 +255,84 @@ def test_unrecorded_mutation_creates_pending_not_transaction(auth):
     payload = listed.json()
     rows = payload["items"] if isinstance(payload, dict) else payload
     assert all(row["total_amount"] != "987654.00" for row in rows)
+
+
+def test_period_limits_matching_to_statement_month(auth):
+    """
+    Filter berbasis bulan berkas, bukan jendela tanggal mutasi.
+
+    Transaksi 31 Agustus berjarak 1 hari dari mutasi 1 September; dulu ikut
+    dipertimbangkan, sekarang tidak lagi karena berbeda bulan.
+    """
+    headers = auth("mut_period")
+    account = _create_account(headers, name="SeaBank")
+    _create_transaction(headers, account["id"], "45000.00", tx_date="2026-08-31T10:00:00Z")
+
+    with patch("app.api.mutations.parse_mutation_text", new_callable=AsyncMock) as mock_parse:
+        mock_parse.return_value = _extraction(_debit("45000", date="2026-09-01"))
+        resp = client.post(
+            _ENDPOINT,
+            files={"file": ("mutasi.csv", b"a,b,c", "text/csv")},
+            data={"account_id": account["id"]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["period"]["label"] == "September 2026"
+    assert data["period"]["months"] == ["2026-09"]
+    assert data["matched_count"] == 0
+    assert data["unmatched_mutation_count"] == 1
+
+
+def test_pending_keeps_mutation_timestamp_and_confirm_uses_it(auth):
+    """
+    Tanggal+jam dari mutasi harus tersimpan di pending dan dipakai saat
+    konfirmasi — bukan waktu unggah/konfirmasi.
+    """
+    headers = auth("mut_stamp")
+    account = _create_account(headers, name="SeaBank")
+
+    with patch("app.api.mutations.parse_mutation_text", new_callable=AsyncMock) as mock_parse:
+        mock_parse.return_value = _extraction(
+            ParsedMutation(
+                date="2026-09-14",
+                time="13:21",
+                description="QRIS KOPI KENANGAN",
+                amount=Decimal("777777"),
+                direction="debit",
+            )
+        )
+        resp = client.post(
+            _ENDPOINT,
+            files={"file": ("mutasi.csv", b"a,b,c", "text/csv")},
+            data={"account_id": account["id"]},
+            headers=headers,
+        )
+
+    assert resp.status_code == 200, resp.text
+    pending_id = resp.json()["created_pending_ids"][0]
+
+    listed = client.get("/api/pending", headers=headers)
+    assert listed.status_code == 200, listed.text
+    row = next(item for item in listed.json()["items"] if item["id"] == pending_id)
+    assert row["timezone"] == "Asia/Jakarta"
+    # 14 Sep 2026 13:21 WIB → 06:21 UTC
+    assert _dt(row["transaction_date"]) == datetime(2026, 9, 14, 6, 21, tzinfo=UTC)
+
+    confirmed = client.post(f"/api/pending/{pending_id}/confirm", headers=headers)
+    assert confirmed.status_code == 200, confirmed.text
+    transaction_id = confirmed.json()["transaction_id"]
+
+    detail = client.get(f"/api/transactions/{transaction_id}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert _dt(body["transaction_date"]) == datetime(2026, 9, 14, 6, 21, tzinfo=UTC)
+
+
+def _dt(value: str) -> datetime:
+    """Parse timestamp ISO dari API (Z atau offset) → datetime UTC."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
 
 
 def test_tolerance_and_window_are_clamped(auth):

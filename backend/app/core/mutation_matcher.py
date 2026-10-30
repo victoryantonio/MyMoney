@@ -31,6 +31,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 import structlog
 from pydantic import BaseModel, Field
@@ -91,6 +92,171 @@ class ParsedMutation(BaseModel):
 class MutationExtraction(BaseModel):
     account_hint: str | None = None
     mutations: list[ParsedMutation] = Field(default_factory=list)
+
+
+# ── Periode (bulan) yang dicakup sebuah file mutasi ───────────────────────────
+#
+# Aturan fitur: backend memeriksa dulu mutasi itu mencakup bulan apa, lalu
+# HANYA mengambil transaksi pada bulan tersebut (plus akun yang dipilih user)
+# sebagai kandidat pencocokan. Tanpa ini, rentang kandidat bergantung pada
+# tanggal mutasi yang kebetulan terbaca sehingga bisa meleset dari periode
+# statement.
+
+_NAMA_BULAN = (
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+)
+
+# Batas atas jumlah bulan dalam satu file. E-statement 3–6 bulan masih wajar;
+# di atas ini kemungkinan besar ada tanggal yang salah terbaca, jadi periodenya
+# tidak dipakai untuk memfilter (lihat `detect_statement_period`).
+MAX_PERIOD_MONTHS = 12
+
+
+class MutationPeriod(BaseModel):
+    """
+    Rentang bulan yang dicakup file mutasi.
+
+    `start_date` = hari pertama bulan pertama, `end_date` = hari terakhir bulan
+    terakhir (inklusif). Filter transaksi memakai rentang ini apa adanya
+    ("bulan penuh persis") sesuai keputusan produk.
+    """
+
+    start_date: str  # ISO yyyy-mm-dd
+    end_date: str  # ISO yyyy-mm-dd, inklusif
+    months: list[str] = Field(default_factory=list)  # ["2026-09"]
+    label: str = ""  # "September 2026" / "Agustus – September 2026"
+    first_mutation_date: str | None = None
+    last_mutation_date: str | None = None
+
+
+def _month_start(day: date) -> date:
+    return day.replace(day=1)
+
+
+def _month_end(day: date) -> date:
+    """Hari terakhir bulan berjalan."""
+    return (
+        _month_start(day)
+        + timedelta(days=32)
+        - timedelta(days=(_month_start(day) + timedelta(days=32)).day)
+    )
+
+
+def _iter_months(first: date, last: date) -> list[date]:
+    """Semua hari pertama bulan dari `first` s/d `last` (inklusif)."""
+    months: list[date] = []
+    cursor = _month_start(first)
+    stop = _month_start(last)
+    while cursor <= stop:
+        months.append(cursor)
+        cursor = _month_end(cursor) + timedelta(days=1)
+    return months
+
+
+def _period_label(months: list[date]) -> str:
+    if not months:
+        return ""
+    if len(months) == 1:
+        return f"{_NAMA_BULAN[months[0].month - 1]} {months[0].year}"
+    first, last = months[0], months[-1]
+    if first.year == last.year:
+        return f"{_NAMA_BULAN[first.month - 1]} – {_NAMA_BULAN[last.month - 1]} {last.year}"
+    return (
+        f"{_NAMA_BULAN[first.month - 1]} {first.year} – "
+        f"{_NAMA_BULAN[last.month - 1]} {last.year}"
+    )
+
+
+def detect_statement_period(mutations: list[ParsedMutation]) -> MutationPeriod | None:
+    """
+    Tentukan bulan yang dicakup sebuah file mutasi dari tanggal baris-barisnya.
+
+    Return None bila tidak ada satu pun tanggal yang terbaca (kandidat lalu
+    ditentukan lewat fallback di `find_matches`), atau bila rentangnya tidak
+    masuk akal (lebih dari `MAX_PERIOD_MONTHS` bulan — biasanya tanggal salah
+    baca; lebih baik tidak memfilter daripada memfilter salah).
+    """
+    days: list[date] = []
+    for mutation in mutations:
+        if not mutation.date:
+            continue
+        try:
+            days.append(date.fromisoformat(mutation.date[:10]))
+        except ValueError:
+            continue
+    if not days:
+        return None
+
+    first, last = min(days), max(days)
+    months = _iter_months(first, last)
+    if len(months) > MAX_PERIOD_MONTHS:
+        log.warning(
+            "mutation_period_too_wide",
+            first=str(first),
+            last=str(last),
+            months=len(months),
+        )
+        return None
+
+    return MutationPeriod(
+        start_date=months[0].isoformat(),
+        end_date=_month_end(months[-1]).isoformat(),
+        months=[m.strftime("%Y-%m") for m in months],
+        label=_period_label(months),
+        first_mutation_date=first.isoformat(),
+        last_mutation_date=last.isoformat(),
+    )
+
+
+def period_bounds_utc(period: MutationPeriod, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    """
+    Batas periode sebagai instant UTC, eksklusif di ujung atas.
+
+    Bulan lokal tidak sama dengan bulan UTC (WIB = UTC+7), jadi batasnya
+    dikonversi lewat `tz` agar transaksi pagi tanggal 1 tidak hilang.
+    """
+    start = datetime.combine(date.fromisoformat(period.start_date), datetime.min.time(), tzinfo=tz)
+    end = datetime.combine(
+        date.fromisoformat(period.end_date) + timedelta(days=1),
+        datetime.min.time(),
+        tzinfo=tz,
+    )
+    return start.astimezone(UTC), end.astimezone(UTC)
+
+
+def mutation_local_datetime(mutation: ParsedMutation, tz: ZoneInfo) -> datetime | None:
+    """
+    Gabungkan `date` + `time` mutasi menjadi datetime ber-zona `tz`.
+
+    E-statement Indonesia umumnya hanya mencetak tanggal (BCA/SeaBank), jadi
+    bila jam tidak terbaca dipakai 00:00 waktu lokal pada tanggal mutasi —
+    tanggal tetap dari mutasi, jam tidak dikarang.
+    """
+    if not mutation.date:
+        return None
+    try:
+        day = date.fromisoformat(mutation.date[:10])
+    except ValueError:
+        return None
+    hour, minute = 0, 0
+    if mutation.time:
+        match = re.match(r"^(\d{1,2})[:.](\d{2})", mutation.time.strip())
+        if match:
+            hour, minute = int(match.group(1)), int(match.group(2))
+            if hour > 23 or minute > 59:
+                hour, minute = 0, 0
+    return datetime(day.year, day.month, day.day, hour, minute, tzinfo=tz)
 
 
 # Hardcoded system prompt — never influenced by user input (CODING_RULES §2.9.B).
@@ -1477,34 +1643,37 @@ def find_matches(
     account_id: uuid.UUID | None,
     amount_tolerance: Decimal = DEFAULT_AMOUNT_TOLERANCE,
     date_window_days: int = DEFAULT_DATE_WINDOW_DAYS,
+    period: MutationPeriod | None = None,
+    tz: ZoneInfo | None = None,
 ) -> tuple[list[MatchPair], list[ParsedMutation], list[Transaction]]:
     """
     Cocokkan mutasi bank dengan transaksi tercatat.
 
     Aturan:
+      - kandidat dibatasi ke bulan yang dicakup mutasi (`period`) dan akun
+        yang dipilih user
       - debit  → kandidat: expense, atau transfer KELUAR dari akun terpilih
       - credit → kandidat: income, atau transfer MASUK ke akun terpilih
       - |nominal mutasi - nominal transaksi| ≤ amount_tolerance
       - |tanggal mutasi - tanggal transaksi| ≤ date_window_days
-      - akun sama bila `account_id` dipilih user
 
     Setiap transaksi hanya boleh dipakai sekali (greedy: mutasi dengan
     kandidat paling dekat tanggalnya & selisih nominal terkecil menang).
 
-    Return: (matches, mutasi tanpa pasangan, transaksi dalam rentang tanpa
+    Return: (matches, mutasi tanpa pasangan, transaksi dalam periode tanpa
     pasangan).
     """
     if not mutations:
         return [], [], []
 
-    dated = [m for m in mutations if m.date]
-    if dated:
-        parsed = [date.fromisoformat(m.date) for m in dated]
-        window_start = min(parsed) - timedelta(days=date_window_days)
-        window_end = max(parsed) + timedelta(days=date_window_days + 1)
-        lower = datetime.combine(window_start, datetime.min.time(), tzinfo=UTC)
-        upper = datetime.combine(window_end, datetime.min.time(), tzinfo=UTC)
+    if period is None:
+        period = detect_statement_period(mutations)
+    tz = tz or ZoneInfo("Asia/Jakarta")
+
+    if period is not None:
+        lower, upper = period_bounds_utc(period, tz)
     else:
+        # Tidak ada satu pun tanggal terbaca → jatuhkan ke jendela lebar.
         lower = datetime.now(UTC) - timedelta(days=90)
         upper = datetime.now(UTC) + timedelta(days=1)
 
@@ -1563,13 +1732,9 @@ def find_matches(
             )
         )
 
+    # "Transaksi belum ada di mutasi" juga dibatasi ke periode yang sama —
+    # transaksi bulan lain tidak relevan untuk laporan unggahan ini.
     unmatched_txs = [tx for tx in txs if tx.id not in used]
-    # Hanya transaksi dalam rentang tanggal mutasi yang relevan untuk dilaporkan
-    # "belum ada di mutasi" — hindari membanjiri user dengan transaksi lama.
-    if dated:
-        unmatched_txs = [
-            tx for tx in unmatched_txs if min(parsed) <= tx.transaction_date.date() <= max(parsed)
-        ]
     return matches, unmatched, unmatched_txs
 
 

@@ -86,6 +86,38 @@ ApiClient _client(_FakeAdapter adapter) {
   return ApiClient.withDio(dio);
 }
 
+/// Buka `PendingReviewScreen` lewat `Navigator.push` supaya bisa dipastikan
+/// apakah layar benar-benar ditutup (pop) atau tidak.
+Future<void> _pumpPendingHost(
+  WidgetTester tester,
+  _FakeAdapter adapter, {
+  String? title,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<bool>(
+                  builder: (_) => PendingReviewScreen(
+                    api: _client(adapter),
+                    title: title ?? 'Pending',
+                  ),
+                ),
+              ),
+              child: const Text('Buka Pending'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.tap(find.text('Buka Pending'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('PendingReviewScreen lists pending rows with two actions', (
     tester,
@@ -155,6 +187,108 @@ void main() {
     expect(find.text('Tidak ada transaksi pending'), findsOneWidget);
   });
 
+  testWidgets('Konfirmasi Semua confirms every pending row at once', (
+    tester,
+  ) async {
+    final adapter = _FakeAdapter({
+      'GET /api/pending': (
+        200,
+        {
+          'items': [
+            _pendingJson(id: 'p1', merchant: 'QRIS TOKO ABC'),
+            _pendingJson(id: 'p2', merchant: 'TRANSFER BUDI'),
+          ],
+          'total': 2,
+        },
+      ),
+      'POST /api/pending/p1/confirm': (
+        200,
+        {
+          'pending_id': 'p1',
+          'transaction_id': 'tx-1',
+          'action': 'create',
+          'type': 'expense',
+          'total_amount': '135000.00',
+        },
+      ),
+      'POST /api/pending/p2/confirm': (
+        200,
+        {
+          'pending_id': 'p2',
+          'transaction_id': 'tx-2',
+          'action': 'create',
+          'type': 'expense',
+          'total_amount': '135000.00',
+        },
+      ),
+    });
+    final resolved = <String>[];
+    var changed = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PendingReviewScreen(
+          api: _client(adapter),
+          onChanged: () => changed++,
+          onResolved: resolved.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tombol di header (ikon centang ganda) membuka dialog persetujuan lebih
+    // dulu — konfirmasi massal membuat transaksi nyata.
+    await tester.tap(find.text('Konfirmasi Semua'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ya, konfirmasi semua'), findsOneWidget);
+
+    await tester.tap(find.text('Ya, konfirmasi semua'));
+    await tester.pumpAndSettle();
+
+    expect(adapter.calls, contains('POST /api/pending/p1/confirm'));
+    expect(adapter.calls, contains('POST /api/pending/p2/confirm'));
+    expect(resolved, ['p1', 'p2']);
+    expect(changed, 1);
+    expect(find.text('Tidak ada transaksi pending'), findsOneWidget);
+  });
+
+  testWidgets('Konfirmasi Semua does nothing when the dialog is dismissed', (
+    tester,
+  ) async {
+    final adapter = _FakeAdapter({
+      'GET /api/pending': (
+        200,
+        {
+          'items': [_pendingJson()],
+          'total': 1,
+        },
+      ),
+      'POST /api/pending/p1/confirm': (
+        200,
+        {
+          'pending_id': 'p1',
+          'transaction_id': 'tx-1',
+          'action': 'create',
+          'type': 'expense',
+          'total_amount': '135000.00',
+        },
+      ),
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(home: PendingReviewScreen(api: _client(adapter))),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Konfirmasi Semua'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Batal'));
+    await tester.pumpAndSettle();
+
+    expect(adapter.calls.any((c) => c.contains('/confirm')), isFalse);
+    expect(find.text('QRIS TOKO ABC'), findsOneWidget);
+  });
+
   testWidgets('Batalkan discards the row without creating anything', (
     tester,
   ) async {
@@ -199,6 +333,78 @@ void main() {
 
     expect(find.text('Tidak ada transaksi pending'), findsOneWidget);
     expect(find.text('Konfirmasi'), findsNothing);
+  });
+
+  testWidgets('Back asks for confirmation before leaving the pending screen', (
+    tester,
+  ) async {
+    final adapter = _FakeAdapter({
+      'GET /api/pending': (
+        200,
+        {
+          'items': [_pendingJson()],
+          'total': 1,
+        },
+      ),
+    });
+    await _pumpPendingHost(tester, adapter);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    // Dialog peringatan: data pending tidak akan disimpan.
+    expect(find.textContaining('Data tidak akan disimpan'), findsOneWidget);
+    expect(find.text('Ya'), findsOneWidget);
+    expect(find.text('Tidak'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('leave-no')));
+    await tester.pumpAndSettle();
+
+    // "Tidak" → tetap di layar Pending, tidak ada aksi apa pun.
+    expect(find.textContaining('Data tidak akan disimpan'), findsNothing);
+    expect(find.text('QRIS TOKO ABC'), findsOneWidget);
+    expect(adapter.calls.any((c) => c.contains('/confirm')), isFalse);
+    expect(adapter.calls.any((c) => c.contains('/cancel')), isFalse);
+  });
+
+  testWidgets('Ya on the leave dialog closes the pending screen', (
+    tester,
+  ) async {
+    final adapter = _FakeAdapter({
+      'GET /api/pending': (
+        200,
+        {
+          'items': [_pendingJson()],
+          'total': 1,
+        },
+      ),
+    });
+    await _pumpPendingHost(tester, adapter);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('leave-yes')));
+    await tester.pumpAndSettle();
+
+    // Kembali ke layar pemanggil.
+    expect(find.text('Buka Pending'), findsOneWidget);
+    expect(find.text('QRIS TOKO ABC'), findsNothing);
+  });
+
+  testWidgets('Empty pending list leaves without the warning dialog', (
+    tester,
+  ) async {
+    final adapter = _FakeAdapter({
+      'GET /api/pending': (200, {'items': <Object>[], 'total': 0}),
+    });
+    await _pumpPendingHost(tester, adapter);
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+
+    // Tidak ada data yang bisa hilang → langsung keluar.
+    expect(find.textContaining('Data tidak akan disimpan'), findsNothing);
+    expect(find.text('Buka Pending'), findsOneWidget);
   });
 
   testWidgets(

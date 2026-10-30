@@ -20,7 +20,9 @@ vision LLM (CODING_RULES §2.10).
 """
 
 import uuid
+from datetime import UTC
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -33,10 +35,13 @@ from app.core.mutation_matcher import (
     DEFAULT_AMOUNT_TOLERANCE,
     DEFAULT_DATE_WINDOW_DAYS,
     MatchPair,
+    MutationPeriod,
     ParsedMutation,
+    detect_statement_period,
     fallback_category_id,
     find_matches,
     is_pdf_upload,
+    mutation_local_datetime,
     parse_mutation_image,
     parse_mutation_pdf,
     parse_mutation_text,
@@ -67,6 +72,13 @@ class MutationMatchResponse(BaseModel):
     account_name: str | None = None
     source_description: str | None = Field(
         default=None, description="Hint akun yang terbaca dari statement"
+    )
+    period: MutationPeriod | None = Field(
+        default=None,
+        description=(
+            "Bulan yang dicakup berkas mutasi (dasar filter transaksi). "
+            "null bila tidak ada tanggal yang terbaca."
+        ),
     )
     total_mutations: int
     matched_count: int
@@ -163,6 +175,12 @@ async def match_mutations(
             )
         ).first()
 
+    # Periode = bulan yang dicakup berkas (mis. September 2026). Dasar filter
+    # transaksi: hanya bulan itu (+ akun terpilih) yang ikut dicocokkan, bukan
+    # seluruh riwayat user.
+    period = detect_statement_period(extraction.mutations)
+    tz = _user_timezone(current_user)
+
     matches, unmatched, unmatched_txs = find_matches(
         db,
         user_id=current_user.id,
@@ -170,6 +188,8 @@ async def match_mutations(
         account_id=resolved_account_id,
         amount_tolerance=tolerance,
         date_window_days=window,
+        period=period,
+        tz=tz,
     )
 
     # Bersihkan sisa pending dari unggahan sebelumnya yang tidak pernah
@@ -186,6 +206,7 @@ async def match_mutations(
         mutations=unmatched,
         account_id=resolved_account_id,
         source_label=extraction.account_hint or (file.filename or "mutasi bank"),
+        tz=tz,
     )
     db.commit()
 
@@ -196,12 +217,14 @@ async def match_mutations(
         matched=len(matches),
         unmatched=len(unmatched),
         pendings=len(pending_ids),
+        period=period.label if period else None,
     )
 
     return MutationMatchResponse(
         account_id=str(resolved_account_id) if resolved_account_id else None,
         account_name=account.account_name if account else None,
         source_description=extraction.account_hint,
+        period=period,
         total_mutations=len(extraction.mutations),
         matched_count=len(matches),
         unmatched_mutation_count=len(unmatched),
@@ -210,6 +233,16 @@ async def match_mutations(
         unmatched_mutations=unmatched,
         created_pending_ids=[str(pid) for pid in pending_ids],
     )
+
+
+def _user_timezone(profile: Profile) -> ZoneInfo:
+    """Zona waktu profil user (fallback Asia/Jakarta bila tidak valid)."""
+    name = (profile.timezone or "").strip() or "Asia/Jakarta"
+    try:
+        return ZoneInfo(name)
+    except Exception:  # noqa: BLE001 - nama zona rusak tidak boleh menggagalkan unggahan
+        log.warning("mutation_invalid_timezone", timezone=name)
+        return ZoneInfo("Asia/Jakarta")
 
 
 def _parse_tolerance(value: str | None) -> Decimal:
@@ -237,6 +270,7 @@ def _create_pendings(
     mutations: list[ParsedMutation],
     account_id: uuid.UUID | None,
     source_label: str,
+    tz: ZoneInfo,
 ) -> list[uuid.UUID]:
     """Buat pending_transaction untuk mutasi yang belum tercatat di sistem."""
     created: list[uuid.UUID] = []
@@ -256,6 +290,13 @@ def _create_pendings(
         if mutation.date:
             note += f" ({mutation.date}"
             note += f" {mutation.time})" if mutation.time else ")"
+
+        # Tanggal+jam ASLI dari mutasi. Disimpan terpisah dari `note` supaya
+        # saat user konfirmasi, transaksi tercatat pada waktu terjadinya
+        # transaksi di bank — bukan pada waktu konfirmasi (bug lama).
+        local_dt = mutation_local_datetime(mutation, tz)
+        transaction_date = local_dt.astimezone(UTC) if local_dt else None
+
         pending = create_pending_transaction(
             db,
             user_id=current_user.id,
@@ -268,6 +309,8 @@ def _create_pendings(
             account_id=account_id,
             confidence="medium",
             raw_input=f"Matching Mutasi — {source_label}",
+            transaction_date=transaction_date,
+            timezone=tz.key,
             expires_minutes=60 * 24,  # 1 hari: user perlu waktu memeriksa
         )
         created.append(pending.id)

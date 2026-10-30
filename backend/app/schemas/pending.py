@@ -38,7 +38,9 @@ class PendingTransactionResponse(BaseModel):
     raw_input: str | None = None
     target_transaction_id: uuid.UUID | None = None
     created_at: datetime
-    expires_at: datetime | None = None
+    expires_at: datetime
+    transaction_date: datetime | None = None
+    timezone: str | None = None
 
 
 class PendingListResponse(BaseModel):

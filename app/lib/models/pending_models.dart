@@ -36,6 +36,8 @@ class PendingTransactionModel {
     this.rawInput,
     this.expiresAt,
     this.createdAt,
+    this.transactionDate,
+    this.timezone,
   });
 
   final String id;
@@ -57,6 +59,15 @@ class PendingTransactionModel {
   final String? rawInput;
   final DateTime? expiresAt;
   final DateTime? createdAt;
+
+  /// Tanggal+jam transaksi ASLI dari mutasi bank (sudah dikonversi ke waktu
+  /// lokal perangkat). Diisi backend untuk pending hasil Matching Mutasi; saat
+  /// user mengonfirmasi, nilai ini dipakai apa adanya — bukan waktu konfirmasi.
+  final DateTime? transactionDate;
+
+  /// Nama zona waktu yang dipakai backend saat menafsirkan tanggal mutasi
+  /// (mis. `Asia/Jakarta`).
+  final String? timezone;
 
   /// `true` bila dana keluar — dipakai untuk warna & ikon arah.
   bool get isExpense => type == 'expense';
@@ -87,6 +98,8 @@ class PendingTransactionModel {
         rawInput: json['raw_input'] as String?,
         expiresAt: _toDate(json['expires_at']),
         createdAt: _toDate(json['created_at']),
+        transactionDate: _toDate(json['transaction_date']),
+        timezone: json['timezone'] as String?,
       );
 }
 

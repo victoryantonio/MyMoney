@@ -4,10 +4,12 @@
 | --- | --- |
 | Produk | MyMoney (aplikasi mobile Flutter + backend REST; tanpa bot Telegram) |
 | Fitur | Matching Mutasi Rekening, Filter Total Balance Dashboard |
-| Versi dokumen | 1.1 |
-| Tanggal | 2026-10-30 |
+| Versi dokumen | 1.3 |
+| Tanggal | 2026-11-02 |
 | Status | Disetujui untuk implementasi |
 | Dokumen terkait | `md/TRD.md`, `backend/README.md`, `README.md` |
+| Perubahan 1.3 | Filter berbasis **bulan mutasi** (bukan jendela tanggal) + transaksi tercatat pada **tanggal & jam asli mutasi**, bukan waktu konfirmasi (FR-10) |
+| Perubahan 1.2 | Jalan keluar layar Matching Mutasi (tombol Matching + `PendingReviewScreen`) dan kebersihan tabel `pending_transactions` (FR-8, FR-9) |
 | Perubahan 1.1 | Bank ketiga (Permata) yang hanya menandai arah dana lewat **warna teks**; penghapusan fitur bot Telegram |
 
 ---
@@ -279,6 +281,42 @@ Kriteria penerimaan:
       pembersihan dibatasi pada `raw_input` berawalan `Matching Mutasi`.
 - [x] Baris yang sudah dikonfirmasi menjadi transaksi nyata tidak terpengaruh pembersihan.
 
+### FR-10 — Bulan mutasi jadi dasar filter, tanggal & jam asli dipakai saat konfirmasi
+
+**Sebagai** user yang mengunggah mutasi satu bulan penuh, **saya ingin** sistem hanya
+mencocokkan transaksi pada bulan itu dan menyimpan transaksi baru pada **tanggal & jam asli
+mutasi** **agar** catatan saya sama dengan rekening bank — bukan tercatat pada hari saya
+mengonfirmasi.
+
+Latar belakang: hasil konfirmasi sebelumnya selalu masuk ke tanggal & jam hari ini, sehingga
+laporan bulanan bergeser dan transaksi satu bulan bisa menumpuk di satu tanggal.
+
+Kriteria penerimaan:
+
+- [x] Sistem membaca seluruh tanggal pada berkas mutasi dan **mendeteksi bulan yang dicakup**
+      (mis. `September 2026`), termasuk berkas yang mencakup dua bulan berurutan.
+- [x] Filter kandidat transaksi memakai **bulan penuh** hasil deteksi (bukan jendela
+      `min/max tanggal mutasi ± N hari`): transaksi bulan lain tidak dipertimbangkan meski
+      selisih harinya kecil.
+- [x] Batas bulan dihitung pada **zona waktu profil user**, lalu dikonversi ke UTC, sehingga
+      transaksi 30 September 23:30 WIB tetap masuk September walaupun di UTC sudah Oktober.
+- [x] Akun yang dipilih user tetap menjadi filter pertama; laporan "transaksi belum ada di
+      mutasi" juga dibatasi ke bulan tersebut.
+- [x] Bila tidak ada satu pun tanggal yang terbaca, sistem memakai jendela lebar (90 hari
+      terakhir) seperti sebelumnya — bukan menolak unggahan.
+- [x] Berkas yang rentangnya melebihi 12 bulan dianggap bukan e-statement satu periode; filter
+      bulan tidak dipakai (kembali ke jendela lebar) agar tidak menyembunyikan transaksi.
+- [x] Baris yang belum cocok disimpan sebagai pending **beserta tanggal & jam aslinya**
+      (UTC + snapshot zona waktu).
+- [x] Saat user menekan **Konfirmasi**, transaksi baru memakai tanggal & jam dari pending —
+      bukan waktu konfirmasi. Hal yang sama berlaku untuk pending `action='update'`.
+- [x] Bila mutasi tidak mencetak jam, dipakai **00:00 waktu lokal** pada tanggal mutasi
+      (tidak menebak jam).
+- [x] Layar pending menampilkan tanggal & jam transaksi yang akan disimpan, sehingga user bisa
+      memeriksanya sebelum konfirmasi.
+- [x] Jalur pending lama (tanpa tanggal asli) berperilaku seperti sebelumnya: memakai waktu
+      konfirmasi.
+
 ---
 
 ## 6. Kebutuhan Non-Fungsional
@@ -310,6 +348,12 @@ Kriteria penerimaan:
 8. **Warna adalah sinyal arah, bukan dekorasi.** Merah = keluar, hijau = masuk. Warna dipakai
    hanya bila tidak ada kolom arah; bila ada baris tak berwarna di halaman itu, arah tidak ditebak.
 9. **Kanal input hanya aplikasi.** Tidak ada lagi jalur bot; semua `source` baru ditulis `app`.
+10. **Periode berkas menentukan cakupan pencocokan.** Bulan yang dicakup mutasi (bukan jendela
+    tanggal) adalah batas transaksi yang boleh dicocokkan; jendela tanggal hanya penentu
+    batas hari di dalam bulan itu.
+11. **Tanggal transaksi = tanggal kejadian, bukan tanggal input.** Konfirmasi pending hasil
+    mutasi wajib memakai tanggal & jam dari mutasi. Jam yang tidak tercetak = `00:00` waktu
+    lokal (dilarang menebak jam).
 
 ---
 
@@ -320,6 +364,9 @@ Kriteria penerimaan:
 | Baris bunga tabungan bernilai kecil (Rp 60–119) | Tetap dicatat sebagai `credit` — bagian dari mutasi nyata |
 | Baris tanpa tahun (`01 SEP`) | Tahun diambil dari periode statement |
 | Statement lintas tahun (Des–Jan) | Tahun diambil dari kemunculan terbanyak; baris yang tanggalnya "mundur" > 6 bulan dianggap tahun berikutnya (*future*) |
+| Berkas mutasi mencakup dua bulan (mis. 28 Agu – 3 Sep) | Periode = kedua bulan itu; filter memakai rentang penuh Agustus–September |
+| Baris mutasi tanpa jam (hanya tanggal) | Jam transaksi disimpan `00:00` waktu lokal, tanpa menebak |
+| Transaksi tercatat 23:30 WIB di hari terakhir bulan | Tetap dianggap bagian bulan tersebut (batas dihitung di zona user, bukan UTC) |
 | Deskripsi terpotong bank (`KUDUS &quot;BU`) | Disimpan apa adanya setelah entitas didekode |
 | Dua transaksi kembar nominal & tanggal sama | Keduanya dicocokkan satu-satu (tidak boleh satu transaksi dipakai dua kali) |
 | PDF berpassword | Gagal dengan pesan "tidak terbaca", bukan 500 |
@@ -376,6 +423,7 @@ Kriteria penerimaan:
 
 | Versi | Tanggal | Perubahan |
 | --- | --- | --- |
+| 1.3 | 2026-11-02 | Akurasi waktu: bulan berkas mutasi dideteksi otomatis dan menjadi dasar filter transaksi (FR-10a); transaksi hasil konfirmasi memakai tanggal & jam asli mutasi (FR-10b) |
 | 1.2 | 2026-11-01 | Jalan keluar dari layar Matching Mutasi: tombol **Matching** di bawah layar hasil + layar `PendingReviewScreen` (FR-8), serta kebersihan tabel `pending_transactions` — pending kedaluwarsa & pending tak terkonfirmasi dihapus otomatis (FR-9) |
 | 1.1 | 2026-10-30 | Dukungan bank berwarna (Permata: merah = keluar, hijau = masuk) + penghapusan bot Telegram dari lingkup produk |
 | 1.0 | 2026-10-29 | PRD awal untuk perbaikan Matching Mutasi pada e-statement Indonesia + perbaikan filter Total Balance |

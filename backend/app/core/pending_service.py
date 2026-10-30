@@ -58,9 +58,16 @@ def create_pending_transaction(
     raw_input: str | None = None,
     items: list[dict] | None = None,
     target_transaction_id: uuid.UUID | None = None,
+    transaction_date: datetime | None = None,
+    timezone: str | None = None,
     expires_minutes: int = DEFAULT_EXPIRES_MINUTES,
 ) -> PendingTransaction:
-    """Persist an LLM parse result awaiting user confirmation."""
+    """Persist an LLM parse result awaiting user confirmation.
+
+    `transaction_date` + `timezone` menyimpan tanggal+jam transaksi ASLI dari
+    mutasi bank (UTC + snapshot zona waktu). Nilainya dipakai apa adanya saat
+    user mengonfirmasi, supaya transaksi tidak tercatat pada waktu konfirmasi.
+    """
     if action not in ("create", "update"):
         raise ValueError("invalid pending action")
     if action == "update" and target_transaction_id is None:
@@ -81,6 +88,8 @@ def create_pending_transaction(
         raw_input=raw_input,
         items=items,
         target_transaction_id=target_transaction_id,
+        transaction_date=transaction_date,
+        timezone=timezone,
         expires_at=datetime.now(UTC) + timedelta(minutes=expires_minutes),
     )
     db.add(pending)
@@ -205,6 +214,9 @@ def confirm_pending_transaction(
             note=pending.note,
             merchant=pending.merchant,
             items=pending.items,
+            # Tanggal mutasi berlaku juga untuk edit (mis. koreksi hasil baca).
+            transaction_date=pending.transaction_date,
+            user_timezone=pending.timezone,
             audit_ip_address=audit_ip_address,
             pending=pending,
         )
@@ -224,6 +236,9 @@ def confirm_pending_transaction(
             merchant=pending.merchant,
             confidence=pending.confidence,
             items=pending.items,
+            # Tanggal+jam ASLI dari mutasi bank — bukan waktu konfirmasi.
+            transaction_date=pending.transaction_date,
+            user_timezone=pending.timezone,
             audit_ip_address=audit_ip_address,
             pending=pending,
         )

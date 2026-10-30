@@ -83,6 +83,8 @@ def _to_response(
         target_transaction_id=pending.target_transaction_id,
         created_at=pending.created_at,
         expires_at=pending.expires_at,
+        transaction_date=pending.transaction_date,
+        timezone=pending.timezone,
     )
 
 

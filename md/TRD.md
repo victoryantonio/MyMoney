@@ -4,11 +4,12 @@
 | --- | --- |
 | Produk | MyMoney |
 | Fitur | Matching Mutasi (`POST /api/mutations/match`), Total Balance dashboard |
-| Versi dokumen | 1.1 |
-| Tanggal | 2026-10-30 |
+| Versi dokumen | 1.3 |
+| Tanggal | 2026-11-02 |
 | Status | Siap implementasi |
 | Dokumen terkait | `md/PRD.md`, `backend/app/core/mutation_matcher.py`, `app/lib/core/balance.dart` |
-| Prasyarat rilis | Migrasi head `0011_merchant_aliases` (tidak ada migrasi baru) |
+| Prasyarat rilis | Migrasi head `0013_pending_transaction_date` (migrasi baru: `transaction_date` + `timezone` di `pending_transactions`) |
+| Perubahan 1.3 | Deteksi periode berkas + filter transaksi per bulan (local → UTC) + penyimpanan tanggal & jam asli mutasi sampai konfirmasi |
 | Perubahan 1.1 | Jalur ekstraksi berbasis **warna teks** untuk statement tanpa kolom keluar/masuk (Permata); penghapusan bot Telegram |
 
 ---
@@ -714,3 +715,54 @@ cd app && flutter analyze && flutter test
 - [x] `test/pending_review_screen_test.dart` — 6 widget test (daftar, konfirmasi, batal,
       empty state, tombol Matching, pembuangan saat keluar layar).
 - [x] `ruff`, `black`, `flutter analyze`, `flutter test` bersih; suite backend 304 passed.
+
+### Tambahan 1.3 — Akurasi waktu transaksi hasil Matching
+
+**Masalah.** `confirm_pending_transaction()` memanggil `create_transaction_internal()` tanpa
+`transaction_date`, sehingga transaksi tercatat pada `datetime.now(UTC)` — tanggal & jam
+konfirmasi, bukan tanggal & jam mutasi. Tanggal asli hanya tersisa sebagai teks di `note`.
+Selain itu `find_matches()` membangun kandidat dari `min/max` tanggal mutasi ±
+`date_window_days`, sehingga unggahan satu bulan bisa mencocokkan transaksi bulan lain.
+
+**Desain.**
+
+1. `PendingTransaction` mendapat dua kolom: `transaction_date TIMESTAMPTZ NULL` dan
+   `timezone VARCHAR(64) NULL` (migrasi `0013_pending_transaction_date`, `down_revision=0012`).
+   Nullable agar baris pending jalur lama tetap sah dan berperilaku seperti sebelumnya.
+2. `mutation_matcher.detect_statement_period()` menghimpun seluruh tanggal yang terbaca →
+   `MutationPeriod(start_date, end_date, months, label, first_mutation_date, last_mutation_date)`.
+   Rentang > 12 bulan ditolak (`None`) karena bukan satu periode e-statement.
+3. `period_bounds_utc(period, tz)` mengubah batas bulan **lokal** menjadi UTC:
+   `[1 <bulan> 00:00 tz, 1 <bulan+1> 00:00 tz)` — batas atas eksklusif, sehingga hari terakhir
+   bulan tidak terpotong di zona negatif/positif.
+4. `mutation_local_datetime(mutation, tz)` menggabungkan tanggal + `HH:mm`; jam tidak ada /
+   tidak valid → `00:00` lokal (tidak menebak).
+5. `find_matches(..., period=None, tz=None)` — bila `period` ada, jendela kandidat = batas
+   periode (tanpa ekstensi ± window); bila tidak, perilaku lama dipertahankan (min/max ± window,
+   fallback 90 hari). `date_window_days` tetap berlaku sebagai batas selisih hari **di dalam**
+   periode. Laporan "transaksi belum ada di mutasi" ikut dibatasi ke periode.
+6. `POST /api/mutations/match` mendeteksi periode, memakai zona profil user
+   (`ZoneInfo`, fallback `Asia/Jakarta`), mengembalikan `period` di response, dan menulis
+   `transaction_date` (UTC) + `timezone` ke setiap pending.
+7. `confirm_pending_transaction()` meneruskan `transaction_date=pending.transaction_date` dan
+   `user_timezone=pending.timezone` ke `create_transaction_internal()` /
+   `update_transaction_internal()`; `None` → tetap memakai waktu sekarang + zona profil.
+
+**Checklist implementasi.**
+
+- [x] `app/models/pending_transaction.py` — kolom `transaction_date`, `timezone`.
+- [x] `alembic/versions/0013_pending_transaction_date.py` — upgrade/downgrade.
+- [x] `app/core/mutation_matcher.py` — `MutationPeriod`, `detect_statement_period`,
+      `period_bounds_utc`, `mutation_local_datetime`, `find_matches(period=, tz=)`.
+- [x] `app/core/pending_service.py` — `create_pending_transaction(transaction_date=, timezone=)`;
+      konfirmasi meneruskan tanggal asli untuk `create` maupun `update`.
+- [x] `app/api/mutations.py` — `period` pada response, zona user, timestamp di pending.
+- [x] `app/schemas/pending.py` + `app/api/pending.py` — `transaction_date`, `timezone` di DTO.
+- [x] `app/lib/models/mutation_models.dart` — `MutationPeriodModel`, `period` di result.
+- [x] `app/lib/models/pending_models.dart` — `transactionDate`, `timezone`.
+- [x] `app/lib/screens/mutation_match_screen.dart` — baris "Periode mutasi" di ringkasan.
+- [x] `app/lib/screens/pending_review_screen.dart` — "Tanggal transaksi: Sen, 14 Sep 2026 13:21".
+- [x] Test backend: `TestDetectStatementPeriod`, `TestPeriodBounds`, `TestMutationLocalDatetime`,
+      `TestFindMatchesPeriodFilter`, `TestCreatePendingsTimestamp`, plus test pending-service
+      untuk tanggal asli dan dua test API (periode + timestamp pending → transaksi).
+- [x] `ruff`, `black`, `flutter analyze`, `flutter test` bersih; suite backend 240 passed.

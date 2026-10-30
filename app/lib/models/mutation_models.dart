@@ -85,12 +85,52 @@ class MutationMatchModel {
       );
 }
 
+/// Rentang bulan yang dicakup berkas mutasi — dipakai backend sebagai dasar
+/// filter transaksi (hanya bulan ini + akun terpilih yang dicocokkan).
+class MutationPeriodModel {
+  const MutationPeriodModel({
+    required this.startDate,
+    required this.endDate,
+    required this.months,
+    required this.label,
+    this.firstMutationDate,
+    this.lastMutationDate,
+  });
+
+  /// `yyyy-MM-dd` — hari pertama bulan pertama.
+  final String startDate;
+
+  /// `yyyy-MM-dd` — hari terakhir bulan terakhir (inklusif).
+  final String endDate;
+
+  /// Daftar bulan `yyyy-MM` (mis. `['2026-09']`).
+  final List<String> months;
+
+  /// Label yang enak dibaca, mis. `September 2026`.
+  final String label;
+  final String? firstMutationDate;
+  final String? lastMutationDate;
+
+  factory MutationPeriodModel.fromJson(Map<String, dynamic> json) =>
+      MutationPeriodModel(
+        startDate: json['start_date'] as String? ?? '',
+        endDate: json['end_date'] as String? ?? '',
+        months: ((json['months'] as List<dynamic>?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+        label: json['label'] as String? ?? '',
+        firstMutationDate: json['first_mutation_date'] as String?,
+        lastMutationDate: json['last_mutation_date'] as String?,
+      );
+}
+
 /// Ringkasan satu proses Matching Mutasi.
 class MutationMatchResult {
   const MutationMatchResult({
     this.accountId,
     this.accountName,
     this.sourceDescription,
+    this.period,
     required this.totalMutations,
     required this.matchedCount,
     required this.unmatchedMutationCount,
@@ -105,6 +145,9 @@ class MutationMatchResult {
 
   /// Nama akun yang terbaca dari statement (hint), bila ada.
   final String? sourceDescription;
+
+  /// Bulan yang dicakup berkas (dasar filter transaksi backend).
+  final MutationPeriodModel? period;
   final int totalMutations;
   final int matchedCount;
   final int unmatchedMutationCount;
@@ -121,6 +164,11 @@ class MutationMatchResult {
         accountId: json['account_id'] as String?,
         accountName: json['account_name'] as String?,
         sourceDescription: json['source_description'] as String?,
+        period: json['period'] is Map<String, dynamic>
+            ? MutationPeriodModel.fromJson(
+                json['period'] as Map<String, dynamic>,
+              )
+            : null,
         totalMutations: (json['total_mutations'] as num?)?.toInt() ?? 0,
         matchedCount: (json['matched_count'] as num?)?.toInt() ?? 0,
         unmatchedMutationCount:

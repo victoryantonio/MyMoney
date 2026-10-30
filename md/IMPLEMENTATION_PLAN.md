@@ -310,3 +310,25 @@ Rekam historis implementasi v1 (Kotlin + FastAPI + Postgres self-hosted + bot Py
 - **Phase 4** Android Kotlin — 23 tests, APK, icon dari `./icon.png`.
 - **Phase 5** OCR vision + Telegram foto — 127 tests, deployed live.
 - Kode v1: `_archive/android-kotlin-v1/`; detail historis di git history (`git log main`). Backend v1 tetap live sampai cutover Fase 2/6.
+
+### 2026-10-29 — Pending: "Konfirmasi Semua" + guard keluar layar
+
+- **Konfirmasi Semua**: header daftar pending sekarang punya tombol `Konfirmasi Semua` (ikon `done_all`) yang mengonfirmasi **seluruh** baris lewat `POST /api/pending/{id}/confirm` satu per satu (dialog persetujuan dulu, progres ditampilkan, baris yang gagal tidak menggagalkan sisanya, daftar dimuat ulang bila ada kegagalan). `onResolved` dipanggil per id sehingga label tombol Matching ikut turun.
+- **Guard Back**: menekan tombol back (ikon panah kiri) atau back sistem saat masih ada baris pending memunculkan dialog *"Apakah anda yakin ingin meninggalkan halaman ini? Data tidak akan disimpan"* dengan pilihan **Ya** / **Tidak** (`PopScope` + `BackButton` handler). Saat daftar kosong dialog dilewati karena tidak ada data yang bisa hilang.
+- Widget test: 3 test baru (`Back asks for confirmation…`, `Ya on the leave dialog closes…`, `Empty pending list leaves without the warning dialog`) → total 58 test Flutter hijau, `flutter analyze` bersih.
+
+### 2026-11-02 — Akurasi waktu Matching Mutasi (periode + tanggal asli)
+
+- **Periode berkas jadi filter**: `detect_statement_period()` membaca seluruh tanggal mutasi →
+  bulan yang dicakup (mis. `September 2026`). `find_matches()` memakai batas bulan itu (zona
+  waktu profil → UTC) sebagai jendela kandidat, menggantikan `min/max ± date_window_days`.
+  Rentang > 12 bulan → tidak memakai filter bulan (bukan satu periode e-statement).
+- **Tanggal & jam asli disimpan**: migrasi `0013_pending_transaction_date` menambah
+  `pending_transactions.transaction_date` (UTC) + `timezone`. `confirm_pending_transaction()`
+  meneruskannya ke `create_transaction_internal()` / `update_transaction_internal()`, sehingga
+  transaksi tidak lagi lahir dengan `datetime.now(UTC)`. Jam yang tidak tercetak = `00:00` lokal.
+- **UI**: ringkasan Matching Mutasi menampilkan "Periode mutasi"; baris pending menampilkan
+  "Tanggal transaksi: <hari>, <tgl> <bln> <tahun> <jam:menit>".
+- Test: 5 kelas test baru di `test_mutation_matcher.py` (periode, batas zona waktu, timestamp
+  pending) + 2 test `pending_service` + 2 test API → suite backend 240 passed, 86 skipped;
+  `flutter analyze` bersih, `flutter test` 58 passed.

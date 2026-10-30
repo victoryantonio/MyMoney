@@ -64,6 +64,15 @@ class PendingTransaction(Base):
     target_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=True
     )
+    # Tanggal+jam transaksi ASLI dari mutasi bank (UTC). Diisi oleh alur
+    # "Matching Mutasi"; dipakai apa adanya saat user mengonfirmasi, supaya
+    # transaksi tidak tercatat pada waktu konfirmasi (bug lama: selalu "sekarang").
+    transaction_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Snapshot zona waktu saat tanggal mutasi ditafsirkan — dipakai untuk
+    # menerjemahkan instant UTC kembali ke tanggal/jam lokal transaksi.
+    timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

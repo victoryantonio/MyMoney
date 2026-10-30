@@ -4,6 +4,28 @@ All notable changes to the MyMoney app are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.2+10] — 2026-11-02
+
+### Fixed
+- **Transaksi hasil Matching Mutasi tercatat pada tanggal & jam hari ini** — Baris yang
+  dikonfirmasi kini disimpan memakai tanggal dan jam **asli dari mutasi bank**, bukan waktu
+  konfirmasi. Pending menyimpan tanggal tersebut (UTC + zona waktu user), dan layar pending
+  menampilkan "Tanggal transaksi" supaya bisa diperiksa sebelum dikonfirmasi. Bila mutasi
+  tidak mencetak jam, dipakai `00:00` waktu lokal.
+- **Transaksi bulan lain ikut dicocokkan** — Pencocokan sekarang memakai **bulan yang dicakup
+  berkas mutasi** sebagai filter (mis. hanya September 2026), bukan jendela tanggal di sekitar
+  baris mutasi. Batas bulan dihitung di zona waktu user, sehingga transaksi 30 September 23:30
+  WIB tetap dianggap bagian September. Berkas tanpa tanggal terbaca tetap memakai jendela lebar
+  seperti sebelumnya.
+
+### Added
+- **Ringkasan "Periode mutasi"** pada layar hasil Matching Mutasi (mis. `September 2026`).
+- Migrasi `0013_pending_transaction_date` — kolom `transaction_date` dan `timezone` pada
+  `pending_transactions`.
+
+### Changed
+- Version number: `1.4.1+9` → `1.4.2+10`.
+
 ## [1.4.1+9] — 2026-10-30
 
 ### Added

@@ -75,16 +75,14 @@ Future<PickedMutationFile?> _pickMutationFile(MutationSource source) async {
 
 /// Pilih e-statement PDF dari penyimpanan perangkat.
 Future<PickedMutationFile?> _pickStatementDocument() async {
-  final result = await FilePicker.pickFiles(
+  final picked = await FilePicker.pickFile(
     type: FileType.custom,
     allowedExtensions: const ['pdf'],
-    withData: true,
     dialogTitle: 'Pilih e-statement PDF',
   );
-  final picked = result?.files.singleOrNull;
   if (picked == null) return null;
-  final bytes = picked.bytes;
-  if (bytes == null || bytes.isEmpty) return null;
+  final bytes = await picked.readAsBytes();
+  if (bytes.isEmpty) return null;
   return PickedMutationFile(bytes: bytes, name: picked.name);
 }
 
@@ -449,6 +447,8 @@ class _MutationMatchScreenState extends State<MutationMatchScreen> {
                   'Belum tercatat',
                   '${result.unmatchedMutationCount} → dibuat pending',
                 ),
+                if (result.period != null)
+                  _summaryRow('Periode mutasi', result.period!.label),
                 if (result.accountName != null)
                   _summaryRow('Akun', result.accountName!),
                 if (result.unmatchedTransactionCount > 0)
