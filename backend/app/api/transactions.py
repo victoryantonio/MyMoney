@@ -30,6 +30,7 @@ from app.core.rate_limit import limiter
 from app.core.transaction_service import (
     create_transaction_internal,
     delete_transaction_internal,
+    delete_transactions_internal,
     update_transaction_internal,
 )
 from app.models.account import Account
@@ -38,6 +39,8 @@ from app.models.profile import Profile
 from app.models.transaction import Transaction
 from app.models.transaction_item import TransactionItem
 from app.schemas.transaction import (
+    TransactionBulkDeleteRequest,
+    TransactionBulkDeleteResponse,
     TransactionCreateRequest,
     TransactionListResponse,
     TransactionResponse,
@@ -473,3 +476,36 @@ def delete_transaction(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
     delete_transaction_internal(db, transaction)
+
+
+@router.post("/bulk-delete", response_model=TransactionBulkDeleteResponse)
+@limiter.limit("20/minute")
+def bulk_delete_transactions(
+    request: Request,
+    body: TransactionBulkDeleteRequest,
+    current_user: Profile = Depends(require_active_user),
+    db: Session = Depends(get_db),
+) -> TransactionBulkDeleteResponse:
+    """
+    Hapus banyak transaksi sekaligus (dipakai multi-pilih di UI).
+
+    Hanya baris milik user yang dihapus; id yang tidak ditemukan dilaporkan di
+    `missing` alih-alih menggagalkan seluruh request — UI biasanya memegang
+    daftar yang bisa saja sudah berubah di perangkat lain. Semua penghapusan
+    terjadi dalam satu commit beserta audit log per baris.
+    """
+    # `dict.fromkeys` membuang duplikat tapi tetap mempertahankan urutan kirim.
+    wanted = list(dict.fromkeys(body.ids))
+    transactions = list(
+        db.scalars(
+            select(Transaction).where(
+                Transaction.id.in_(wanted),
+                Transaction.user_id == current_user.id,
+            )
+        )
+    )
+
+    deleted = delete_transactions_internal(db, transactions)
+    found = {tx.id for tx in transactions}
+    missing = [tx_id for tx_id in wanted if tx_id not in found]
+    return TransactionBulkDeleteResponse(deleted=deleted, missing=missing)

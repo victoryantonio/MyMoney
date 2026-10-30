@@ -4,6 +4,31 @@ All notable changes to the MyMoney app are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.0+11] — 2026-11-02
+
+### Fixed
+- **Backend produksi masih menjalankan kode lama** — Perbaikan tanggal mutasi memang sudah ada
+  di repositori sejak 1.4.2, tetapi container produksi belum dibangun ulang dan migrasi `0013`
+  belum diterapkan, sehingga transaksi tetap tersimpan pada waktu konfirmasi. Container sudah
+  di-`build` ulang dan `alembic upgrade head` dijalankan (0012 → 0013). **Tanpa langkah ini,
+  perubahan kode apa pun tidak akan terlihat di aplikasi.**
+
+### Added
+- **Hapus massal transaksi** — Tekan lama satu baris di tab Transaksi untuk masuk mode pilih,
+  centang beberapa baris, lalu hapus semuanya sekaligus. Satu permintaan, satu commit di server.
+- **Tombol “Pilih semua”** di app bar mode pilih (berubah menjadi “Batalkan pilih semua” saat
+  semua baris tercentang). Cakupannya mengikuti filter/pencarian yang sedang aktif.
+- Endpoint `POST /api/transactions/bulk-delete` (`{ids: [...]}`, maks 200 id, 20/menit) dengan
+  respons `{deleted, missing}`. Id yang sudah tidak ada di server dilaporkan sebagai `missing`
+  dan tidak menggagalkan proses.
+- Audit log `delete` tetap dibuat **per baris**, dengan penanda tambahan `bulk: true`.
+
+### Changed
+- Mode pilih menampilkan checkbox di setiap baris dan menyembunyikan menu titik-tiga; aksi hapus
+  dinonaktifkan selama permintaan berjalan.
+- Daftar id terpilih dipangkas otomatis setiap kali daftar dimuat ulang (filter/pencarian).
+- Version number: `1.4.2+10` → `1.5.0+11`.
+
 ## [1.4.2+10] — 2026-11-02
 
 ### Fixed

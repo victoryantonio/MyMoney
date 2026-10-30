@@ -5,6 +5,7 @@ logic and that every mutation is audited (CODING_RULES §2.6).
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
@@ -328,3 +329,42 @@ def delete_transaction_internal(
     )
     db.delete(transaction)
     db.commit()
+
+
+def delete_transactions_internal(
+    db: Session,
+    transactions: Sequence[Transaction],
+    audit_ip_address: str | None = None,
+) -> int:
+    """
+    Hapus banyak transaksi dalam SATU commit (audit per baris).
+
+    Versi massal ini ada supaya pembersihan puluhan baris dari UI
+    (multi-pilih) tidak memicu N kali commit/round-trip seperti kalau
+    `delete_transaction_internal()` dipanggil berulang. Items ikut terhapus
+    lewat CASCADE di DB.
+    """
+    if not transactions:
+        return 0
+
+    for transaction in transactions:
+        record_audit(
+            db,
+            user_id=transaction.user_id,
+            action="delete",
+            entity_type="transaction",
+            entity_id=transaction.id,
+            old_value={
+                "type": transaction.type,
+                "total_amount": str(transaction.total_amount),
+                "category_id": str(transaction.category_id),
+                "note": transaction.note,
+                "bulk": True,
+            },
+            source=transaction.source,
+            ip_address=audit_ip_address,
+        )
+        db.delete(transaction)
+
+    db.commit()
+    return len(transactions)

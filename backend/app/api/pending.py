@@ -11,7 +11,7 @@ menutup celah tersebut.
 Endpoint:
   GET  /api/pending                — daftar pending aktif (belum kedaluwarsa)
   GET  /api/pending/count          — jumlah pending aktif (badge tombol)
-  POST /api/pending/{id}/confirm   — jadikan transaksi nyata (audited)
+  POST /api/pending/{id}/confirm   — jadikan real transaction (audited)
   POST /api/pending/{id}/cancel    — buang pending, tidak menyimpan apa pun
 
 Semua endpoint hanya menyentuh baris milik user yang sedang login.
@@ -169,7 +169,7 @@ def confirm_pending(
     db: Session = Depends(get_db),
 ) -> PendingConfirmResponse:
     """
-    Konfirmasi satu pending → transaksi nyata dibuat/diubah dalam satu commit
+    Konfirmasi satu pending → real transaction dibuat/diubah dalam satu commit
     (pending dihapus bersamaan, jadi tidak ada jendela data ganda).
     """
     # Ambil action lebih dulu: service menghapus baris pending saat konfirmasi.

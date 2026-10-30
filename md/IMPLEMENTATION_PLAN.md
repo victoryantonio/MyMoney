@@ -332,3 +332,20 @@ Rekam historis implementasi v1 (Kotlin + FastAPI + Postgres self-hosted + bot Py
 - Test: 5 kelas test baru di `test_mutation_matcher.py` (periode, batas zona waktu, timestamp
   pending) + 2 test `pending_service` + 2 test API → suite backend 240 passed, 86 skipped;
   `flutter analyze` bersih, `flutter test` 58 passed.
+
+### 2026-11-02 — Hapus massal transaksi + verifikasi deploy backend
+
+- **Akar masalah "tanggal masih tanggal input"**: perbaikan 1.4.2 sudah ada di git, tetapi
+  container produksi belum dibangun ulang (`alembic current` = `0012`, kode baru tidak ada di
+  dalam image). Diperbaiki dengan `docker compose up -d --build backend` lalu
+  `docker compose exec -T backend alembic upgrade head` → `0013 (head)`.
+- **Backend**: `delete_transactions_internal()` (audit per baris + satu commit),
+  `TransactionBulkDeleteRequest/Response`, `POST /api/transactions/bulk-delete` (20/menit,
+  maks 200 id, `missing` untuk id tak dikenal/milik user lain).
+- **Frontend**: mode multi-pilih di `transactions_screen.dart` (long-press masuk, checkbox per
+  baris, app bar `n dipilih`, tombol **Pilih semua**, dialog konfirmasi, snackbar hasil),
+  `apiClient.bulkDeleteTransactions()`, model `BulkDeleteResult`.
+- **Test**: `backend/tests/test_transactions_bulk_delete.py` (7 kasus, memakai
+  `dependency_overrides` sehingga tidak butuh kredensial Supabase) → suite backend
+  **247 passed, 86 skipped**; `flutter analyze` bersih; `flutter test` 58 passed.
+- **Rilis**: `1.4.2+10` → `1.5.0+11`.

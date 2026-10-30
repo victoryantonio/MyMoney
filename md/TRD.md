@@ -4,11 +4,12 @@
 | --- | --- |
 | Produk | MyMoney |
 | Fitur | Matching Mutasi (`POST /api/mutations/match`), Total Balance dashboard |
-| Versi dokumen | 1.3 |
+| Versi dokumen | 1.4 |
 | Tanggal | 2026-11-02 |
 | Status | Siap implementasi |
 | Dokumen terkait | `md/PRD.md`, `backend/app/core/mutation_matcher.py`, `app/lib/core/balance.dart` |
-| Prasyarat rilis | Migrasi head `0013_pending_transaction_date` (migrasi baru: `transaction_date` + `timezone` di `pending_transactions`) |
+| Prasyarat rilis | Migrasi head `0013_pending_transaction_date` — **wajib** dijalankan (`docker compose exec -T backend alembic upgrade head`) sebelum klien baru dipakai |
+| Perubahan 1.4 | Endpoint hapus massal `POST /api/transactions/bulk-delete` + mode multi-pilih di tab Transaksi (FR-11 PRD) |
 | Perubahan 1.3 | Deteksi periode berkas + filter transaksi per bulan (local → UTC) + penyimpanan tanggal & jam asli mutasi sampai konfirmasi |
 | Perubahan 1.1 | Jalur ekstraksi berbasis **warna teks** untuk statement tanpa kolom keluar/masuk (Permata); penghapusan bot Telegram |
 
@@ -533,6 +534,81 @@ Sisi klien, `MutationMatchScreen` mengirim `cancelPending()` (best-effort) untuk
 `canPop: false`), atau saat `_reset()`. Ini murni optimasi UX agar tabel langsung bersih;
 jaring pengaman sebenarnya ada di backend (kedaluwarsa 24 jam + pembersihan di atas).
 
+### `POST /api/transactions/bulk-delete` — *baru di 1.4*
+
+**Auth:** JWT Supabase (`require_active_user`). **Rate limit:** `20/minute` per IP.
+Modul: `backend/app/api/transactions.py` → `backend/app/core/transaction_service.py`.
+
+Request (`application/json`):
+
+```json
+{ "ids": ["5f1c…", "9a02…"] }
+```
+
+| Field | Tipe | Wajib | Batas |
+| --- | --- | --- | --- |
+| `ids` | `list[UUID]` | ya | `min_length=1`, `max_length=200` (Pydantic → 422 di luar batas) |
+
+Response `200` — `TransactionBulkDeleteResponse`:
+
+```json
+{ "deleted": 2, "missing": [] }
+```
+
+Semantik:
+
+- `deleted` = jumlah baris yang **benar-benar** dihapus pada commit ini.
+- `missing` = id yang tidak ditemukan **atau** milik user lain. Keduanya diperlakukan sama
+  (tidak membocorkan keberadaan transaksi user lain) dan **tidak** menggagalkan permintaan.
+- Duplikat di `ids` dinormalkan lewat `dict.fromkeys` sehingga satu baris tidak dihapus dua kali.
+- Filter query selalu `Transaction.user_id == current_user.id` — tidak ada jalur lintas user.
+
+Implementasi service:
+
+```python
+def delete_transactions_internal(db, transactions: Sequence[Transaction],
+                                 audit_ip_address: str | None = None) -> int:
+    if not transactions:
+        return 0
+    for transaction in transactions:
+        record_audit(db, ..., action="delete", entity_type="transaction",
+                     entity_id=transaction.id,
+                     old_value={"type": ..., "total_amount": str(...),
+                                "category_id": str(...), "note": ...,
+                                "bulk": True},
+                     source=transaction.source, ip_address=audit_ip_address)
+        db.delete(transaction)
+    db.commit()          # SATU commit untuk seluruh batch
+    return len(transactions)
+```
+
+Alasan desain:
+
+1. **Satu commit.** Kalau commit per baris, kegagalan di tengah membuat user melihat sebagian
+   terhapus dan sebagian tidak — sulit dijelaskan di UI.
+2. **`db.flush()` di dalam `record_audit`.** `record_audit()` memakai `flush()` (tanpa commit);
+   pemanggil yang menentukan batas transaksi DB. Pola yang sama sudah dipakai hapus tunggal.
+3. **`TransactionItem` ikut terhapus** lewat `cascade="all, delete-orphan"` pada relasi model;
+   tidak perlu query terpisah.
+4. **Audit per baris, bukan satu baris "bulk".** Kebutuhan forensik tetap per transaksi; penanda
+   `bulk: true` hanya metadata tambahan.
+
+Sisi klien (`app/lib/screens/transactions_screen.dart`):
+
+| State | Fungsi |
+| --- | --- |
+| `_selectionMode`, `_selectedIds`, `_bulkDeleting` | status mode pilih, himpunan id, penanda proses |
+| `_enterSelection` / `_exitSelection` / `_toggleSelected` | long-press masuk mode; membatalkan tanda terakhir otomatis keluar mode |
+| `_allSelected` / `_toggleSelectAll` | tombol **Pilih semua** ↔ **Batalkan pilih semua** |
+| `_confirmBulkDelete` | dialog konfirmasi → `apiClient.bulkDeleteTransactions` → hapus baris lokal → `_load()` |
+
+`_load()` memangkas `_selectedIds` ke id yang masih terlihat setelah refresh — mencegah id
+"hantu" ikut terkirim saat filter berubah. Aksi hapus dinonaktifkan selama `_bulkDeleting`
+untuk mencegah permintaan ganda.
+
+Tidak ada perubahan skema/migrasi: endpoint hanya memakai tabel `transactions` dan
+`audit_logs` yang sudah ada.
+
 ---
 
 ## 8. Model Data
@@ -765,4 +841,29 @@ Selain itu `find_matches()` membangun kandidat dari `min/max` tanggal mutasi ±
 - [x] Test backend: `TestDetectStatementPeriod`, `TestPeriodBounds`, `TestMutationLocalDatetime`,
       `TestFindMatchesPeriodFilter`, `TestCreatePendingsTimestamp`, plus test pending-service
       untuk tanggal asli dan dua test API (periode + timestamp pending → transaksi).
-- [x] `ruff`, `black`, `flutter analyze`, `flutter test` bersih; suite backend 240 passed.
+- [x] `ruff`, `black`, `flutter analyze`, `flutter test` bersih; suite backend 247 passed
+      (240 pada rilis 1.3).
+
+### Tambahan 1.4 — Hapus massal transaksi (FR-11)
+
+- [x] `app/core/transaction_service.py` — `delete_transactions_internal(db, transactions,
+      audit_ip_address=None)`: audit per baris (`old_value["bulk"] = True`) + **satu** commit.
+- [x] `app/schemas/transaction.py` — `TransactionBulkDeleteRequest` (`ids`, 1…200) dan
+      `TransactionBulkDeleteResponse` (`deleted`, `missing`).
+- [x] `app/api/transactions.py` — `POST /api/transactions/bulk-delete`, rate limit `20/minute`,
+      dedup id dengan `dict.fromkeys`, filter `user_id`, `missing` untuk id tak dikenal.
+- [x] `app/lib/core/api_client.dart` — `bulkDeleteTransactions(List<String> ids)`.
+- [x] `app/lib/models/transaction_models.dart` — `BulkDeleteResult`.
+- [x] `app/lib/screens/transactions_screen.dart` — mode multi-pilih (long-press), checkbox per
+      baris, app bar pilihan (`n dipilih`, pilih semua, hapus), dialog konfirmasi, snackbar
+      hasil, pemangkasan `_selectedIds` setelah `_load()`.
+- [x] Test baru `backend/tests/test_transactions_bulk_delete.py` (7 kasus): hapus id terpilih +
+      cascade item, id asing / milik user lain → `missing`, id duplikat dihitung sekali, audit
+      `bulk`, `ids` kosong → 422, 201 id → 422, tanpa auth → 401. Berkas ini memakai
+      `app.dependency_overrides` sehingga jalan tanpa kredensial Supabase.
+- [x] **Deployment**: `docker compose up -d --build backend` **dan**
+      `docker compose exec -T backend alembic upgrade head` (0012 → 0013). Tanpa langkah kedua,
+      produksi tetap memakai kode lama: pending tanpa `transaction_date` → transaksi tercatat di
+      waktu konfirmasi.
+- [x] `ruff`, `black`, `flutter analyze`, `flutter test` bersih; suite backend **247 passed,
+      86 skipped**.

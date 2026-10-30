@@ -2,7 +2,9 @@
 ///
 /// Keyset pagination (20/halaman) dengan infinite scroll, dikelompokkan per
 /// tanggal ("Hari Ini", "Kemarin", lalu tanggal lengkap). Tap item → edit;
-/// hapus via menu trailing dengan konfirmasi. FAB: tambah manual + scan nota.
+/// hapus via menu trailing dengan konfirmasi. Tekan lama satu baris → mode
+/// multi-pilih (checkbox + tombol "pilih semua") untuk hapus massal.
+/// FAB: tambah manual + scan nota.
 library;
 
 import 'dart:async';
@@ -76,6 +78,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   TransactionSort _sort = TransactionSort.newest;
 
+  // ── Mode multi-pilih (hapus massal) ────────────────────────────────────────
+  /// Aktif setelah user menekan lama satu baris; selama aktif, tap baris
+  /// menandai/membatalkan tanda, bukan membuka editor.
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = {};
+  bool _bulkDeleting = false;
+
   /// Saat filter/sortir non-default aktif, seluruh transaksi dimuat sekaligus
   /// (bukan pagination) supaya penyaringan & pengurutan akurat lintas halaman.
   bool _allLoaded = false;
@@ -104,7 +113,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   /// Batas rentang tanggal sebagai instant UTC (lihat `dayStartIso`/`dayEndIso`).
-  String? get _dateFromIso => _dateFrom == null ? null : dayStartIso(_dateFrom!);
+  String? get _dateFromIso =>
+      _dateFrom == null ? null : dayStartIso(_dateFrom!);
   String? get _dateToIso => _dateTo == null ? null : dayEndIso(_dateTo!);
 
   void _onScroll() {
@@ -164,14 +174,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           final all = results[2] as List<TransactionModel>;
           _transactions
             ..clear()
-            ..addAll(sortTransactions(
-              filterTransactions(
-                all,
-                accountIds: _selectedAccountIds,
-                categoryIds: _selectedCategoryIds,
+            ..addAll(
+              sortTransactions(
+                filterTransactions(
+                  all,
+                  accountIds: _selectedAccountIds,
+                  categoryIds: _selectedCategoryIds,
+                ),
+                _sort,
               ),
-              _sort,
-            ));
+            );
           _nextCursor = null;
           _allLoaded = true;
         } else {
@@ -184,6 +196,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         }
         _loadedOnce = true;
         _loading = false;
+        // Buang pilihan yang barisnya sudah tidak ada di daftar (mis. dihapus di
+        // perangkat lain atau tersaring filter baru) agar hitungan tetap akurat.
+        if (_selectionMode) {
+          final visibleIds = _transactions.map((tx) => tx.id).toSet();
+          _selectedIds.removeWhere((id) => !visibleIds.contains(id));
+          if (_selectedIds.isEmpty) _selectionMode = false;
+        }
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -240,7 +259,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       dateTo: _dateTo,
     );
     if (result == null) return;
-    final unchanged = result.accountIds.length == _selectedAccountIds.length &&
+    final unchanged =
+        result.accountIds.length == _selectedAccountIds.length &&
         result.accountIds.containsAll(_selectedAccountIds) &&
         result.categoryIds.length == _selectedCategoryIds.length &&
         result.categoryIds.containsAll(_selectedCategoryIds) &&
@@ -328,7 +348,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       _searchQuery.isNotEmpty;
 
   String get _dateRangeLabel {
-    String fmt(DateTime d) => '${d.day.toString().padLeft(2, '0')}/'
+    String fmt(DateTime d) =>
+        '${d.day.toString().padLeft(2, '0')}/'
         '${d.month.toString().padLeft(2, '0')}/${d.year}';
     if (_dateFrom != null && _dateTo != null) {
       return '${fmt(_dateFrom!)} – ${fmt(_dateTo!)}';
@@ -401,16 +422,140 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     try {
       await _api.deleteTransaction(tx.id);
       if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Transaksi dihapus')));
+      _load();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  // ── Multi-pilih ────────────────────────────────────────────────────────────
+
+  /// Masuk mode pilih dengan baris yang ditekan lama langsung tercentang.
+  void _enterSelection(TransactionModel tx) {
+    setState(() {
+      _selectionMode = true;
+      _selectedIds
+        ..clear()
+        ..add(tx.id);
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  void _toggleSelected(TransactionModel tx) {
+    setState(() {
+      if (!_selectedIds.remove(tx.id)) _selectedIds.add(tx.id);
+      // Menghapus centang terakhir otomatis keluar mode pilih.
+      if (_selectedIds.isEmpty) _selectionMode = false;
+    });
+  }
+
+  /// "Pilih semua" berlaku untuk baris yang saat ini termuat di layar (bila
+  /// belum di-scroll habis, baris halaman berikutnya belum ikut terpilih).
+  bool get _allSelected =>
+      _transactions.isNotEmpty && _selectedIds.length == _transactions.length;
+
+  void _toggleSelectAll() {
+    setState(() {
+      if (_allSelected) {
+        _selectedIds.clear();
+      } else {
+        _selectedIds
+          ..clear()
+          ..addAll(_transactions.map((tx) => tx.id));
+      }
+    });
+  }
+
+  Future<void> _confirmBulkDelete() async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Hapus ${ids.length} transaksi?'),
+        content: const Text(
+          'Transaksi yang dipilih akan dihapus permanen beserta itemnya. '
+          'Tindakan ini tidak bisa dibatalkan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _bulkDeleting = true);
+    try {
+      final result = await _api.bulkDeleteTransactions(ids);
+      if (!mounted) return;
+      setState(() {
+        _bulkDeleting = false;
+        _selectionMode = false;
+        _selectedIds.clear();
+        // Buang baris yang sudah terhapus supaya layar langsung konsisten.
+        _transactions.removeWhere((tx) => ids.contains(tx.id));
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transaksi dihapus')),
+        SnackBar(content: Text('${result.deleted} transaksi dihapus')),
       );
       _load();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      setState(() => _bulkDeleting = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+
+  /// App bar mode pilih: batal, jumlah terpilih, pilih semua, hapus.
+  PreferredSizeWidget _buildSelectionAppBar() {
+    final count = _selectedIds.length;
+    return AppBar(
+      leading: IconButton(
+        tooltip: 'Batal pilih',
+        icon: const Icon(Icons.close),
+        onPressed: _bulkDeleting ? null : _exitSelection,
+      ),
+      title: Text('$count dipilih'),
+      actions: [
+        IconButton(
+          tooltip: _allSelected ? 'Batalkan pilih semua' : 'Pilih semua',
+          icon: Icon(_allSelected ? Icons.deselect : Icons.select_all),
+          onPressed: _bulkDeleting ? null : _toggleSelectAll,
+        ),
+        IconButton(
+          tooltip: 'Hapus transaksi terpilih',
+          icon: _bulkDeleting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.delete_outline),
+          onPressed: (_bulkDeleting || count == 0) ? null : _confirmBulkDelete,
+        ),
+      ],
+    );
   }
 
   /// Kelompokkan transaksi: "Hari Ini" / "Kemarin" / tanggal lengkap.
@@ -445,79 +590,78 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Widget build(BuildContext context) {
     final filterCount = _activeFilterCount;
     return Scaffold(
-      appBar: AppBar(
-        title: _searchActive
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  hintText: 'Cari merchant, keterangan, atau item…',
-                  border: InputBorder.none,
+      appBar: _selectionMode
+          ? _buildSelectionAppBar()
+          : AppBar(
+              title: _searchActive
+                  ? TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      decoration: const InputDecoration(
+                        hintText: 'Cari merchant, keterangan, atau item…',
+                        border: InputBorder.none,
+                      ),
+                      onChanged: _onSearchChanged,
+                      onSubmitted: (value) {
+                        _searchDebounce?.cancel();
+                        final q = value.trim();
+                        if (q != _searchQuery) {
+                          setState(() => _searchQuery = q);
+                          _load();
+                        }
+                      },
+                    )
+                  : const Text('Transaksi'),
+              actions: [
+                if (_searchActive)
+                  IconButton(
+                    tooltip: 'Tutup pencarian',
+                    onPressed: _toggleSearch,
+                    icon: const Icon(Icons.close),
+                  )
+                else
+                  IconButton(
+                    tooltip: 'Cari merchant, keterangan, atau item',
+                    onPressed: _toggleSearch,
+                    icon: const Icon(Icons.search),
+                  ),
+                IconButton(
+                  tooltip: 'Filter akun, kategori & tanggal',
+                  onPressed: _openFilter,
+                  icon: Badge(
+                    isLabelVisible: filterCount > 0,
+                    label: Text('$filterCount'),
+                    child: const Icon(Icons.filter_list),
+                  ),
                 ),
-                onChanged: _onSearchChanged,
-                onSubmitted: (value) {
-                  _searchDebounce?.cancel();
-                  final q = value.trim();
-                  if (q != _searchQuery) {
-                    setState(() => _searchQuery = q);
-                    _load();
-                  }
-                },
-              )
-            : const Text('Transaksi'),
-        actions: [
-          if (_searchActive)
-            IconButton(
-              tooltip: 'Tutup pencarian',
-              onPressed: _toggleSearch,
-              icon: const Icon(Icons.close),
-            )
-          else
-            IconButton(
-              tooltip: 'Cari merchant, keterangan, atau item',
-              onPressed: _toggleSearch,
-              icon: const Icon(Icons.search),
+                PopupMenuButton<TransactionSort>(
+                  tooltip: 'Urutkan',
+                  initialValue: _sort,
+                  onSelected: _changeSort,
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: TransactionSort.newest,
+                      child: Text('Tanggal terbaru'),
+                    ),
+                    PopupMenuItem(
+                      value: TransactionSort.oldest,
+                      child: Text('Tanggal terlama'),
+                    ),
+                    PopupMenuItem(
+                      value: TransactionSort.largest,
+                      child: Text('Nominal terbesar'),
+                    ),
+                    PopupMenuItem(
+                      value: TransactionSort.smallest,
+                      child: Text('Nominal terkecil'),
+                    ),
+                  ],
+                  icon: const Icon(Icons.sort),
+                ),
+              ],
             ),
-          IconButton(
-            tooltip: 'Filter akun, kategori & tanggal',
-            onPressed: _openFilter,
-            icon: Badge(
-              isLabelVisible: filterCount > 0,
-              label: Text('$filterCount'),
-              child: const Icon(Icons.filter_list),
-            ),
-          ),
-          PopupMenuButton<TransactionSort>(
-            tooltip: 'Urutkan',
-            initialValue: _sort,
-            onSelected: _changeSort,
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: TransactionSort.newest,
-                child: Text('Tanggal terbaru'),
-              ),
-              PopupMenuItem(
-                value: TransactionSort.oldest,
-                child: Text('Tanggal terlama'),
-              ),
-              PopupMenuItem(
-                value: TransactionSort.largest,
-                child: Text('Nominal terbesar'),
-              ),
-              PopupMenuItem(
-                value: TransactionSort.smallest,
-                child: Text('Nominal terkecil'),
-              ),
-            ],
-            icon: const Icon(Icons.sort),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: _buildBody(context),
-      ),
+      body: RefreshIndicator(onRefresh: _refresh, child: _buildBody(context)),
     );
   }
 
@@ -618,10 +762,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     child: Text(
                       label,
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   Card(
@@ -641,7 +784,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               height: 1,
                               indent: 16,
                               endIndent: 16,
-                              color: Theme.of(context).colorScheme.outlineVariant,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant,
                             ),
                           _TransactionTile(
                             tx: items[j],
@@ -650,7 +795,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 : _categoryNames[items[j].categoryId] ?? '—',
                             accountLabel:
                                 _accountLabels[items[j].accountId] ?? '',
-                            onTap: () => _edit(items[j]),
+                            selectionMode: _selectionMode,
+                            selected: _selectedIds.contains(items[j].id),
+                            onTap: () => _selectionMode
+                                ? _toggleSelected(items[j])
+                                : _edit(items[j]),
+                            onLongPress: () => _selectionMode
+                                ? _toggleSelected(items[j])
+                                : _enterSelection(items[j]),
                             onDelete: () => _confirmDelete(items[j]),
                           ),
                         ],
@@ -674,8 +826,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         if (_accountLabels[id] != null)
           InputChip(
             label: Text(_accountLabels[id]!),
-            avatar: Icon(Icons.account_balance_wallet_outlined,
-                size: 16, color: scheme.onSurfaceVariant),
+            avatar: Icon(
+              Icons.account_balance_wallet_outlined,
+              size: 16,
+              color: scheme.onSurfaceVariant,
+            ),
             onDeleted: () {
               setState(() => _selectedAccountIds.remove(id));
               _load();
@@ -685,8 +840,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         if (_categoryLabels[id] != null)
           InputChip(
             label: Text(_categoryLabels[id]!),
-            avatar:
-                Icon(Icons.category_outlined, size: 16, color: scheme.onSurfaceVariant),
+            avatar: Icon(
+              Icons.category_outlined,
+              size: 16,
+              color: scheme.onSurfaceVariant,
+            ),
             onDeleted: () {
               setState(() => _selectedCategoryIds.remove(id));
               _load();
@@ -701,8 +859,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       if (_dateFrom != null || _dateTo != null)
         InputChip(
           label: Text(_dateRangeLabel),
-          avatar: Icon(Icons.date_range_outlined,
-              size: 16, color: scheme.onSurfaceVariant),
+          avatar: Icon(
+            Icons.date_range_outlined,
+            size: 16,
+            color: scheme.onSurfaceVariant,
+          ),
           onDeleted: () {
             setState(() {
               _dateFrom = null;
@@ -753,14 +914,22 @@ class _TransactionTile extends StatelessWidget {
     required this.categoryName,
     required this.accountLabel,
     required this.onTap,
+    required this.onLongPress,
     required this.onDelete,
+    this.selectionMode = false,
+    this.selected = false,
   });
 
   final TransactionModel tx;
   final String categoryName;
   final String accountLabel;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
   final VoidCallback onDelete;
+
+  /// Mode multi-pilih aktif → tampilkan checkbox, bukan ikon arah.
+  final bool selectionMode;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -769,8 +938,8 @@ class _TransactionTile extends StatelessWidget {
     final color = isTransfer
         ? Theme.of(context).colorScheme.primary
         : isIncome
-            ? AppColors.income(context)
-            : AppColors.expense(context);
+        ? AppColors.income(context)
+        : AppColors.expense(context);
     final title = tx.merchant?.isNotEmpty == true
         ? tx.merchant!
         : (isTransfer ? 'Transfer' : categoryName);
@@ -785,24 +954,38 @@ class _TransactionTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(12),
-      child: Padding(
+      child: Container(
+        // Latar lembut menandai baris yang ikut terpilih (mudah dipindai mata).
+        color: selected
+            ? Theme.of(context).colorScheme.secondaryContainer
+                  .withValues(alpha: 0.45)
+            : null,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: color.withValues(alpha: 0.15),
-              child: Icon(
-                isTransfer
-                    ? Icons.swap_horiz
-                    : isIncome
-                        ? Icons.arrow_upward
-                        : Icons.arrow_downward,
-                size: 18,
-                color: color,
+            if (selectionMode)
+              Checkbox(
+                value: selected,
+                onChanged: (_) => onTap(),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              )
+            else
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: color.withValues(alpha: 0.15),
+                child: Icon(
+                  isTransfer
+                      ? Icons.swap_horiz
+                      : isIncome
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                  size: 18,
+                  color: color,
+                ),
               ),
-            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -810,9 +993,7 @@ class _TransactionTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
+                    style: Theme.of(context).textTheme.bodyMedium
                         ?.copyWith(fontWeight: FontWeight.w600),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -821,9 +1002,8 @@ class _TransactionTile extends StatelessWidget {
                     Text(
                       subtitle,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -836,35 +1016,39 @@ class _TransactionTile extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '${isTransfer ? '' : isIncome ? '+' : '-'}${formatRupiah(tx.totalAmount)}',
+                  '${isTransfer
+                      ? ''
+                      : isIncome
+                      ? '+'
+                      : '-'}${formatRupiah(tx.totalAmount)}',
                   style: TextStyle(fontWeight: FontWeight.w700, color: color),
                 ),
                 if (tx.originalCurrency != 'IDR')
                   Text(
                     tx.originalCurrency,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
               ],
             ),
             const SizedBox(width: 4),
-            PopupMenuButton<String>(
-              onSelected: (v) {
-                if (v == 'delete') onDelete();
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_outline),
-                    title: Text('Hapus'),
+            if (!selectionMode)
+              PopupMenuButton<String>(
+                onSelected: (v) {
+                  if (v == 'delete') onDelete();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('Hapus'),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
       ),

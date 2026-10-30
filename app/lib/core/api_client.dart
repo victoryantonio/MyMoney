@@ -244,6 +244,29 @@ class ApiClient {
     }
   }
 
+  /// POST /api/transactions/bulk-delete — hapus banyak transaksi sekaligus.
+  ///
+  /// Mengembalikan jumlah baris yang benar-benar terhapus. Id yang tidak
+  /// ditemukan / bukan milik user diabaikan server (dilaporkan di `missing`),
+  /// jadi pemanggil cukup me-reload daftar setelahnya.
+  Future<BulkDeleteResult> bulkDeleteTransactions(List<String> ids) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/api/transactions/bulk-delete',
+        data: {'ids': ids},
+      );
+      final data = res.data ?? const <String, dynamic>{};
+      return BulkDeleteResult(
+        deleted: (data['deleted'] as num?)?.toInt() ?? 0,
+        missing: (data['missing'] as List<dynamic>? ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+      );
+    } on DioException catch (e) {
+      throw ApiException(_dioMessage(e));
+    }
+  }
+
   /// GET /api/accounts → daftar akun user.
   Future<List<AccountModel>> fetchAccounts({bool includeInactive = false}) async {
     final query = <String, dynamic>{};

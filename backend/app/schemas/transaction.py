@@ -138,3 +138,26 @@ class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]
     next_cursor: str | None
     total_count: int
+
+
+# ── Hapus massal ────────────────────────────────────────────────────────────
+
+
+class TransactionBulkDeleteRequest(BaseModel):
+    """
+    Daftar id transaksi yang dicentang user di UI (multi-pilih).
+
+    Dibatasi 200 baris per request supaya satu klik tidak bisa mengunci
+    tabel terlalu lama; id yang bukan milik user diabaikan oleh endpoint.
+    """
+
+    ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+
+
+class TransactionBulkDeleteResponse(BaseModel):
+    """Ringkasan hasil hapus massal."""
+
+    deleted: int
+    # Id yang tidak ditemukan / bukan milik user (mis. sudah dihapus di
+    # perangkat lain) — klien bisa membuangnya dari pilihan tanpa error.
+    missing: list[uuid.UUID] = []

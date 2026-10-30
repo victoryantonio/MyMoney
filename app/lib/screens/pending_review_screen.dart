@@ -168,7 +168,7 @@ class _PendingReviewScreenState extends State<PendingReviewScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Konfirmasi semua baris?'),
         content: Text(
-          '$count baris akan disimpan sebagai transaksi nyata. '
+          '$count baris akan disimpan sebagai transaksi di sistem. '
           'Tindakan ini tidak bisa dibatalkan.',
         ),
         actions: [

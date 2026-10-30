@@ -4,10 +4,11 @@
 | --- | --- |
 | Produk | MyMoney (aplikasi mobile Flutter + backend REST; tanpa bot Telegram) |
 | Fitur | Matching Mutasi Rekening, Filter Total Balance Dashboard |
-| Versi dokumen | 1.3 |
+| Versi dokumen | 1.4 |
 | Tanggal | 2026-11-02 |
 | Status | Disetujui untuk implementasi |
 | Dokumen terkait | `md/TRD.md`, `backend/README.md`, `README.md` |
+| Perubahan 1.4 | Hapus massal di tab Transaksi: mode multi-pilih + **Pilih semua** (FR-11) |
 | Perubahan 1.3 | Filter berbasis **bulan mutasi** (bukan jendela tanggal) + transaksi tercatat pada **tanggal & jam asli mutasi**, bukan waktu konfirmasi (FR-10) |
 | Perubahan 1.2 | Jalan keluar layar Matching Mutasi (tombol Matching + `PendingReviewScreen`) dan kebersihan tabel `pending_transactions` (FR-8, FR-9) |
 | Perubahan 1.1 | Bank ketiga (Permata) yang hanya menandai arah dana lewat **warna teks**; penghapusan fitur bot Telegram |
@@ -317,6 +318,32 @@ Kriteria penerimaan:
 - [x] Jalur pending lama (tanpa tanggal asli) berperilaku seperti sebelumnya: memakai waktu
       konfirmasi.
 
+### FR-11 — Hapus massal transaksi salah dari tab Transaksi
+
+Alasan: setelah Matching Mutasi dipakai, user bisa punya banyak baris yang **salah** (mis.
+tercatat di tanggal konfirmasi pada versi 1.4.1) dan harus menghapusnya satu per satu lewat
+menu titik-tiga. Itu lambat dan rawan salah pencet.
+
+Kriteria penerimaan:
+
+- [ ] Di tab **Transaksi**, tekan lama satu baris → masuk **mode pilih**: setiap baris
+      menampilkan checkbox, tap baris menandai/membatalkan tanda (tidak membuka editor).
+- [ ] App bar mode pilih menampilkan jumlah terpilih (`n dipilih`) + tiga aksi: **batal**,
+      **Pilih semua** / **Batalkan pilih semua**, dan **hapus**.
+- [ ] **Pilih semua** mencentang seluruh baris yang sedang termuat (mengikuti filter/pencarian
+      aktif); tombol berubah menjadi "Batalkan pilih semua" saat semuanya tercentang.
+- [ ] Tombol hapus nonaktif selama tidak ada baris tercentang dan selama proses berjalan
+      (indikator progres kecil di tombol).
+- [ ] Menekan hapus memunculkan konfirmasi berisi jumlah baris; setelah disetujui, semua baris
+      terpilih dihapus dalam **satu** permintaan dan satu commit di server.
+- [ ] Baris yang sudah tidak ada di server (dihapus di perangkat lain) tidak menggagalkan
+      proses — dilaporkan sebagai `missing` dan diabaikan.
+- [ ] Setelah selesai: mode pilih keluar, daftar dimuat ulang, dan snackbar menampilkan jumlah
+      baris yang terhapus.
+- [ ] Setiap baris tetap meninggalkan **audit log** `delete` (action yang sama dengan hapus
+      tunggal) dengan penanda `bulk`.
+- [ ] Hapus tunggal (menu titik-tiga) tetap tersedia dan tidak berubah perilakunya.
+
 ---
 
 ## 6. Kebutuhan Non-Fungsional
@@ -354,6 +381,11 @@ Kriteria penerimaan:
 11. **Tanggal transaksi = tanggal kejadian, bukan tanggal input.** Konfirmasi pending hasil
     mutasi wajib memakai tanggal & jam dari mutasi. Jam yang tidak tercetak = `00:00` waktu
     lokal (dilarang menebak jam).
+12. **Hapus massal = satu commit.** Menghapus banyak transaksi dilakukan dalam satu permintaan
+    dan satu commit agar tidak ada kondisi setengah terhapus; setiap baris tetap mendapat
+    audit `delete` sendiri.
+13. **Pilih semua hanya berlaku untuk baris yang termuat.** Aksi massal tidak boleh
+    menyentuh transaksi di luar filter/pencarian yang sedang aktif.
 
 ---
 
@@ -369,6 +401,10 @@ Kriteria penerimaan:
 | Transaksi tercatat 23:30 WIB di hari terakhir bulan | Tetap dianggap bagian bulan tersebut (batas dihitung di zona user, bukan UTC) |
 | Deskripsi terpotong bank (`KUDUS &quot;BU`) | Disimpan apa adanya setelah entitas didekode |
 | Dua transaksi kembar nominal & tanggal sama | Keduanya dicocokkan satu-satu (tidak boleh satu transaksi dipakai dua kali) |
+| Pilih semua saat baru sebagian halaman termuat (pagination) | Hanya baris yang sudah termuat yang ikut terpilih — user diberi tahu lewat jumlah di app bar |
+| Sebagian id yang dikirim sudah tidak ada di server | Permintaan tetap sukses; `deleted` berisi jumlah yang benar-benar terhapus, id sisanya masuk `missing` |
+| Menghapus 200 transaksi sekaligus | Diterima (batas maksimal 200 id per permintaan); lebih dari itu ditolak 422 |
+| Koneksi putus saat hapus massal | Baris di perangkat tidak dihapus dari daftar sebelum server menjawab sukses; snackbar merah muncul |
 | PDF berpassword | Gagal dengan pesan "tidak terbaca", bukan 500 |
 | Berkas kosong / 0 byte | Ditolak sebagai tidak terbaca |
 | Statement hanya berwarna (tanpa kolom arah) | Arah diambil dari warna: merah → debit, hijau → kredit |
@@ -423,6 +459,7 @@ Kriteria penerimaan:
 
 | Versi | Tanggal | Perubahan |
 | --- | --- | --- |
+| 1.4 | 2026-11-02 | Hapus massal transaksi: mode multi-pilih, tombol **Pilih semua**, satu commit di server, audit per baris (FR-11) |
 | 1.3 | 2026-11-02 | Akurasi waktu: bulan berkas mutasi dideteksi otomatis dan menjadi dasar filter transaksi (FR-10a); transaksi hasil konfirmasi memakai tanggal & jam asli mutasi (FR-10b) |
 | 1.2 | 2026-11-01 | Jalan keluar dari layar Matching Mutasi: tombol **Matching** di bawah layar hasil + layar `PendingReviewScreen` (FR-8), serta kebersihan tabel `pending_transactions` — pending kedaluwarsa & pending tak terkonfirmasi dihapus otomatis (FR-9) |
 | 1.1 | 2026-10-30 | Dukungan bank berwarna (Permata: merah = keluar, hijau = masuk) + penghapusan bot Telegram dari lingkup produk |

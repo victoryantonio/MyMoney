@@ -272,3 +272,15 @@ class TransactionListResult {
         totalCount: json['total_count'] as int? ?? 0,
       );
 }
+
+/// Hasil POST /api/transactions/bulk-delete.
+class BulkDeleteResult {
+  const BulkDeleteResult({required this.deleted, this.missing = const []});
+
+  /// Jumlah baris yang benar-benar terhapus.
+  final int deleted;
+
+  /// Id yang tidak ditemukan / bukan milik user (mis. sudah dihapus di
+  /// perangkat lain) — bukan kegagalan, cukup dibuang dari pilihan.
+  final List<String> missing;
+}
