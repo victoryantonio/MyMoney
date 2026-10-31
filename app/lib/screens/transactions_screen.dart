@@ -980,8 +980,8 @@ class _TransactionTile extends StatelessWidget {
                   isTransfer
                       ? Icons.swap_horiz
                       : isIncome
-                      ? Icons.arrow_upward
-                      : Icons.arrow_downward,
+                      ? Icons.arrow_downward
+                      : Icons.arrow_upward,
                   size: 18,
                   color: color,
                 ),

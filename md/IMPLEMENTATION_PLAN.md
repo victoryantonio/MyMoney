@@ -349,3 +349,14 @@ Rekam historis implementasi v1 (Kotlin + FastAPI + Postgres self-hosted + bot Py
   `dependency_overrides` sehingga tidak butuh kredensial Supabase) → suite backend
   **247 passed, 86 skipped**; `flutter analyze` bersih; `flutter test` 58 passed.
 - **Rilis**: `1.4.2+10` → `1.5.0+11`.
+
+### 2026-10-31 — `core/balance.dart` digabung ke `dashboard_screen.dart`
+
+- File `app/lib/core/balance.dart` dihapus; `totalBalanceFor(...)` dipindah menjadi fungsi
+  top-level di `app/lib/screens/dashboard_screen.dart` karena hanya dipakai layar itu.
+- `balanceScopeLabel(...)` dihapus dan `_BalanceCard` tidak lagi menampilkan baris keterangan
+  cakupan saldo — dropdown filter akun sudah menunjukkan `'Semua akun (n)'` /
+  `'n akun terpilih'` / `'Tidak ada akun dipilih'`.
+- Unit test pindah ke `app/test/dashboard_total_balance_test.dart` (5 test);
+  `test/balance_test.dart` dihapus bersama grup `balanceScopeLabel`.
+- `flutter analyze` bersih, `flutter test` **54 passed**.

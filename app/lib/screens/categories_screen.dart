@@ -309,8 +309,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 ListTile(
                   leading: Icon(
                     cats[i].type == 'income'
-                        ? Icons.arrow_upward
-                        : Icons.arrow_downward,
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
                     color: color,
                   ),
                   title: Text(cats[i].name),

@@ -867,3 +867,19 @@ Selain itu `find_matches()` membangun kandidat dari `min/max` tanggal mutasi ±
       waktu konfirmasi.
 - [x] `ruff`, `black`, `flutter analyze`, `flutter test` bersih; suite backend **247 passed,
       86 skipped**.
+
+---
+
+## Revisi 2026-10-31 — `core/balance.dart` digabung ke dashboard
+
+Bagian 6.2 di atas **tidak berlaku lagi** (dibiarkan sebagai catatan historis):
+
+- `app/lib/core/balance.dart` **dihapus**. Isinya hanya dipakai `dashboard_screen.dart`, jadi
+  `totalBalanceFor(...)` sekarang menjadi fungsi top-level di
+  `app/lib/screens/dashboard_screen.dart` (5 unit test di
+  `app/test/dashboard_total_balance_test.dart`).
+- **`balanceScopeLabel(...)` dihapus** — kartu "Total Balance" kini hanya menampilkan nominal.
+  Keterangan cakupan akun tidak perlu duplikat karena dropdown filter di atasnya sudah menulis
+  `'Semua akun (n)'`, `'n akun terpilih'`, atau `'Tidak ada akun dipilih'`.
+- `_BalanceCard` kehilangan parameter `subtitle`; `_balanceSubtitle` di state dashboard dihapus.
+- `flutter analyze` bersih, `flutter test` **54 passed**.

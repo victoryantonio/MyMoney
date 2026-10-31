@@ -164,9 +164,6 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                         'transfer' => Theme.of(context).colorScheme.primary,
                         _ => AppColors.expense(context),
                       };
-                      final categoryLabel = tx.type == 'transfer'
-                          ? 'Transfer'
-                          : widget.categoryNames[tx.categoryId] ?? '—';
                       return Card(
                         margin: EdgeInsets.zero,
                         elevation: 0,
@@ -176,10 +173,10 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                             backgroundColor: color.withValues(alpha: 0.14),
                             child: Icon(
                               tx.type == 'income'
-                                  ? Icons.arrow_upward
+                                  ? Icons.arrow_downward
                                   : tx.type == 'transfer'
                                       ? Icons.swap_horiz
-                                      : Icons.arrow_downward,
+                                      : Icons.arrow_upward,
                               color: color,
                             ),
                           ),
@@ -194,8 +191,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                           ),
                           subtitle: Text(
                             '${formatDateDetail(tx.localDateTime)} · '
-                            '${widget.accountLabels[tx.accountId] ?? 'Akun'} · '
-                            '$categoryLabel',
+                            '${widget.accountLabels[tx.accountId] ?? 'Akun'}',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),

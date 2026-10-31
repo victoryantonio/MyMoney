@@ -3,12 +3,15 @@
 // Regresi yang dikunci: saat filter akun diganti di dashboard, angka pada kartu
 // "Total Balance" DULU tetap menjumlah seluruh akun (tidak mengikuti filter).
 // Test ini memompa DashboardScreen sungguhan tanpa jaringan (Dio memakai
-// adapter palsu), menekan item pada dropdown filter, lalu memeriksa nominal +
-// subtitle kartu:
+// adapter palsu), menekan item pada dropdown filter, lalu memeriksa nominal
+// kartu:
 //
-//   "Semua akun"   → Rp1.300.000, tanpa subtitle
-//   1 akun dipilih → Rp1.000.000, subtitle "SeaBank · Bank"
-//   0 akun dipilih → Rp0,        subtitle "Tidak ada akun dipilih"
+//   "Semua akun"   → Rp1.300.000
+//   1 akun dipilih → Rp1.000.000
+//   0 akun dipilih → Rp0
+//
+// Kartu saldo hanya menampilkan nominal (tanpa baris keterangan cakupan);
+// keterangan akun terpilih cukup ditampilkan oleh dropdown filternya.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -140,7 +143,8 @@ void main() {
     (tester) async {
       await pumpDashboard(tester);
 
-      // Kondisi awal: semua akun → jumlah seluruh saldo, tanpa subtitle.
+      // Kondisi awal: semua akun → jumlah seluruh saldo, tanpa keterangan
+      // cakupan di kartu.
       expect(find.text('Semua akun (2)'), findsOneWidget);
       expect(find.text('Rp1.300.000'), findsOneWidget);
       expect(find.text('1 akun terpilih'), findsNothing);
@@ -159,12 +163,9 @@ void main() {
         reason: 'kartu harus hanya menjumlah akun terpilih',
       );
       expect(find.text('Rp1.300.000'), findsNothing);
-      expect(
-        find.text('SeaBank · Bank'),
-        findsOneWidget,
-        reason: 'subtitle menjelaskan cakupan saldo',
-      );
+      // Keterangan cakupan hanya muncul di dropdown filter, bukan di kartu.
       expect(find.text('1 akun terpilih'), findsOneWidget);
+      expect(find.text('SeaBank · Bank'), findsNothing);
     },
   );
 

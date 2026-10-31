@@ -15,7 +15,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api_client.dart';
 import '../core/app_colors.dart';
-import '../core/balance.dart';
 import '../core/format.dart';
 import '../models/report_models.dart';
 import '../models/transaction_models.dart';
@@ -287,10 +286,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   /// kartu Income/Expense/Trend yang sudah mengikuti filter.
   double get _totalBalance => totalBalanceFor(_accounts, _activeAccountFilter);
 
-  /// Keterangan cakupan kartu saldo (null saat semua akun ditampilkan).
-  String? get _balanceSubtitle =>
-      balanceScopeLabel(_accounts, _activeAccountFilter);
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -374,7 +369,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         const SizedBox(height: 12),
         _BalanceCard(
           totalBalance: _totalBalance,
-          subtitle: _balanceSubtitle,
           amountsHidden: _amountsHidden,
           onToggleHidden: () =>
               setState(() => _amountsHidden = !_amountsHidden),
@@ -980,7 +974,7 @@ class _SummaryCards extends StatelessWidget {
             label: 'Income',
             value: formatRupiah(income),
             color: AppColors.income(context),
-            icon: Icons.arrow_upward,
+            icon: Icons.arrow_downward,
             hidden: amountsHidden,
             onTap: onIncomeTap,
           ),
@@ -991,7 +985,7 @@ class _SummaryCards extends StatelessWidget {
             label: 'Expense',
             value: formatRupiah(expense),
             color: AppColors.expense(context),
-            icon: Icons.arrow_downward,
+            icon: Icons.arrow_upward,
             hidden: amountsHidden,
             onTap: onExpenseTap,
           ),
@@ -1084,21 +1078,40 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-/// Total saldo semua akun (DESIGN.md §8.1) + toggle privasi (ikon mata).
+/// Total saldo akun yang sedang difilter (dipakai kartu "Total Balance").
+///
+/// - `selectedAccountIds == null` → semua akun (tanpa filter).
+/// - Himpunan kosong → 0 (user meng-unselect semua akun).
+/// - Selain itu → hanya akun yang id-nya ada di himpunan tersebut.
+///
+/// Dulu fungsi ini berada di `core/balance.dart`; file itu digabung ke sini
+/// karena hanya dipakai layar ini, dan keterangan cakupan saldo ("2 akun
+/// terpilih") tidak lagi ditampilkan di kartu — dropdown filter sudah
+/// menunjukkannya.
+double totalBalanceFor(
+  Iterable<AccountModel> accounts,
+  Set<String>? selectedAccountIds,
+) {
+  if (selectedAccountIds == null) {
+    return accounts.fold(0, (sum, account) => sum + account.currentBalance);
+  }
+  return accounts
+      .where((account) => selectedAccountIds.contains(account.id))
+      .fold(0, (sum, account) => sum + account.currentBalance);
+}
+
+/// Kartu "Total Balance" semua/akun terpilih (DESIGN.md §8.1) + toggle privasi
+/// (ikon mata).
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({
     required this.totalBalance,
     required this.amountsHidden,
     required this.onToggleHidden,
-    this.subtitle,
   });
 
   final double totalBalance;
   final bool amountsHidden;
   final VoidCallback onToggleHidden;
-
-  /// Cakupan saldo (mis. nama akun atau "2 akun terpilih"); null = semua akun.
-  final String? subtitle;
 
   static const _masked = 'Rp ••••••';
 
@@ -1143,18 +1156,6 @@ class _BalanceCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.visible,
             ),
-            if (subtitle != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  subtitle!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-              ),
           ],
         ),
       ),
@@ -1783,8 +1784,8 @@ class _RecentTransactionRow extends StatelessWidget {
                 isTransfer
                     ? Icons.swap_horiz
                     : isIncome
-                        ? Icons.arrow_upward
-                        : Icons.arrow_downward,
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
                 size: 16,
                 color: color,
               ),
@@ -1795,7 +1796,7 @@ class _RecentTransactionRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    categoryName,
+                    subtitle,
                     style: Theme.of(context)
                         .textTheme
                         .bodyMedium
@@ -1804,7 +1805,7 @@ class _RecentTransactionRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    subtitle,
+                    categoryName,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),

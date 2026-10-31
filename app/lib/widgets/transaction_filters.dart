@@ -165,8 +165,8 @@ IconData accountTypeIcon(String type) => switch (type) {
     };
 
 IconData categoryTypeIcon(String type) => switch (type) {
-      'expense' => Icons.arrow_downward,
-      'income' => Icons.arrow_upward,
+      'expense' => Icons.arrow_upward,
+      'income' => Icons.arrow_downward,
       _ => Icons.category_outlined,
     };
 

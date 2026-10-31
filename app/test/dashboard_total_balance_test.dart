@@ -2,11 +2,14 @@
 //
 // Regresi: kartu "Total Balance" dulu selalu menjumlah SEMUA akun, sehingga
 // angkanya tidak berubah saat filter akun diganti.
+//
+// `totalBalanceFor` dulu tinggal di `core/balance.dart`; sekarang menyatu di
+// `screens/dashboard_screen.dart` karena hanya dipakai di sana.
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:mymoney_app/core/balance.dart';
 import 'package:mymoney_app/models/transaction_models.dart';
+import 'package:mymoney_app/screens/dashboard_screen.dart';
 
 AccountModel _account(String id, String name, double balance,
         {String type = 'bank'}) =>
@@ -47,25 +50,6 @@ void main() {
 
     test('daftar akun kosong menghasilkan 0', () {
       expect(totalBalanceFor(const <AccountModel>[], null), 0);
-    });
-  });
-
-  group('balanceScopeLabel', () {
-    test('null saat semua akun ditampilkan', () {
-      expect(balanceScopeLabel(_accounts, null), isNull);
-    });
-
-    test('menyebut nama akun saat hanya satu yang dipilih', () {
-      expect(balanceScopeLabel(_accounts, {'a1'}), 'SeaBank · Bank');
-      expect(balanceScopeLabel(_accounts, {'a3'}), 'Dompet');
-    });
-
-    test('menyebut jumlah saat lebih dari satu akun dipilih', () {
-      expect(balanceScopeLabel(_accounts, {'a1', 'a2'}), '2 akun terpilih');
-    });
-
-    test('menyatakan tidak ada akun dipilih', () {
-      expect(balanceScopeLabel(_accounts, <String>{}), 'Tidak ada akun dipilih');
     });
   });
 }

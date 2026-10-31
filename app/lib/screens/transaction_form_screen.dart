@@ -519,12 +519,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                   ButtonSegment(
                     value: 'expense',
                     label: Text('Expense'),
-                    icon: Icon(Icons.arrow_downward),
+                    icon: Icon(Icons.arrow_upward),
                   ),
                   ButtonSegment(
                     value: 'income',
                     label: Text('Income'),
-                    icon: Icon(Icons.arrow_upward),
+                    icon: Icon(Icons.arrow_downward),
                   ),
                   ButtonSegment(
                     value: 'transfer',
