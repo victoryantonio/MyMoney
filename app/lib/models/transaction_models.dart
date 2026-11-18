@@ -116,6 +116,11 @@ class ReceiptItemModel {
 }
 
 /// Hasil parse foto nota (POST /api/receipts/ocr).
+///
+/// Selain isi nota, server juga mengirim hasil penilaian aturan di
+/// `app/core/parse_score.py` (`confidence`, `confidence_score`,
+/// `needs_confirm`). Nilai itu dipakai layar Scan Nota untuk memperingatkan
+/// user bila pembacaan nota belum lengkap.
 class ParsedReceipt {
   const ParsedReceipt({
     required this.type,
@@ -124,6 +129,9 @@ class ParsedReceipt {
     this.date,
     this.category,
     this.account,
+    this.confidence,
+    this.confidenceScore = 0,
+    this.needsConfirm = true,
   });
 
   final String type; // 'income' | 'expense'
@@ -133,7 +141,24 @@ class ParsedReceipt {
   final String? account;
   final List<ReceiptItemModel> items;
 
+  /// Band kualitas hasil parse dari server: 'high' | 'medium' | 'low'.
+  final String? confidence;
+
+  /// Skor 0..1 pendamping [confidence].
+  final double confidenceScore;
+
+  /// True bila band bukan 'high' → hasil wajib diperiksa user dulu.
+  final bool needsConfirm;
+
   double get total => items.fold(0, (sum, i) => sum + i.lineTotal);
+
+  /// Label pendek untuk ditampilkan di UI.
+  String get confidenceLabel => switch (confidence) {
+        'high' => 'Lengkap',
+        'medium' => 'Sebagian terbaca',
+        'low' => 'Banyak yang tidak terbaca',
+        _ => 'Tidak diketahui',
+      };
 
   factory ParsedReceipt.fromJson(Map<String, dynamic> json) => ParsedReceipt(
         type: json['type'] as String,
@@ -144,6 +169,9 @@ class ParsedReceipt {
         items: (json['items'] as List<dynamic>? ?? const [])
             .map((e) => ReceiptItemModel.fromJson(e as Map<String, dynamic>))
             .toList(),
+        confidence: json['confidence'] as String?,
+        confidenceScore: _toDouble(json['confidence_score'] ?? 0),
+        needsConfirm: json['needs_confirm'] as bool? ?? true,
       );
 }
 

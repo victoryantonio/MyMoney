@@ -93,3 +93,31 @@ def test_ocr_success_returns_parsed_receipt(auth):
         assert data["items"][0]["name"] == "Ice Cream Tofee (M)"
         # Decimal qty/price dikirim sebagai angka (jsonable_encoder).
         assert float(data["items"][0]["price"]) == 21000.0
+        # Skor kualitas dihitung di server (app/core/parse_score.py), bukan
+        # hardcode dan bukan keputusan LLM. Tanggal nota tidak ada → -0.08.
+        assert data["confidence"] == "medium"
+        assert float(data["confidence_score"]) == 0.67
+        assert "merchant_present" in data["confidence_reasons"]
+        assert "receipt_date_missing" in data["confidence_reasons"]
+        assert data["needs_confirm"] is True
+
+
+def test_ocr_complete_receipt_gets_high_confidence(auth):
+    """Nota lengkap (merchant, kategori, item, tanggal) → band high."""
+    parsed = ParsedReceipt(
+        type="expense",
+        merchant="Mixue",
+        date="2026-08-25",
+        category="Food",
+        items=[ReceiptItem(name="Ice Cream Tofee (M)", qty=2, price=21000)],
+    )
+    with patch("app.api.receipts.parse_receipt_image", new_callable=AsyncMock) as mock_parse:
+        mock_parse.return_value = parsed
+
+        resp = _upload(auth("ocr_high"))
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["confidence"] == "high"
+    assert float(data["confidence_score"]) == 0.75
+    assert data["needs_confirm"] is False

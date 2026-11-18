@@ -47,6 +47,7 @@ from app.core.mutation_matcher import (
     parse_mutation_text,
     resolve_upload_account,
 )
+from app.core.parse_score import score_mutation_parse
 from app.core.pending_service import (
     create_pending_transaction,
     purge_expired_pendings,
@@ -297,6 +298,17 @@ def _create_pendings(
         local_dt = mutation_local_datetime(mutation, tz)
         transaction_date = local_dt.astimezone(UTC) if local_dt else None
 
+        # Skor kelengkapan hasil ekstraksi dihitung di kode (bukan oleh LLM) dan
+        # disimpan sebagai `confidence` pada pending. Band ini ikut terbawa ke
+        # transaksi saat user mengonfirmasi, jadi baris yang tanggalnya hilang
+        # tidak pernah tercatat seolah-olah datanya lengkap.
+        score = score_mutation_parse(
+            description=mutation.description,
+            date=mutation.date,
+            time=mutation.time,
+            category_was_fallback=True,
+        )
+
         pending = create_pending_transaction(
             db,
             user_id=current_user.id,
@@ -307,11 +319,19 @@ def _create_pendings(
             note=note,
             merchant=mutation.description[:150],
             account_id=account_id,
-            confidence="medium",
+            confidence=score.band,
             raw_input=f"Matching Mutasi — {source_label}",
             transaction_date=transaction_date,
             timezone=tz.key,
             expires_minutes=60 * 24,  # 1 hari: user perlu waktu memeriksa
+        )
+        log.info(
+            "mutation_pending_scored",
+            user_id=str(current_user.id),
+            pending_id=str(pending.id),
+            confidence=score.band,
+            confidence_score=str(score.score),
+            confidence_reasons=score.reasons,
         )
         created.append(pending.id)
     return created

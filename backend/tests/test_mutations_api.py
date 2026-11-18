@@ -256,6 +256,15 @@ def test_unrecorded_mutation_creates_pending_not_transaction(auth):
     rows = payload["items"] if isinstance(payload, dict) else payload
     assert all(row["total_amount"] != "987654.00" for row in rows)
 
+    # Band confidence dihitung di kode (app/core/parse_score.py): deskripsi dan
+    # tanggal ada, jam tidak, kategori hanya fallback → 0.50 → medium.
+    pendings = client.get("/api/pending", headers=headers)
+    assert pendings.status_code == 200
+    row = next(
+        item for item in pendings.json()["items"] if item["id"] == data["created_pending_ids"][0]
+    )
+    assert row["confidence"] == "medium"
+
 
 def test_period_limits_matching_to_statement_month(auth):
     """

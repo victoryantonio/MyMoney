@@ -343,6 +343,17 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     try {
       final parsed = await widget.api.parseReceipt(bytes, _imageName);
       if (!mounted) return;
+
+      // Hasil di bawah band 'high' berarti ada bagian nota yang tidak terbaca
+      // (tanggal, merchant, atau daftar item). Peringatkan user SEBELUM form
+      // terbuka agar tidak tersimpan sebagai transaksi yang salah.
+      if (parsed.needsConfirm && !await _confirmLowConfidence(parsed)) {
+        if (!mounted) return;
+        setState(() => _processing = false);
+        return;
+      }
+      if (!mounted) return;
+
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(
           builder: (_) => TransactionFormScreen(
@@ -361,6 +372,33 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
         _error = e.message;
       });
     }
+  }
+
+  /// Dialog peringatan untuk hasil OCR yang belum lengkap.
+  /// Mengembalikan true bila user memilih lanjut mengisi form.
+  Future<bool> _confirmLowConfidence(ParsedReceipt parsed) async {
+    final percent = (parsed.confidenceScore * 100).round();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Periksa hasil pembacaan'),
+        content: Text(
+          'Nota terbaca sebagian (${parsed.confidenceLabel}, skor $percent%). '
+          'Periksa nama merchant, tanggal, dan daftar item sebelum menyimpan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Foto ulang'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Lanjut isi'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   String? _matchCategory(String? name, List<CategoryModel> categories) {
