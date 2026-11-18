@@ -1,4 +1,4 @@
-/// Dashboard (setara v1 Kotlin DashboardScreen.kt, DESIGN.md §8).
+/// Dashboard
 ///
 /// Urutan card (kiri→kanan): Total Saldo → Income/Expense/Net → Arus Kas
 /// (line chart) → Breakdown Kategori (donut + daftar + transaksi terbaru).
@@ -1100,7 +1100,7 @@ double totalBalanceFor(
       .fold(0, (sum, account) => sum + account.currentBalance);
 }
 
-/// Kartu "Total Balance" semua/akun terpilih (DESIGN.md §8.1) + toggle privasi
+/// Kartu "Total Balance" semua/akun terpilih + toggle privasi
 /// (ikon mata).
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({

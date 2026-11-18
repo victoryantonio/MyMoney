@@ -30,7 +30,7 @@ class AccountUpdateRequest(BaseModel):
 
 class AccountDeactivateRequest(BaseModel):
     """
-    Deactivation request (ARCHITECTURE.md §4.4).
+    Deactivation request.
 
     `target_account_id` is REQUIRED when the account still has a non-zero
     balance — the balance is moved to the target via balancing transactions.

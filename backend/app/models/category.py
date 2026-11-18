@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
 
 from app.db.base import Base
 
-# Sentinel for global categories (user_id IS NULL) — DATABASE.md §2.3.
+# Sentinel for global categories (user_id IS NULL).
 _GLOBAL_OWNER_UUID = "00000000-0000-0000-0000-000000000000"
 
 

@@ -6,9 +6,6 @@ POST   /api/accounts                        — create a new account
 GET    /api/accounts/{id}                   — get account detail with computed balance
 PUT    /api/accounts/{id}                   — update account name or bank name
 POST   /api/accounts/{id}/deactivate        — deactivate an account (NOT delete).
-                                               Per ARCHITECTURE.md §4.4: remaining
-                                               balance is moved to a target account
-                                               via balancing transactions.
 
 Accounts can never be hard-deleted — only deactivated (is_active=False).
 Transactions are preserved for historical accuracy.
@@ -17,8 +14,6 @@ Balance computation:
   current_balance = initial_balance
                   + SUM(amount WHERE type='income')
                   - SUM(amount WHERE type='expense')
-
-This is computed per-query per ARCHITECTURE.md — no stored balance field.
 """
 
 import uuid
@@ -236,7 +231,7 @@ def deactivate_account(
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """
-    Deactivate an account (ARCHITECTURE.md §4.4). Accounts are NEVER deleted —
+    Deactivate an account. Accounts are NEVER deleted —
     only marked is_active=False.
 
     If the account has a non-zero balance, the balance MUST be moved to a

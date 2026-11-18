@@ -1,4 +1,4 @@
-/// Token warna aplikasi (DESIGN.md §9) — dipakai lintas layar agar
+/// Token warna aplikasi — dipakai lintas layar agar
 /// konsisten dengan spesifikasi desain (income hijau, expense merah,
 /// net biru — sama seperti v1 Kotlin).
 library;

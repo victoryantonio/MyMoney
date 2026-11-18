@@ -43,7 +43,7 @@ def _find_visible_duplicate(
     user (category_visible_clause: aktif, milik user atau global yang tidak
     di-shadow oleh user). Mencegah kategori custom membayangi default global
     dengan nama yang sama dan melindungi unique index
-    idx_categories_user_name_type (DATABASE.md §2.3).
+    idx_categories_user_name_type.
     """
     stmt = select(Category).where(
         func.lower(Category.name) == name.lower(),

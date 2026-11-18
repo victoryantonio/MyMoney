@@ -7,7 +7,7 @@ GET    /api/transactions/{id}    — get a single transaction with its items
 PUT    /api/transactions/{id}    — update a transaction (replaces items if provided)
 DELETE /api/transactions/{id}    — hard-delete a transaction
 
-Keyset (cursor-based) pagination — DATABASE.md §3.2:
+Keyset (cursor-based) pagination:
   The default sort is (transaction_date DESC, id DESC); the cursor encodes
   the last seen row as "{transaction_date_iso}|{id}". For amount sorts the
   cursor is "{total_amount}|{id}". The next page fetches rows strictly
@@ -78,7 +78,7 @@ def _encode_cursor(tx: Transaction, sort: _SORT_MODES = "newest") -> str:
 def _apply_cursor(stmt, cursor: str | None, sort: _SORT_MODES = "newest"):
     """
     Apply the keyset filter matching the requested ORDER BY so pagination is
-    stable on ties (DATABASE.md §3.2):
+    stable on ties:
 
     - newest:  (transaction_date, id) < (cursor_date, cursor_id)
     - oldest:  (transaction_date, id) > (cursor_date, cursor_id)
@@ -255,8 +255,8 @@ def list_transactions(
     db: Session = Depends(get_db),
 ) -> TransactionListResponse:
     """
-    List transactions with keyset pagination and server-side sorting
-    (DATABASE.md §3.2). Supports optional filtering by type, category,
+    List transactions with keyset pagination and server-side sorting.
+    Supports optional filtering by type, category,
     account, date range, and free-text search (`search` matches merchant,
     note, or item name). `sort` selects the stable ordering:
     newest/oldest (by transaction_date) or largest/smallest (by total_amount).

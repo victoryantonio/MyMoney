@@ -1,8 +1,8 @@
 """
 Report aggregation service (US-11, US-16, US-17).
 
-All aggregation happens in SQL — `SUM`/`GROUP BY` — never in Python loops
-(DATABASE.md §3.4). Postgres is far more efficient at this and it keeps the
+All aggregation happens in SQL — `SUM`/`GROUP BY` — never in Python loops.
+Postgres is far more efficient at this and it keeps the
 backend light.
 
 Period keywords supported by `parse_period_arg` (Indonesian + English):
@@ -139,7 +139,7 @@ def get_report_trend(
     """
     Daily income/expense series for the period, bucketed by calendar day in the
     timezone that was SNAPSHOTTED on each transaction (`transactions.timezone`).
-    SQL `GROUP BY date(...)` only (DATABASE.md §3.4).
+    SQL `GROUP BY date(...)` only.
 
     Memakai snapshot per-baris (bukan timezone user saat ini) supaya
     interpretasi tanggal tidak berubah setelah fakta ketika user mengganti

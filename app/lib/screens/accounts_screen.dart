@@ -1,5 +1,4 @@
-/// Management akun (dari tab Profil) — setara v1 Kotlin
-/// `AccountManagementScreen` (ARCHITECTURE.md §4.4).
+/// Management akun (dari tab Profil) `AccountManagementScreen`
 ///
 /// Tambah akun (nama, JENIS AKUN: Kas/E-Wallet/Bank, saldo awal); edit
 /// nama/jenis; nonaktifkan — saat saldo ≠ 0 wajib memilih akun tujuan

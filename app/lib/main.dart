@@ -69,7 +69,7 @@ class MyMoneyApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF3B5B8C), // dusty slate blue (DESIGN.md)
+          seedColor: const Color(0xFF3B5B8C), // dusty slate blue
           brightness: Brightness.light,
         ),
         useMaterial3: true,
